@@ -7,6 +7,8 @@ export const FADE_START = 500, FADE_END = 600;
  * Mapa estratégico em pergaminho sobre o 3D. Abaixo de FADE_END acompanha a câmera 3D com a mesma projeção
  * isométrica (gira e achata), para o fade casar com o chão; em modo mapa anima para norte-acima e tem pan/zoom próprios.
  */
+export interface MapUnit { x: number; y: number; text: string; color: string; selected: boolean; path?: { x: number; y: number }[] }
+
 export class StrategicMap {
   private img: HTMLCanvasElement | null = null;
   private layers: HTMLCanvasElement[] = [];
@@ -18,6 +20,10 @@ export class StrategicMap {
   paints = 0;
   private labels: { x: number; y: number; name: string; size: number }[] = [];
   private pins: { x: number; y: number }[] = [];
+  private units: MapUnit[] = [];
+  private unitsKey = '';
+  /** Clique direito (sem arrastar) no modo mapa: ordem de mover para (x, y) em tiles. */
+  onOrder: ((x: number, y: number) => void) | null = null;
   private ctx: CanvasRenderingContext2D;
   mode: '3d' | 'map' = '3d';
   private center = { x: 0, y: 0 };
@@ -26,11 +32,12 @@ export class StrategicMap {
   private marker: { x: number; y: number } | null = null;
   private drag: { x: number; y: number; moved: boolean } | null = null;
 
-  constructor(private canvas: HTMLCanvasElement, private onPick: (x: number, y: number) => void, private onExit: () => void) {
+  constructor(private canvas: HTMLCanvasElement, private onPick: (x: number, y: number, shift: boolean) => void, private onExit: () => void) {
     this.ctx = canvas.getContext('2d')!;
     const resize = () => { canvas.width = innerWidth; canvas.height = innerHeight; };
     addEventListener('resize', resize);
     resize();
+    canvas.addEventListener('contextmenu', e => e.preventDefault());
     canvas.addEventListener('pointerdown', e => { if (this.mode === 'map') this.drag = { x: e.clientX, y: e.clientY, moved: false }; });
     canvas.addEventListener('pointermove', e => {
       if (!this.drag) return;
@@ -43,8 +50,8 @@ export class StrategicMap {
     canvas.addEventListener('pointerup', e => {
       const d = this.drag; this.drag = null;
       if (!d || d.moved || this.mode !== 'map' || !this.img) return;
-      const k = this.across / canvas.width;
-      this.onPick(this.center.x + (e.clientX - canvas.width / 2) * k, this.center.y + (e.clientY - canvas.height / 2) * k);
+      const k = this.across / canvas.width, x = this.center.x + (e.clientX - canvas.width / 2) * k, y = this.center.y + (e.clientY - canvas.height / 2) * k;
+      if (e.button === 2) this.onOrder?.(x, y); else if (e.button === 0) this.onPick(x, y, e.shiftKey);
     });
   }
 
@@ -82,6 +89,12 @@ export class StrategicMap {
   /** Selos (capitais sugeridas na tela inicial). */
   setPins(pins: { x: number; y: number }[]): void { this.pins = pins; this.lastKey = ''; }
 
+  /** Fichas (tropas, fortalezas, batalhas) por cima do mapa, em tamanho fixo de tela. Só redesenha quando `key` muda. */
+  setUnits(units: MapUnit[], key: string): void { this.units = units; this.unitsKey = key; }
+
+  /** Tiles por pixel no modo mapa (para acertar fichas com o clique). */
+  get tilesPerPixel(): number { return this.across / this.canvas.width; }
+
   /** Camadas desenhadas por cima do pergaminho (aquarela dos donos, fronteiras) e nomes das províncias. */
   setOverlay(layers: HTMLCanvasElement[], labels: { x: number; y: number; name: string; size: number }[]): void {
     this.layers = layers; this.labels = labels;
@@ -117,7 +130,7 @@ export class StrategicMap {
     if (!this.img) { this.lastKey = ''; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#b0bcb0'; ctx.fillRect(0, 0, W, H); return; } // pergaminho do novo mundo ainda gerando
     if (this.mode === '3d') { this.center = { x: cx, y: cy }; this.across = viewWidth; }
     // nada mudou na vista: o canvas já mostra a imagem certa (mapa parado custa zero)
-    const key = [W, H, this.center.x, this.center.y, this.across, this.t.toFixed(3), yaw.toFixed(4), this.marker?.x, this.marker?.y].join('|');
+    const key = [W, H, this.center.x, this.center.y, this.across, this.t.toFixed(3), yaw.toFixed(4), this.marker?.x, this.marker?.y, this.unitsKey].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
     this.paints++;
@@ -155,6 +168,23 @@ export class StrategicMap {
       ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       ctx.fillStyle = '#f1e6cf'; ctx.font = 'bold 13px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText('♜', px, py + 1);
+    }
+    const at = (x: number, y: number): [number, number] => [W / 2 + scale * ((x - c.x) * rx + (y - c.y) * rz), H / 2 - scale * s * ((x - c.x) * fx + (y - c.y) * fz)];
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    for (const u of this.units) {
+      const [px, py] = at(u.x, u.y);
+      if (u.path?.length) { // rota das selecionadas
+        ctx.strokeStyle = 'rgba(60, 38, 20, 0.7)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+        ctx.beginPath(); ctx.moveTo(px, py);
+        for (const p of u.path) ctx.lineTo(...at(p.x, p.y));
+        ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (px < -30 || py < -30 || px > W + 30 || py > H + 30) continue;
+      ctx.font = 'bold 12px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      const w = ctx.measureText(u.text).width + 10;
+      ctx.fillStyle = u.color; ctx.strokeStyle = u.selected ? '#fff2c0' : '#2b1a0e'; ctx.lineWidth = u.selected ? 3 : 1.5;
+      ctx.beginPath(); ctx.roundRect(px - w / 2, py - 10, w, 20, 5); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#f1e6cf'; ctx.fillText(u.text, px, py + 1);
     }
     if (this.marker) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);

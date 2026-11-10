@@ -4,9 +4,9 @@ import { bordersCanvas, makePainter, ownedCanvas, provinceAtTile } from './clien
 import { BuildingsView, siteClearings } from './client/view/buildings';
 import { initHud, initTopbar, setInfo, setProgress, setSeedField, setTopbar, showError } from './client/hud';
 import { loadQuality, saveQuality, type Quality } from './client/quality';
-import { FADE_END, StrategicMap } from './client/strategic';
+import { FADE_END, FADE_START, StrategicMap, type MapUnit } from './client/strategic';
 import { ChunkManager } from './client/view/chunks';
-import { TroopsView } from './client/view/troops';
+import { TROOP_ICON, TroopsView } from './client/view/troops';
 import { createScene } from './client/view/scene';
 import { WorldClient } from './client/worldClient';
 import { build, chooseCapital, colonize, moveTroops, recruit, setSpeed, upgrade, type Result } from './sim/commands';
@@ -64,6 +64,7 @@ async function load(s: number) {
   buildingsView.clear();
   troopsView.clear(); selectedTroops.clear();
   strategic.setOverlay([], []);
+  strategic.setUnits([], '');
   strategic.setImage(null, 0); // o pergaminho do mundo antigo some já, não só quando o novo ficar pronto
   chunks.reset();
   chunks.hidden = undefined;
@@ -168,6 +169,23 @@ viewCanvas.addEventListener('pointermove', e => {
 });
 viewCanvas.addEventListener('pointerleave', () => setTip(null));
 
+/** Fichas do pergaminho: tropas do jogador, fortalezas (com o nº de tropas vivas) e batalhas. */
+function mapUnits(s: GameState, pm: ProvinceMap): { units: MapUnit[]; key: string } {
+  const units: MapUnit[] = [], S = moveGrid?.size ?? 1;
+  for (const t of s.troops) {
+    if (t.owner !== 0) continue;
+    const sel = selectedTroops.has(t.id);
+    // rota: 1 ponto a cada 6 células (basta para o tracejado)
+    const path = sel ? t.path.filter((_, i) => i % 6 === 5 || i === t.path.length - 1).map(c => ({ x: (c % S) * CELL + CELL / 2, y: Math.floor(c / S) * CELL + CELL / 2 })) : undefined;
+    units.push({ x: Math.round(t.x), y: Math.round(t.y), text: `${TROOP_ICON[t.type]} ${Math.ceil(t.soldiers)}`, color: '#8a2a20', selected: sel, path });
+  }
+  const alive = new Map<number, number>();
+  for (const t of s.troops) if (t.owner === -1) alive.set(t.home, (alive.get(t.home) ?? 0) + 1);
+  for (const f of s.fortresses) { const c = pm.provinces[f.province].sites[0]; units.push({ x: c.x, y: c.y, text: `♜ ${alive.get(f.province) ?? 0}`, color: '#5a5a55', selected: false }); }
+  for (const b of s.battles) units.push({ x: Math.round(b.x), y: Math.round(b.y), text: '⚔', color: '#c08a20', selected: false });
+  return { units, key: units.map(u => `${u.x},${u.y},${u.text},${u.selected ? 1 : 0},${u.path?.length ?? 0}`).join(';') };
+}
+
 let last = performance.now(), frames = 0, fps = 0, fpsT = last;
 function frame(now: number) {
   const dt = (now - last) / 1000;
@@ -190,6 +208,7 @@ function frame(now: number) {
     renderPanel(game, pm, selected, actions);
     buildingsView.sync(game, pm, (x, y) => chunks.heightAt(x, y));
     if (!strategic.covering) troopsView.sync(game, pm, (x, y) => chunks.heightAt(x, y), { x: camera.x, y: camera.y, width: iso.viewWidth(), camera: iso.camera }, selectedTroops, now / 1000);
+    if (strategic.mode === 'map' || iso.viewWidth() > FADE_START) { const u = mapUnits(game, pm); strategic.setUnits(u.units, u.key); }
     // eventos novos viram mensagens: compara com o total (o log só guarda os últimos 50)
     const fresh = game.eventCount - seenEvents;
     for (const ev of game.events.slice(Math.max(0, game.events.length - fresh))) toast(ev.text);
