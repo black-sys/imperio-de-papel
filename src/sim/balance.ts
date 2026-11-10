@@ -29,6 +29,8 @@ export const TROOPS: Record<TroopType, { name: string; level: number; soldiers: 
   archer: { name: 'Arqueiros', level: 2, soldiers: 15, attack: 1.0, defense: 0.6, speed: 150, cost: { gold: 50, wood: 40, stone: 0 }, upkeep: 1.5, months: 2 },
   cavalry: { name: 'Cavaleiros', level: 3, soldiers: 12, attack: 1.6, defense: 1.0, speed: 240, cost: { gold: 90, wood: 20, stone: 20 }, upkeep: 3, months: 3 },
 };
+export const BATTLE = { step: 0.02, formation: 10 }; // passo fixo da simulação de tropas (meses); distância entre tropas em formação (tiles)
+export const REFILL = { rate: 1, garrisonRate: 3, gold: 2 }; // soldados/mês parado no reino (com Guarnição na província); ouro por soldado
 export const TROOP_CAP = [0, 2, 3, 4]; // tropas sustentadas por nível de Guarnição
 export const GARRISON_GOAL = [0, 0, 3, 3]; // por nível alvo: guarnições do reino no nível anterior ou maior (contando a própria)
 

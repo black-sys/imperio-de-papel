@@ -1,7 +1,7 @@
 import type { ProvinceMap } from '../worldgen/provinces';
-import { BUILDINGS, MONTH_SECONDS, TROOPS } from './balance';
+import { BATTLE, BUILDINGS, MONTH_SECONDS, TROOPS } from './balance';
 import type { MoveGrid } from './movegrid';
-import { spawnTroop } from './troops';
+import { spawnTroop, troopStep } from './troops';
 import { monthlyIncome } from './economy';
 import { logEvent, type GameState } from './state';
 
@@ -10,6 +10,11 @@ const EPS = 1e-9;
 /** Avança o tempo real `dtSeconds` na velocidade atual; paga a renda em cada virada de mês atravessada. */
 export function tick(s: GameState, pm: ProvinceMap, dtSeconds: number, grid: MoveGrid | null): void {
   let months = (dtSeconds * s.speed) / MONTH_SECONDS;
+  // tropas e batalhas em passos fixos: o resultado não depende da velocidade nem da taxa de quadros
+  if (grid) for (s.stepAcc += months; s.stepAcc >= BATTLE.step - EPS; s.stepAcc -= BATTLE.step) {
+    troopStep(s, pm, grid, BATTLE.step);
+    s.clock = Math.round((s.clock + BATTLE.step) * 1e6) / 1e6;
+  }
   while (months > EPS) {
     const toBoundary = Math.floor(s.month + EPS) + 1 - s.month;
     const boundary = months >= toBoundary - EPS;
@@ -20,6 +25,11 @@ export function tick(s: GameState, pm: ProvinceMap, dtSeconds: number, grid: Mov
     if (boundary) {
       const inc = monthlyIncome(s, pm);
       s.res.gold += inc.gold; s.res.wood += inc.wood; s.res.stone += inc.stone;
+      if (s.res.gold < 0) {
+        // sem ouro para pagar: a tropa mais cara debanda (empate: a mais nova)
+        const t = s.troops.filter(t => t.owner === 0).sort((a, b) => TROOPS[b.type].upkeep - TROOPS[a.type].upkeep || b.id - a.id)[0];
+        if (t) { s.troops.splice(s.troops.indexOf(t), 1); logEvent(s, `${TROOPS[t.type].name} dispersos por falta de ouro`); }
+      }
     }
   }
 }

@@ -1,5 +1,7 @@
 import type { ProvinceMap } from '../worldgen/provinces';
-import { BUILDINGS, COLONIZE, GARRISON_GOAL, MAX_LEVEL, MIN_FOREST, MIN_ROCK, SPEEDS, TROOPS, type BuildingType, type Res, type TroopType } from './balance';
+import { findCellPath } from './astar';
+import { cellAt, type MoveGrid } from './movegrid';
+import { BATTLE, BUILDINGS, COLONIZE, GARRISON_GOAL, MAX_LEVEL, MIN_FOREST, MIN_ROCK, SPEEDS, TROOPS, type BuildingType, type Res, type TroopType } from './balance';
 import { buildCost, colonizeCost } from './economy';
 import { activeLevel, logEvent, type GameState } from './state';
 import { troopCap } from './troops';
@@ -125,4 +127,23 @@ export function recruit(s: GameState, pm: ProvinceMap, id: number, slot: number,
   pay(s, TROOPS[type].cost);
   s.recruiting.push({ province: id, slot, type, remaining: TROOPS[type].months });
   return OK;
+}
+
+/** Manda as tropas do jogador para (x, y) em tiles, em formação. As que podem andam; o motivo de alguma recusa volta. */
+export function moveTroops(s: GameState, grid: MoveGrid, ids: number[], x: number, y: number): Result {
+  const troops = s.troops.filter(t => t.owner === 0 && ids.includes(t.id));
+  if (troops.length === 0) return no('Nenhuma tropa selecionada');
+  const target = cellAt(grid, x, y);
+  if (target < 0 || grid.cost[target] === 0) return no('Destino na água');
+  const cols = Math.ceil(Math.sqrt(troops.length)), rows = Math.ceil(troops.length / cols);
+  let result = OK;
+  troops.forEach((t, i) => {
+    if (s.clock < t.routedUntil) { result = no('Tropa em fuga'); return; }
+    const spot = cellAt(grid, x + ((i % cols) - (cols - 1) / 2) * BATTLE.formation, y + (Math.floor(i / cols) - (rows - 1) / 2) * BATTLE.formation);
+    const from = cellAt(grid, t.x, t.y);
+    // vaga da formação na água ou isolada: vai para o alvo
+    const path = (spot >= 0 && grid.cost[spot] !== 0 ? findCellPath(grid, from, spot) : null) ?? findCellPath(grid, from, target);
+    if (path) t.path = path; else result = no('Caminho impossível');
+  });
+  return result;
 }
