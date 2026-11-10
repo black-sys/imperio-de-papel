@@ -4,7 +4,7 @@ export type Res = { gold: number; wood: number; stone: number };
 
 export const MONTH_SECONDS = 10; // a 1×
 export const SPEEDS = [0, 1, 2, 4, 8] as const;
-export const START_RES: Res = { gold: 200, wood: 150, stone: 100 };
+export const START_RES: Res = { gold: 40, wood: 110, stone: 60 };
 export const TAX = 2;
 export const CAPITAL_TAX = 10;
 export const MAX_LEVEL = 3;
@@ -22,4 +22,6 @@ export const BUILDINGS: Record<BuildingType, { name: string; cost: Res; months: 
 };
 export const GARRISON_UPKEEP = 2;
 
-export const COLONIZE = { gold: 80, perOwned: 0.15, wood: 50, months: 3, hardExtra: 1, max: 2, garrisonDiscount: 0.25 };
+// custo cresce exponencialmente com as províncias que você já tem (barato no começo, caro no império grande)
+// calibrado pelo teste de ritmo (jogador guloso): 1ª colonização ~4 meses, 20 províncias ~2 h a 1×
+export const COLONIZE = { gold: 80, growth: 1.36, wood: 50, woodGrowth: 1.15, months: 5, hardExtra: 1, max: 2, garrisonDiscount: 0.25 };

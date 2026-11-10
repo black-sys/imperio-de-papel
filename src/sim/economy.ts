@@ -16,7 +16,7 @@ export function colonizeCost(s: GameState, pm: ProvinceMap, id: number): Res & {
   const garrison = p.neighbors.some(n => s.owner[n] === 0 && s.buildings[n].some(b => b?.type === 'garrison' && activeLevel(b) > 0));
   const k = garrison ? 1 - COLONIZE.garrisonDiscount : 1;
   return {
-    gold: COLONIZE.gold * (1 + COLONIZE.perOwned * owned(s)) * k, wood: COLONIZE.wood * k, stone: 0,
+    gold: COLONIZE.gold * COLONIZE.growth ** (owned(s) - 1) * k, wood: COLONIZE.wood * COLONIZE.woodGrowth ** (owned(s) - 1) * k, stone: 0,
     months: (COLONIZE.months + (hard ? COLONIZE.hardExtra : 0)) * k,
   };
 }

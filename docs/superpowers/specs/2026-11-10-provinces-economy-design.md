@@ -44,7 +44,7 @@ vizinhas. Sem combate e sem IA (subprojetos 2 e 3). Câmera livre; o bonequinho 
    passar o mouse; mensagens; tela inicial de escolha de capital.
 
 ## Regras (calibração inicial, `balance.ts`)
-- Início: capital com Vila nível 2; 200 ouro, 150 madeira, 100 pedra.
+- Início: capital com Vila nível 2; 40 ouro, 110 madeira, 60 pedra (calibrado pelo teste de ritmo).
 - Fatores 0–1.5: fertilidade (bioma + bônus rio/costa), floresta, rocha.
 - Imposto: +2 ouro/mês por província; +10 na capital.
 
@@ -57,8 +57,9 @@ vizinhas. Sem combate e sem IA (subprojetos 2 e 3). Câmera livre; o bonequinho 
 | Guarnição | — | 60/40/60 | 4 | vizinhas colonizam 25% mais barato/rápido; manutenção 2 ouro |
 
 - Melhoria: N2 custa 1.8×, N3 3×; tempo ×1.5 por nível. Máx. nível 3.
-- Colonizar: alvo neutro, terra, vizinho de província sua; ouro `80 × (1 + 0.15 × províncias)` +
-  50 madeira; 3 meses (+1 em montanha/neve/pântano); máx. 2 simultâneas; ao concluir, Vila N1.
+- Colonizar: alvo neutro, terra, vizinho de província sua; ouro `80 × 1.36^(províncias−1)` +
+  madeira `50 × 1.15^(províncias−1)`; 5 meses (+1 em montanha/neve/pântano); máx. 2 simultâneas; ao concluir, Vila N1.
+  (Custo linear do rascunho dava 20 províncias em 13 min; o exponencial calibrado dá ~2 h.)
 - Alvo de ritmo: 1ª colonização entre 3–8 meses; 20 províncias entre 1.5–4 h de jogo a 1×.
 
 ## Visual e interface

@@ -23,7 +23,7 @@ describe('início', () => {
     const s = game();
     expect(s.owner[0]).toBe(0);
     expect(s.buildings[0][0]).toEqual({ type: 'village', level: 2, remaining: 0 });
-    expect(s.res).toEqual({ gold: 200, wood: 150, stone: 100 });
+    expect(s.res).toEqual({ gold: 40, wood: 110, stone: 60 });
     expect(chooseCapital(s, pm, 1)).toEqual({ ok: false, reason: 'A capital já foi escolhida' });
   });
   test('começa pausado e o tempo não anda', () => {
@@ -52,7 +52,7 @@ describe('renda', () => {
     s.buildings[0][1] = { type: 'sawmill', level: 1, remaining: 2 };
     expect(monthlyIncome(s, pm).wood).toBe(0);
     run(s, 1);
-    expect(s.res.gold).toBe(219);
+    expect(s.res.gold).toBe(59);
   });
 });
 
@@ -60,7 +60,7 @@ describe('construir', () => {
   test('custo, tempo e conclusão', () => {
     const s = game();
     expect(build(s, pm, 0, 1, 'sawmill')).toEqual({ ok: true });
-    expect(s.res).toEqual({ gold: 160, wood: 130, stone: 90 });
+    expect(s.res).toEqual({ gold: 0, wood: 90, stone: 50 });
     run(s, 1.9);
     expect(s.buildings[0][1]!.remaining).toBeGreaterThan(0);
     run(s, 0.2);
@@ -102,15 +102,17 @@ describe('construir', () => {
 });
 
 describe('colonizar', () => {
-  test('custo cresce com províncias; conclui com Vila N1', () => {
+  test('custo cresce exponencialmente com províncias; conclui com Vila N1', () => {
     const s = game();
-    expect(colonizeCost(s, pm, 1)).toEqual({ gold: 92, wood: 50, stone: 0, months: 3 });
+    s.res.gold = 500;
+    expect(colonizeCost(s, pm, 1)).toEqual({ gold: 80, wood: 50, stone: 0, months: 5 });
     expect(colonize(s, pm, 1)).toEqual({ ok: true });
-    run(s, 3.05);
+    run(s, 5.05);
     expect(s.owner[1]).toBe(0);
     expect(s.buildings[1][0]).toEqual({ type: 'village', level: 1, remaining: 0 });
-    expect(colonizeCost(s, pm, 2).gold).toBeCloseTo(80 * 1.3);
-    expect(colonizeCost(s, pm, 2).months).toBe(4); // montanha +1
+    expect(colonizeCost(s, pm, 2).gold).toBeCloseTo(80 * 1.36);
+    expect(colonizeCost(s, pm, 2).wood).toBeCloseTo(50 * 1.15);
+    expect(colonizeCost(s, pm, 2).months).toBe(6); // montanha +1
   });
   test.each([
     ['não vizinha', 3, 'Precisa ser vizinha de uma província sua'],
@@ -130,7 +132,7 @@ describe('colonizar', () => {
   test('guarnição vizinha: 25% mais barato e rápido', () => {
     const s = game();
     s.buildings[0][1] = { type: 'garrison', level: 1, remaining: 0 };
-    expect(colonizeCost(s, pm, 1)).toEqual({ gold: 69, wood: 37.5, stone: 0, months: 2.25 });
+    expect(colonizeCost(s, pm, 1)).toEqual({ gold: 60, wood: 37.5, stone: 0, months: 3.75 });
   });
 });
 
@@ -140,7 +142,7 @@ describe('tempo e estado', () => {
     setSpeed(s, 8);
     tick(s, pm, 50); // 40 meses
     expect(s.month).toBeCloseTo(40);
-    expect(s.res.gold).toBeCloseTo(200 + 40 * 19);
+    expect(s.res.gold).toBeCloseTo(40 + 40 * 19);
   });
   test('estado sobrevive a JSON e continua jogável', () => {
     const s = game();
