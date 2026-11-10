@@ -1,6 +1,6 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { Biome } from '../worldgen/types';
-import { BUILDINGS, CAPITAL_TAX, COLONIZE, GARRISON_UPKEEP, TAX, TROOPS, UPGRADE_COST, UPGRADE_TIME, type BuildingType, type Res } from './balance';
+import { BUILDINGS, CAPITAL_TAX, COLONIZE, GARRISON_UPKEEP, TAX, TROOPS, TROOP_GROWTH, UPGRADE_COST, UPGRADE_TIME, type BuildingType, type Res, type TroopType } from './balance';
 import { activeLevel, type GameState } from './state';
 
 export function buildCost(type: BuildingType, level: number): Res & { months: number } {
@@ -43,4 +43,10 @@ export function monthlyIncome(s: GameState, pm: ProvinceMap): Res {
   s.owner.forEach((o, id) => { if (o !== 0) return; const r = provinceIncome(s, pm, id); t.gold += r.gold; t.wood += r.wood; t.stone += r.stone; });
   for (const tr of s.troops) if (tr.owner === 0) t.gold -= TROOPS[tr.type].upkeep;
   return t;
+}
+
+/** Custo de treinar a próxima tropa: cresce com as que o reino já tem (vivas ou em treino). */
+export function recruitCost(s: GameState, type: TroopType): Res {
+  const c = TROOPS[type].cost, k = TROOP_GROWTH ** (s.troops.filter(t => t.owner === 0).length + s.recruiting.length);
+  return { gold: c.gold * k, wood: c.wood * k, stone: c.stone * k };
 }

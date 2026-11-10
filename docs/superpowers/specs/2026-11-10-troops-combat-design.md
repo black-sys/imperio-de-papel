@@ -32,6 +32,8 @@ Escala: 1 mês = 10 s a 1×; uma província tem ~150 tiles de largura.
 
 - Vantagens: lanceiros +50% de dano contra cavalaria; cavalaria +50% contra arqueiros; arqueiros atiram
   sozinhos no primeiro quarto da batalha (só eles causam dano nessa fase).
+- Custo de recrutar cresce com o exército: custo base × 1.6^(tropas vivas + em treino). Freia a conquista, que não
+  paga colonização (sem isso, 20 províncias em 0.7–1 h).
 - Recrutamento: pelo painel da província com Guarnição; uma tropa por vez por guarnição; nasce no local do prédio.
 - Teto: Guarnição N1/N2/N3 sustenta 2/3/4 tropas. Manutenção da Guarnição (2 ouro) continua.
 - Metas de nível da Guarnição: N2 exige ≥ 3 guarnições no reino (qualquer nível, contando a própria);
@@ -117,9 +119,8 @@ Simulação (vitest):
 - Reposição só em território próprio, mais rápida com Guarnição; manutenção desconta da renda;
   ouro negativo dispersa uma tropa.
 - Estado com tropas e batalhas faz o caminho de ida e volta pelo JSON.
-- Ritmo: jogador guloso estendido (recruta e ataca fortalezas próximas): 1ª fortaleza tomada entre
-  15–40 min a 1×; 20 províncias entre 0.6 e 4 h (medido 0.7–1 h: conquistar não paga colonização e o ouro sobra
-  no meio do jogo; o freio fino fica para o subprojeto 3, quando os rivais disputarem as fortalezas).
+- Ritmo: jogador guloso estendido (recruta e ataca a fortaleza mais fraca por perto): 1ª fortaleza tomada entre
+  15–40 min a 1×; 20 províncias entre 1 e 4 h (medido 1.1–1.3 h; só colonizando são ~2 h).
 
 Manual (headless + autor): recrutar, mover em grupo, cruzar rio, atacar fortaleza, perder e ver a fuga;
 FPS com ~15 tropas no 3D e no pergaminho com zoom máximo.

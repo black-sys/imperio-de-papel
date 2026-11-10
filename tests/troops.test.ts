@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { checkColonize, checkRecruit, checkUpgrade, moveTroops, recruit, setSpeed, upgrade } from '../src/sim/commands';
-import { monthlyIncome } from '../src/sim/economy';
+import { TROOP_GROWTH } from '../src/sim/balance';
+import { monthlyIncome, recruitCost } from '../src/sim/economy';
 import type { GameState } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
 import { labelLand, type MoveGrid } from '../src/sim/movegrid';
@@ -54,6 +55,19 @@ describe('recrutamento', () => {
     expect(checkRecruit({ ...s, recruiting: [] }, pm, 0, 1, 'spear')).toEqual({ ok: false, reason: 'Teto de tropas atingido' });
     expect(troopCap(game(2))).toBe(3);
     expect(troopCap(game(3))).toBe(4);
+  });
+  test('custo cresce com o tamanho do exército (tropas + em treino); fortalezas não contam', () => {
+    const s = game(3);
+    expect(recruitCost(s, 'spear')).toEqual({ gold: 40, wood: 20, stone: 0 });
+    spawnTroop(s, 0, 'spear', 80, 80);
+    spawnTroop(s, -1, 'spear', 180, 80, 1);
+    expect(recruit(s, pm, 0, 1, 'cavalry')).toEqual({ ok: true }); // 2ª tropa: base × growth
+    expect(s.res.gold).toBeCloseTo(1000 - 90 * TROOP_GROWTH, 6);
+    expect(s.res.stone).toBeCloseTo(1000 - 20 * TROOP_GROWTH, 6);
+    const c = recruitCost(s, 'spear'); // 3ª tropa
+    expect(c.gold).toBeCloseTo(40 * TROOP_GROWTH ** 2, 6);
+    expect(c.wood).toBeCloseTo(20 * TROOP_GROWTH ** 2, 6);
+    expect(TROOP_GROWTH).toBeGreaterThan(1);
   });
   test('guarnição em melhoria mantém o teto do nível anterior', () => {
     const s = game();

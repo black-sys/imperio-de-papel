@@ -13,15 +13,15 @@ describe.each([860, 1, 2, 7])('ritmo semente %i', { timeout: 180000 }, seed => {
     expect(r.reach20).toBeLessThanOrEqual(4 * 360);
   });
   // com fortalezas e exército: 1ª fortaleza tomada em 15–40 min (90–240 meses). Conquistar não paga colonização, então
-  // as 20 províncias chegam mais cedo que só colonizando (medido: 250–350 meses); o piso de 0.6 h guarda contra o colapso
-  test('com exército: 1ª fortaleza em 15–40 min e 20 províncias entre 0.6 e 4 h', () => {
+  // as 20 províncias chegam mais cedo que só colonizando (medido: 390–480 meses com o custo de recrutar crescente)
+  test('com exército: 1ª fortaleza em 15–40 min e 20 províncias entre 1 e 4 h', () => {
     const map = generateWorld(seed), r = greedy(generateProvinces(map), 2000, map);
     console.log(`semente ${seed}: 1ª colonização ${r.firstColonize.toFixed(1)}, 1ª fortaleza ${r.firstFortress}, 20 províncias ${r.reach20}, fortalezas tomadas ${r.taken}`);
     expect(r.firstColonize).toBeGreaterThanOrEqual(3);
     expect(r.firstColonize).toBeLessThanOrEqual(8);
     expect(r.firstFortress).toBeGreaterThanOrEqual(90);
     expect(r.firstFortress).toBeLessThanOrEqual(240);
-    expect(r.reach20).toBeGreaterThanOrEqual(0.6 * 360);
+    expect(r.reach20).toBeGreaterThanOrEqual(360);
     expect(r.reach20).toBeLessThanOrEqual(4 * 360);
   });
 });

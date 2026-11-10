@@ -58,10 +58,11 @@ export function greedy(pm: ProvinceMap, maxMonths = 3000, map?: WorldMap) {
       if (!did) break;
     }
     if (grid) {
-      // 4) com o dobro da guarnição inimiga em tropas prontas, ataca a fortaleza mais próxima da capital
+      // 4) com o dobro da guarnição inimiga em tropas prontas, ataca a fortaleza mais fraca entre as próximas da capital
       const ready = s.troops.filter(t => t.owner === 0 && !t.path.length && s.clock >= t.routedUntil && !inBattle(s, t.id) && t.soldiers >= TROOPS[t.type].soldiers * 0.9);
       const cap = pm.provinces[s.capital].center, d = (id: number) => Math.hypot(pm.provinces[id].center.x - cap.x, pm.provinces[id].center.y - cap.y);
-      const target = [...s.fortresses].sort((a, b) => d(a.province) - d(b.province))[0];
+      const near = [...s.fortresses].sort((a, b) => d(a.province) - d(b.province)).slice(0, 6);
+      const target = near.sort((a, b) => a.garrison.length - b.garrison.length || d(a.province) - d(b.province))[0]; // a mais fraca entre as 6 mais próximas
       if (target && ready.length >= 2 * target.garrison.length) {
         const site = pm.provinces[target.province].sites[0];
         moveTroops(s, grid, ready.map(t => t.id), site.x, site.y);

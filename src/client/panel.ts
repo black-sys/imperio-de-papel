@@ -1,6 +1,6 @@
 import { BUILDINGS, TROOPS, type BuildingType, type TroopType } from '../sim/balance';
 import { checkBuild, checkColonize, checkRecruit, checkUpgrade, type Result } from '../sim/commands';
-import { buildCost, colonizeCost, provinceIncome } from '../sim/economy';
+import { buildCost, colonizeCost, provinceIncome, recruitCost } from '../sim/economy';
 import { activeLevel, type GameState } from '../sim/state';
 import { inBattle } from '../sim/troops';
 import { TROOP_ICON } from './view/troops';
@@ -61,7 +61,7 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
         if (b.type === 'garrison' && activeLevel(b) > 0) {
           const q = s.recruiting.find(r => r.province === id && r.slot === slot);
           train = q ? `<small>Treinando ${TROOPS[q.type].name.toLowerCase()}… faltam ${q.remaining.toFixed(1)} meses</small>`
-            : TROOP_TYPES.map(t => button(`r:${slot}:${t}`, `${TROOP_ICON[t]} ${TROOPS[t].name}`, checkRecruit(s, pm, id, slot, t), ` <small>${cost({ ...TROOPS[t].cost, months: TROOPS[t].months })}</small>`)).join('');
+            : TROOP_TYPES.map(t => button(`r:${slot}:${t}`, `${TROOP_ICON[t]} ${TROOPS[t].name}`, checkRecruit(s, pm, id, slot, t), ` <small>${cost({ ...recruitCost(s, t), months: TROOPS[t].months })}</small>`)).join('');
           train = `<div class="act">${train}</div>`;
         }
         html += `<div class="slot"><b>${BUILDINGS[b.type].name} ${'★'.repeat(b.level)}</b>${info}<div class="act">${up}</div>${train}</div>`;

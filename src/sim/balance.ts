@@ -45,6 +45,9 @@ export const BATTLE = {
 // calibrado pelo teste de ritmo: com 1–4 tropas a 1ª fortaleza caía em ~55 meses e 11–15 delas em 100 meses
 export const FORTRESS = { share: 0.25, regenMonths: 3, max: 10 };
 export const REFILL = { rate: 1, garrisonRate: 3, gold: 2 }; // soldados/mês parado no reino (com Guarnição na província); ouro por soldado
+// cada tropa a mais (viva ou em treino) encarece a próxima, como a colonização: freia a conquista quando o ouro sobra
+// calibrado pelo teste de ritmo: 1.6 dá a 1ª fortaleza em 100–235 meses e 20 províncias em 390–480; com 2 a 1ª passa de 350
+export const TROOP_GROWTH = 1.6;
 export const TROOP_CAP = [0, 2, 3, 4]; // tropas sustentadas por nível de Guarnição
 export const GARRISON_GOAL = [0, 0, 3, 3]; // por nível alvo: guarnições do reino no nível anterior ou maior (contando a própria)
 

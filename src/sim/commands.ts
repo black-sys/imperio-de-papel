@@ -2,7 +2,7 @@ import type { ProvinceMap } from '../worldgen/provinces';
 import { findCellPath } from './astar';
 import { cellAt, type MoveGrid } from './movegrid';
 import { BATTLE, BUILDINGS, COLONIZE, GARRISON_GOAL, MAX_LEVEL, MIN_FOREST, MIN_ROCK, SPEEDS, TROOPS, type BuildingType, type Res, type TroopType } from './balance';
-import { buildCost, colonizeCost } from './economy';
+import { buildCost, colonizeCost, recruitCost } from './economy';
 import { activeLevel, logEvent, type GameState } from './state';
 import { troopCap } from './troops';
 
@@ -118,13 +118,13 @@ export function checkRecruit(s: GameState, pm: ProvinceMap, id: number, slot: nu
   if (activeLevel(b) < TROOPS[type].level) return no(`Requer Guarnição N${TROOPS[type].level}`);
   if (s.recruiting.some(r => r.province === id && r.slot === slot)) return no('Já está treinando uma tropa');
   if (s.troops.filter(t => t.owner === 0).length + s.recruiting.length >= troopCap(s)) return no('Teto de tropas atingido');
-  return afford(s, TROOPS[type].cost);
+  return afford(s, recruitCost(s, type));
 }
 
 export function recruit(s: GameState, pm: ProvinceMap, id: number, slot: number, type: TroopType): Result {
   const chk = checkRecruit(s, pm, id, slot, type);
   if (!chk.ok) return chk;
-  pay(s, TROOPS[type].cost);
+  pay(s, recruitCost(s, type));
   s.recruiting.push({ province: id, slot, type, remaining: TROOPS[type].months });
   return OK;
 }
