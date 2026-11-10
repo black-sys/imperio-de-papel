@@ -5,7 +5,7 @@ import { BIOME_NAMES } from './client/map2d';
 import { FADE_END, StrategicMap } from './client/strategic';
 import { Player } from './client/player';
 import { ChunkManager } from './client/view/chunks';
-import { loadQuality } from './client/quality';
+import { loadQuality, saveQuality, type Quality } from './client/quality';
 import { CHUNK } from './worldgen/constants';
 import { createScene } from './client/view/scene';
 import { WorldClient } from './client/worldClient';
@@ -26,6 +26,7 @@ let seed = parseSeed(new URLSearchParams(location.search).get('seed')) ?? random
 let map: WorldMap | null = null;
 let pendingTeleport: { x: number; y: number } | null = null;
 let quality = loadQuality();
+iso.setQuality(quality);
 // raio (em chunks) que cobre a vista isométrica: o chão visto é ~1.8× mais alto que largo na tela
 const viewRadius = () => Math.ceil((iso.viewWidth() * 0.9) / CHUNK) + 1;
 const walk = (x: number, y: number) => chunks.walkAt(x, y);
@@ -52,6 +53,8 @@ async function load(s: number) {
 
 initHud({
   seed,
+  quality,
+  onQuality: q => { quality = q as Quality; saveQuality(quality); iso.setQuality(quality); },
   onGenerate: raw => load(parseSeed(raw) ?? randomSeed()),
   getLink: () => `${location.origin}${location.pathname}?seed=${seed}`,
 });
@@ -115,7 +118,7 @@ function frame(now: number) {
     iso.setTarget(p.x, p.y, chunks.heightAt(p.x, p.y));
     strategic.setMarker(p.x, p.y);
     const b = chunks.biomeAt(p.x, p.y);
-    setInfo({ x: p.x, y: p.y, biome: b === null ? '…' : BIOME_NAMES[b as Biome], fps });
+    setInfo({ x: p.x, y: p.y, biome: b === null ? '…' : BIOME_NAMES[b as Biome], fps, tris: iso.renderer.info.render.triangles });
   }
   iso.render();
   strategic.draw(iso.viewWidth(), iso.yaw(), player.position.x, player.position.y);

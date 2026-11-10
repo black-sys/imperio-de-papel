@@ -40,6 +40,7 @@ export class Decor {
         inst.setMatrixAt(i, m.compose(p, q, s));
       });
       inst.computeBoundingSphere();
+      inst.castShadow = inst.receiveShadow = true;
       g.add(inst);
     }
     this.scene.add(g);

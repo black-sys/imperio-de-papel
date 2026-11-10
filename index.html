@@ -12,6 +12,7 @@
     #hud input { width: 120px; background: #20242b; color: inherit; border: 1px solid #3a404a; border-radius: 4px; padding: 4px 6px; }
     #hud button { background: #2f6f4f; color: #fff; border: 0; border-radius: 4px; padding: 5px 10px; cursor: pointer; }
     #hud button.ghost { background: #2a2f37; }
+    #hud select { background: #20242b; color: inherit; border: 1px solid #3a404a; border-radius: 4px; padding: 4px; }
     #progress { height: 4px; background: #2a2f37; border-radius: 2px; overflow: hidden; }
     #progress > div { height: 100%; width: 0; background: #5fb37f; transition: width .15s; }
     #info { font-variant-numeric: tabular-nums; opacity: .85; }
@@ -28,6 +29,7 @@
       <input id="seed" inputmode="numeric" />
       <button id="gen">Gerar</button>
       <button id="link" class="ghost">Copiar link</button>
+      <select id="quality" title="Qualidade gráfica"><option value="high">Alta</option><option value="medium">Média</option><option value="low">Baixa</option></select>
     </div>
     <div id="stage"></div>
     <div id="progress"><div></div></div>

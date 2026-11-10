@@ -3,10 +3,12 @@ import { CHUNK } from '../../worldgen/constants';
 import type { CoarseChunk } from '../../worldgen/coarse';
 import { Biome, type ChunkData } from '../../worldgen/types';
 import { BIOME_COLORS } from '../map2d';
+import { makeWaterMaterial } from './water';
 
 const V = CHUNK + 1;
 const terrainMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 const waterMat = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true, transparent: true, opacity: 0.78, depthWrite: false });
+const animWaterMat = makeWaterMaterial();
 const BED: [number, number, number] = [150, 140, 105];
 
 const jitter = (n: number) => { // hash → [0,1)
@@ -34,17 +36,22 @@ export function buildTerrain(c: ChunkData): THREE.Mesh {
       }
     }
   }
-  return meshWithSkirt(pos, col, ox, oz, CHUNK, 1, (i, j) => c.heights[j * V + i]);
+  const m = meshWithSkirt(pos, col, ox, oz, CHUNK, 1, (i, j) => c.heights[j * V + i],
+    (i, j) => (c.water[j * CHUNK + i] === 1 || c.water[j * CHUNK + i] === 2 ? BED : BIOME_COLORS[c.biome[j * CHUNK + i] as Biome]));
+  m.castShadow = m.receiveShadow = true;
+  return m;
 }
 
 const SKIRT = 3;
 /** Junta a malha com uma "saia" vertical nas 4 bordas (esconde frestas entre níveis de LOD). */
-function meshWithSkirt(pos: Float32Array, col: Float32Array, ox: number, oz: number, n: number, step: number, h: (i: number, j: number) => number): THREE.Mesh {
+function meshWithSkirt(pos: Float32Array, col: Float32Array, ox: number, oz: number, n: number, step: number, h: (i: number, j: number) => number, color: (i: number, j: number) => readonly number[]): THREE.Mesh {
   const sp: number[] = [], sc: number[] = [];
   const edge = (i0: number, j0: number, i1: number, j1: number) => {
     const x0 = ox + i0 * step, z0 = oz + j0 * step, x1 = ox + i1 * step, z1 = oz + j1 * step, a = h(i0, j0), b = h(i1, j1);
     sp.push(x0, a, z0, x1, b, z1, x0, a - SKIRT, z0, x1, b, z1, x1, b - SKIRT, z1, x0, a - SKIRT, z0);
-    for (let k = 0; k < 6; k++) sc.push(0.33, 0.29, 0.24);
+    // cor do terreno da borda: frestas de 1 pixel entre chunks não aparecem como linhas escuras
+    const c = color(Math.min(n - 1, Math.min(i0, i1)), Math.min(n - 1, Math.min(j0, j1)));
+    for (let k = 0; k < 6; k++) sc.push(c[0] / 255, c[1] / 255, c[2] / 255);
   };
   for (let i = 0; i < n; i++) { edge(i, 0, i + 1, 0); edge(i + 1, n, i, n); edge(0, i + 1, 0, i); edge(n, i, n, i + 1); }
   const P = new Float32Array(pos.length + sp.length), C = new Float32Array(col.length + sc.length);
@@ -76,7 +83,8 @@ export function buildCoarseTerrain(c: CoarseChunk): THREE.Mesh {
       }
     }
   }
-  return meshWithSkirt(pos, col, ox, oz, B, s, (i, j) => c.heights[j * N + i]);
+  return meshWithSkirt(pos, col, ox, oz, B, s, (i, j) => c.heights[j * N + i],
+    (i, j) => (c.water[j * B + i] ? BED : BIOME_COLORS[c.biome[j * B + i] as Biome]));
 }
 
 /** Água de LOD: um quad por bloco com mar/lago, sem animação. */
@@ -109,10 +117,11 @@ export function coarseHeight(c: CoarseChunk, x: number, y: number): number {
   return a + (b - a) * fy;
 }
 
-/** Superfície da água: um quad por tile com água, no nível do tile. */
+/** Superfície da água L0 (animada): um quad por tile; espuma em tiles de margem; correnteza nos rios. */
 export function buildWater(c: ChunkData): THREE.Mesh | null {
-  const pos: number[] = [], col: number[] = [];
+  const pos: number[] = [], col: number[] = [], foam: number[] = [], flow: number[] = [];
   const ox = c.cx * CHUNK, oz = c.cy * CHUNK;
+  const at = (x: number, y: number) => (x < 0 || y < 0 || x >= CHUNK || y >= CHUNK ? -1 : y * CHUNK + x);
   for (let y = 0; y < CHUNK; y++) for (let x = 0; x < CHUNK; x++) {
     const t = y * CHUNK + x;
     if (!c.water[t]) continue;
@@ -120,14 +129,27 @@ export function buildWater(c: ChunkData): THREE.Mesh | null {
     pos.push(X, h, Z, X, h, Z + 1, X + 1, h, Z, X + 1, h, Z, X, h, Z + 1, X + 1, h, Z + 1);
     const f = 0.95 + jitter((X * 31) ^ (Z * 977)) * 0.1;
     const rgb = c.water[t] === 3 ? [0.29, 0.52, 0.86] : [0.24, 0.45, 0.78];
-    for (let i = 0; i < 6; i++) col.push(rgb[0] * f, rgb[1] * f, rgb[2] * f);
+    const n = [at(x - 1, y), at(x + 1, y), at(x, y - 1), at(x, y + 1)];
+    // rio estreito é quase todo margem: espuma mais fraca para não virar ruído
+    const shore = n.some(k => k >= 0 && !c.water[k]) ? (c.water[t] === 3 ? 0.35 : 1) : 0;
+    // correnteza: do nível mais alto para o mais baixo entre vizinhos de rio
+    let fx = 0, fy = 0;
+    if (c.water[t] === 3) {
+      const lv = (k: number) => (k >= 0 && c.water[k] === 3 ? c.waterLevel[k] : c.waterLevel[t]);
+      fx = lv(n[0]) - lv(n[1]); fy = lv(n[2]) - lv(n[3]);
+      const m = Math.hypot(fx, fy);
+      if (m > 1e-4) { fx /= m; fy /= m; } else { fx = 0; fy = 0; }
+    }
+    for (let i = 0; i < 6; i++) { col.push(rgb[0] * f, rgb[1] * f, rgb[2] * f); foam.push(shore); flow.push(fx, fy); }
   }
   if (!pos.length) return null;
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  g.setAttribute('foam', new THREE.Float32BufferAttribute(foam, 1));
+  g.setAttribute('flow', new THREE.Float32BufferAttribute(flow, 2));
   g.computeVertexNormals();
-  const m = new THREE.Mesh(g, waterMat);
+  const m = new THREE.Mesh(g, animWaterMat);
   m.renderOrder = 1;
   return m;
 }

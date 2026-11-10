@@ -21,6 +21,7 @@ export class Player {
     const hat = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.35, 6), mat(0xc0392b));
     hat.position.y = 1.25;
     this.mesh.add(body, head, hat);
+    for (const m of [body, head, hat]) m.castShadow = true;
     scene.add(this.mesh);
   }
 

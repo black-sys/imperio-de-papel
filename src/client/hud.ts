@@ -1,7 +1,10 @@
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const STAGES: Record<string, string> = { forma: 'Formando o continente', placas: 'Erguendo montanhas', umidade: 'Soprando os ventos', rios: 'Traçando rios', biomas: 'Distribuindo biomas' };
 
-export function initHud(opts: { seed: number; onGenerate: (seed: string) => void; getLink: () => string }): void {
+export function initHud(opts: { seed: number; quality: string; onGenerate: (seed: string) => void; onQuality: (q: string) => void; getLink: () => string }): void {
+  const sel = $<HTMLSelectElement>('quality');
+  sel.value = opts.quality;
+  sel.onchange = () => { opts.onQuality(sel.value); sel.blur(); };
   const input = $<HTMLInputElement>('seed');
   input.value = String(opts.seed);
   $('gen').onclick = () => opts.onGenerate(input.value.trim());
@@ -22,8 +25,8 @@ export function setProgress(stage: string | null, pct: number): void {
   $('progress').style.visibility = stage === null ? 'hidden' : 'visible';
 }
 
-export function setInfo(i: { x: number; y: number; biome: string; fps: number }): void {
-  $('info').textContent = `x ${Math.floor(i.x)}  y ${Math.floor(i.y)} · ${i.biome} · ${i.fps} fps`;
+export function setInfo(i: { x: number; y: number; biome: string; fps: number; tris: number }): void {
+  $('info').textContent = `x ${Math.floor(i.x)}  y ${Math.floor(i.y)} · ${i.biome} · ${i.fps} fps · ${(i.tris / 1e6).toFixed(2)}M triângulos`;
 }
 
 export function showError(msg: string | null, seed?: number): void {
