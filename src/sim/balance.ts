@@ -22,6 +22,16 @@ export const BUILDINGS: Record<BuildingType, { name: string; cost: Res; months: 
 };
 export const GARRISON_UPKEEP = 2;
 
+export type TroopType = 'spear' | 'archer' | 'cavalry';
+/** `level` = nível de Guarnição que libera o tipo; `speed` em tiles por mês. */
+export const TROOPS: Record<TroopType, { name: string; level: number; soldiers: number; attack: number; defense: number; speed: number; cost: Res; upkeep: number; months: number }> = {
+  spear: { name: 'Lanceiros', level: 1, soldiers: 20, attack: 1.0, defense: 1.2, speed: 150, cost: { gold: 40, wood: 20, stone: 0 }, upkeep: 1, months: 2 },
+  archer: { name: 'Arqueiros', level: 2, soldiers: 15, attack: 1.0, defense: 0.6, speed: 150, cost: { gold: 50, wood: 40, stone: 0 }, upkeep: 1.5, months: 2 },
+  cavalry: { name: 'Cavaleiros', level: 3, soldiers: 12, attack: 1.6, defense: 1.0, speed: 240, cost: { gold: 90, wood: 20, stone: 20 }, upkeep: 3, months: 3 },
+};
+export const TROOP_CAP = [0, 2, 3, 4]; // tropas sustentadas por nível de Guarnição
+export const GARRISON_GOAL = [0, 0, 3, 3]; // por nível alvo: guarnições do reino no nível anterior ou maior (contando a própria)
+
 // custo cresce exponencialmente com as províncias que você já tem (barato no começo, caro no império grande)
 // calibrado pelo teste de ritmo (jogador guloso): 1ª colonização ~4 meses, 20 províncias ~2 h a 1×
 export const COLONIZE = { gold: 80, growth: 1.36, wood: 50, woodGrowth: 1.15, months: 5, hardExtra: 1, max: 2, garrisonDiscount: 0.25 };

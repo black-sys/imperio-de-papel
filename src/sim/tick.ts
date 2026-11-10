@@ -1,12 +1,14 @@
 import type { ProvinceMap } from '../worldgen/provinces';
-import { BUILDINGS, MONTH_SECONDS } from './balance';
+import { BUILDINGS, MONTH_SECONDS, TROOPS } from './balance';
+import type { MoveGrid } from './movegrid';
+import { spawnTroop } from './troops';
 import { monthlyIncome } from './economy';
 import { logEvent, type GameState } from './state';
 
 const EPS = 1e-9;
 
 /** Avança o tempo real `dtSeconds` na velocidade atual; paga a renda em cada virada de mês atravessada. */
-export function tick(s: GameState, pm: ProvinceMap, dtSeconds: number): void {
+export function tick(s: GameState, pm: ProvinceMap, dtSeconds: number, grid: MoveGrid | null): void {
   let months = (dtSeconds * s.speed) / MONTH_SECONDS;
   while (months > EPS) {
     const toBoundary = Math.floor(s.month + EPS) + 1 - s.month;
@@ -31,6 +33,14 @@ function advance(s: GameState, pm: ProvinceMap, step: number): void {
       logEvent(s, `${BUILDINGS[b.type].name}${b.level > 1 ? ` nível ${b.level}` : ''} pronta em ${pm.provinces[id].name}`);
     }
   }));
+  for (const r of [...s.recruiting]) {
+    r.remaining -= step;
+    if (r.remaining > EPS) continue;
+    s.recruiting.splice(s.recruiting.indexOf(r), 1);
+    const p = pm.provinces[r.province], site = p.sites[r.slot] ?? p.center;
+    spawnTroop(s, 0, r.type, site.x, site.y);
+    logEvent(s, `${TROOPS[r.type].name} treinados em ${p.name}`);
+  }
   for (const c of [...s.colonizing]) {
     c.remaining -= step;
     if (c.remaining > EPS) continue;

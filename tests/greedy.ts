@@ -30,7 +30,7 @@ export function greedy(pm: ProvinceMap, maxMonths = 3000) {
       });
       if (!did) break;
     }
-    tick(s, pm, 10);
+    tick(s, pm, 10, null);
     if (reach20 < 0 && s.owner.filter(o => o === 0).length >= 20) reach20 = s.month;
   }
   return { firstColonize, reach20, state: s };

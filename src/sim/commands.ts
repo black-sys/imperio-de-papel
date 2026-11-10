@@ -1,7 +1,8 @@
 import type { ProvinceMap } from '../worldgen/provinces';
-import { BUILDINGS, COLONIZE, MAX_LEVEL, MIN_FOREST, MIN_ROCK, SPEEDS, type BuildingType, type Res } from './balance';
+import { BUILDINGS, COLONIZE, GARRISON_GOAL, MAX_LEVEL, MIN_FOREST, MIN_ROCK, SPEEDS, TROOPS, type BuildingType, type Res, type TroopType } from './balance';
 import { buildCost, colonizeCost } from './economy';
 import { activeLevel, logEvent, type GameState } from './state';
+import { troopCap } from './troops';
 
 export type Result = { ok: true } | { ok: false; reason: string };
 const no = (reason: string): Result => ({ ok: false, reason });
@@ -36,6 +37,7 @@ export function setSpeed(s: GameState, v: number): Result {
 export function checkColonize(s: GameState, pm: ProvinceMap, id: number): Result {
   if (!validProvince(pm, id)) return no('Província inválida');
   if (s.owner[id] !== -1) return no('Esta província não é neutra');
+  if (s.fortresses.some(f => f.province === id)) return no('Fortaleza: só cai com tropas');
   if (pm.provinces[id].sites.length === 0) return no('Não há terra firme para fundar uma vila');
   if (s.colonizing.some(c => c.province === id)) return no('Já está sendo colonizada');
   if (s.colonizing.length >= COLONIZE.max) return no(`Já há ${COLONIZE.max} colonizações em andamento`);
@@ -86,6 +88,13 @@ export function checkUpgrade(s: GameState, pm: ProvinceMap, id: number, slot: nu
   if (!b) return no('Vaga vazia');
   if (b.remaining > 0) return no('Já está em obra');
   if (b.level >= MAX_LEVEL) return no('Nível máximo');
+  if (b.type === 'garrison') {
+    // meta além dos insumos: guarnições do reino no nível atual ou maior, contando esta
+    const goal = GARRISON_GOAL[b.level + 1];
+    let n = 0;
+    s.owner.forEach((o, p) => { if (o === 0) for (const g of s.buildings[p]) if (g?.type === 'garrison' && activeLevel(g) >= b.level) n++; });
+    if (n < goal) return no(`Guarnições${b.level > 1 ? ` nível ${b.level}` : ''}: ${n}/${goal}`);
+  }
   return afford(s, buildCost(b.type, b.level + 1));
 }
 
@@ -95,5 +104,25 @@ export function upgrade(s: GameState, pm: ProvinceMap, id: number, slot: number)
   const b = s.buildings[id][slot]!, c = buildCost(b.type, b.level + 1);
   pay(s, c);
   b.level++; b.remaining = c.months;
+  return OK;
+}
+
+export function checkRecruit(s: GameState, pm: ProvinceMap, id: number, slot: number, type: TroopType): Result {
+  if (!validProvince(pm, id)) return no('Província inválida');
+  if (s.owner[id] !== 0) return no('Esta província não é sua');
+  const b = s.buildings[id]?.[slot];
+  if (b?.type !== 'garrison' || activeLevel(b) === 0) return no('Precisa de uma Guarnição');
+  if (!Object.hasOwn(TROOPS, type)) return no('Tropa desconhecida');
+  if (activeLevel(b) < TROOPS[type].level) return no(`Requer Guarnição N${TROOPS[type].level}`);
+  if (s.recruiting.some(r => r.province === id && r.slot === slot)) return no('Já está treinando uma tropa');
+  if (s.troops.filter(t => t.owner === 0).length + s.recruiting.length >= troopCap(s)) return no('Teto de tropas atingido');
+  return afford(s, TROOPS[type].cost);
+}
+
+export function recruit(s: GameState, pm: ProvinceMap, id: number, slot: number, type: TroopType): Result {
+  const chk = checkRecruit(s, pm, id, slot, type);
+  if (!chk.ok) return chk;
+  pay(s, TROOPS[type].cost);
+  s.recruiting.push({ province: id, slot, type, remaining: TROOPS[type].months });
   return OK;
 }

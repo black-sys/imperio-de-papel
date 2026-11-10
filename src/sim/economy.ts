@@ -1,6 +1,6 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { Biome } from '../worldgen/types';
-import { BUILDINGS, CAPITAL_TAX, COLONIZE, GARRISON_UPKEEP, TAX, UPGRADE_COST, UPGRADE_TIME, type BuildingType, type Res } from './balance';
+import { BUILDINGS, CAPITAL_TAX, COLONIZE, GARRISON_UPKEEP, TAX, TROOPS, UPGRADE_COST, UPGRADE_TIME, type BuildingType, type Res } from './balance';
 import { activeLevel, type GameState } from './state';
 
 export function buildCost(type: BuildingType, level: number): Res & { months: number } {
@@ -41,5 +41,6 @@ export function provinceIncome(s: GameState, pm: ProvinceMap, id: number): Res {
 export function monthlyIncome(s: GameState, pm: ProvinceMap): Res {
   const t = { gold: 0, wood: 0, stone: 0 };
   s.owner.forEach((o, id) => { if (o !== 0) return; const r = provinceIncome(s, pm, id); t.gold += r.gold; t.wood += r.wood; t.stone += r.stone; });
+  for (const tr of s.troops) if (tr.owner === 0) t.gold -= TROOPS[tr.type].upkeep;
   return t;
 }

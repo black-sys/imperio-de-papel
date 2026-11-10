@@ -11,6 +11,7 @@ import { WorldClient } from './client/worldClient';
 import { build, chooseCapital, colonize, setSpeed, upgrade, type Result } from './sim/commands';
 import { renderPanel, setTip, toast } from './client/panel';
 import { monthlyIncome } from './sim/economy';
+import { makeMoveGrid, type MoveGrid } from './sim/movegrid';
 import { newGame, type GameState } from './sim/state';
 import { tick } from './sim/tick';
 import { CELL, CHUNK } from './worldgen/constants';
@@ -37,6 +38,7 @@ let seed = parseSeed(new URLSearchParams(location.search).get('seed')) ?? random
 let map: WorldMap | null = null;
 let pm: ProvinceMap | null = null;
 let game: GameState | null = null;
+let moveGrid: MoveGrid | null = null;
 let lastSpeed = 1;
 let seenEvents = 0;
 let selected = -1;
@@ -51,7 +53,7 @@ async function load(s: number) {
   setSeedField(s);
   history.replaceState(null, '', `?seed=${s}`);
   showError(null);
-  map = null; pm = null; game = null; selected = -1; seenEvents = 0; lastSpeed = 1;
+  map = null; pm = null; game = null; moveGrid = null; selected = -1; seenEvents = 0; lastSpeed = 1;
   strategic.setPins([]); paintKey = ''; ownerKey = ''; bordersLayer = null;
   chunks.setPainter(null);
   buildingsView.clear();
@@ -63,6 +65,7 @@ async function load(s: number) {
   try { w = await client.generate(s, setProgress); }
   catch (e) { if ((e as Error).message !== 'substituído') showError((e as Error).message, s); return; }
   map = w.map; pm = w.provinces; game = newGame(pm);
+  moveGrid = makeMoveGrid(map);
   chunks.hidden = siteClearings(pm);
   setProgress(null, 1);
   const m = map;
@@ -171,7 +174,7 @@ function frame(now: number) {
       strategic.setOverlay([ownedCanvas(pm, game.owner, 1024), bordersLayer],
         pm.provinces.map(p => ({ x: p.center.x, y: p.center.y, name: p.name, size: Math.sqrt(p.cells) * CELL * 0.12 })));
     }
-    if (game.capital >= 0) tick(game, pm, Math.min(dt, 1)); // aba em segundo plano: no máximo 1 s por quadro
+    if (game.capital >= 0) tick(game, pm, Math.min(dt, 1), moveGrid); // aba em segundo plano: no máximo 1 s por quadro
     camera.update(Math.min(dt, 0.1), keys);
     chunks.update(camera.x, camera.y, viewRadius(), quality);
     iso.setTarget(camera.x, camera.y, chunks.heightAt(camera.x, camera.y));

@@ -16,7 +16,7 @@ const pm: ProvinceMap = {
   provinces: [prov(0, [1]), prov(1, [0, 2]), prov(2, [1, 3], { biome: Biome.Mountain }), prov(3, [2], { forest: 0, rock: 0 }), prov(4, [])],
 };
 const game = () => { const s = newGame(pm); expect(chooseCapital(s, pm, 0).ok).toBe(true); return s; };
-const run = (s: ReturnType<typeof newGame>, months: number) => { setSpeed(s, 1); for (let i = 0; i < months * 10; i++) tick(s, pm, 1); };
+const run = (s: ReturnType<typeof newGame>, months: number) => { setSpeed(s, 1); for (let i = 0; i < months * 10; i++) tick(s, pm, 1, null); };
 
 describe('início', () => {
   test('capital com Vila N2 e recursos iniciais', () => {
@@ -28,7 +28,7 @@ describe('início', () => {
   });
   test('começa pausado e o tempo não anda', () => {
     const s = game();
-    tick(s, pm, 100);
+    tick(s, pm, 100, null);
     expect(s.month).toBe(0);
   });
 });
@@ -140,7 +140,7 @@ describe('tempo e estado', () => {
   test('8× com dt grande processa todas as viradas de mês', () => {
     const s = game();
     setSpeed(s, 8);
-    tick(s, pm, 50); // 40 meses
+    tick(s, pm, 50, null); // 40 meses
     expect(s.month).toBeCloseTo(40);
     expect(s.res.gold).toBeCloseTo(40 + 40 * 19);
   });
