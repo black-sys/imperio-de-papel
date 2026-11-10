@@ -18,3 +18,4 @@ export const EROSION_K = 0.05;
 export const EROSION_UPLIFT = 0.0015;
 export const EROSION_TALUS = 0.12;
 export const EROSION_THERMAL_EVERY = 5;
+export const EROSION_BASE_UPLIFT = 0.15;

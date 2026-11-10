@@ -1,4 +1,4 @@
-import { EROSION_ITER, EROSION_K, EROSION_TALUS, EROSION_THERMAL_EVERY, EROSION_UPLIFT, SEA_LEVEL } from '../constants';
+import { EROSION_ITER, EROSION_K, EROSION_TALUS, EROSION_THERMAL_EVERY, EROSION_UPLIFT, EROSION_BASE_UPLIFT, SEA_LEVEL } from '../constants';
 
 const DX = [-1, 0, 1, -1, 1, -1, 0, 1];
 const DY = [-1, -1, -1, 0, 0, 1, 1, 1];
@@ -51,7 +51,8 @@ export function erode(size: number, elevation: Float32Array, land: Uint8Array, u
       const i = stack[s];
       if (!land[i]) continue;
       const r = rec[i];
-      let hi = h[i] + EROSION_UPLIFT * uplift[i];
+      // soerguimento mínimo nas planícies: sem ele o equilíbrio é inclinação zero (planícies no piso, rios em linha reta)
+      let hi = h[i] + EROSION_UPLIFT * (EROSION_BASE_UPLIFT + (1 - EROSION_BASE_UPLIFT) * uplift[i]);
       if (r !== i) {
         const F = (EROSION_K * Math.sqrt(area[i] / res2)) / (recDist[i] / res);
         const v = (hi + F * h[r]) / (1 + F);

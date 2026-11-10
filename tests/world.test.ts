@@ -11,7 +11,7 @@ const h = (m: WorldMap) => hashArrays(m.elevation, m.water, m.biome, m.moisture,
 describe('generateWorld', { timeout: 60000 }, () => {
   test('determinístico + hash de referência', () => {
     expect(h(generateWorld(860))).toBe(h(world(860)));
-    expect(h(world(860))).toMatchInlineSnapshot(`"242d6ae1"`);
+    expect(h(world(860))).toMatchInlineSnapshot(`"533b17c4"`);
   });
   test.each([1, 2, 3])('semente %i: terra, biomas, spawn', s => {
     const m = world(s);

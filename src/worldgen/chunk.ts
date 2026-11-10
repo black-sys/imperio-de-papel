@@ -20,7 +20,7 @@ export function generateChunk(map: WorldMap, cx: number, cy: number): ChunkData 
   const ox = cx * CHUNK, oy = cy * CHUNK;
 
   // tiles com borda de PAD: tipo de água, nível e largura do rio
-  const tType = new Uint8Array(P * P), tLevel = new Float32Array(P * P), tWidth = new Float32Array(P * P), tBiome = new Uint8Array(P * P);
+  const tH = new Float32Array(P * P), tType = new Uint8Array(P * P), tLevel = new Float32Array(P * P), tWidth = new Float32Array(P * P), tBiome = new Uint8Array(P * P);
   const segs = riverSegments(map, cx, cy);
   for (let ty = 0; ty < P; ty++) for (let tx = 0; tx < P; tx++) {
     const gx = ox + tx - PAD + 0.5, gy = oy + ty - PAD + 0.5, k = ty * P + tx;
@@ -28,27 +28,46 @@ export function generateChunk(map: WorldMap, cx: number, cy: number): ChunkData 
     const jy = gy + (fbm(gx / 9, gy / 9, seed + 2, 3) - 0.5) * 6;
     const cell = cellIndex(map, jx, jy);
     tBiome[k] = map.biome[cell];
-    if (map.water[cell] === 2) { tType[k] = 2; tLevel[k] = (map.lakeSurface[cell] - SEA_LEVEL) * HEIGHT_SCALE; }
-    else if (isOcean(map, cell, gx, gy, heightAt(map, seed, gx, gy))) { tType[k] = 1; tLevel[k] = 0; }
+    const h = heightAt(map, seed, gx, gy);
+    tH[k] = h;
+    const lakeL = lakeLevel(map, gx, gy);
+    if (h < 0 && nearOcean(map, gx, gy)) { tType[k] = 1; tLevel[k] = 0; }
+    else if (lakeL !== null && h < lakeL) { tType[k] = 2; tLevel[k] = lakeL; }
     else {
-      const r = nearestRiver(segs, gx, gy);
-      if (r && r.dist < r.width / 2) { tType[k] = 3; tLevel[k] = (r.surface - SEA_LEVEL) * HEIGHT_SCALE; tWidth[k] = r.width; }
+      const r = coveringRiver(segs, gx, gy);
+      // nível limitado ao terreno: a água nunca fica acima da margem
+      if (r) { tType[k] = 3; tLevel[k] = Math.min((r.surface - SEA_LEVEL) * HEIGHT_SCALE, h - 0.3); tWidth[k] = r.width; }
     }
     if (tType[k] === 1 || tType[k] === 2) tBiome[k] = Biome.Ocean;
     else if (tBiome[k] === Biome.Ocean) tBiome[k] = Biome.Beach; // terra seca que o jitter puxou de uma célula de mar
   }
 
-  // tile seco com os 4 cantos encostando no oceano afundaria inteiro (cantos rebaixados): vira oceano
-  const sunk: number[] = [];
-  const oc = (k: number) => tType[k] === 1;
+  // tile seco com os 4 cantos encostando em água afundaria inteiro (cantos rebaixados): vira a água vizinha mais baixa
+  const sunk: [number, number][] = [];
+  const wet = (k: number) => tType[k] !== 0;
   for (let ty = 1; ty < P - 1; ty++) for (let tx = 1; tx < P - 1; tx++) {
     const k = ty * P + tx;
     if (tType[k] !== 0) continue;
-    const tl = oc(k - 1) || oc(k - P) || oc(k - P - 1), tr = oc(k + 1) || oc(k - P) || oc(k - P + 1);
-    const bl = oc(k - 1) || oc(k + P) || oc(k + P - 1), br = oc(k + 1) || oc(k + P) || oc(k + P + 1);
-    if (tl && tr && bl && br) sunk.push(k);
+    const tl = wet(k - 1) || wet(k - P) || wet(k - P - 1), tr = wet(k + 1) || wet(k - P) || wet(k - P + 1);
+    const bl = wet(k - 1) || wet(k + P) || wet(k + P - 1), br = wet(k + 1) || wet(k + P) || wet(k + P + 1);
+    if (!(tl && tr && bl && br)) continue;
+    let src = -1;
+    for (const n of [k - P - 1, k - P, k - P + 1, k - 1, k + 1, k + P - 1, k + P, k + P + 1])
+      if (tType[n] && (src < 0 || tLevel[n] < tLevel[src])) src = n;
+    sunk.push([k, src]);
   }
-  for (const k of sunk) { tType[k] = 1; tLevel[k] = 0; tWidth[k] = 0; tBiome[k] = Biome.Ocean; }
+  for (const [k, n] of sunk) { tType[k] = tType[n]; tLevel[k] = tLevel[n]; tWidth[k] = tWidth[n]; if (tType[k] !== 3) tBiome[k] = Biome.Ocean; }
+
+  // rio em encosta: nível nunca acima do terreno dos vizinhos secos (senão a água "flutua" sobre a margem baixa)
+  const capped: [number, number][] = [];
+  for (let ty = 1; ty < P - 1; ty++) for (let tx = 1; tx < P - 1; tx++) {
+    const k = ty * P + tx;
+    if (tType[k] !== 3) continue;
+    let lv = tLevel[k];
+    for (const n of [k - 1, k + 1, k - P, k + P]) if (!tType[n]) lv = Math.min(lv, tH[n] - 0.3);
+    if (lv < tLevel[k]) capped.push([k, lv]);
+  }
+  for (const [k, lv] of capped) tLevel[k] = lv;
 
   const heights = new Float32Array(V * V);
   for (let vy = 0; vy < V; vy++) for (let vx = 0; vx < V; vx++) {
@@ -79,16 +98,25 @@ function oceanChunk(cx: number, cy: number): ChunkData {
   };
 }
 
-/** Oceano: célula (com jitter) oceânica e terreno baixo, ou terreno abaixo do mar perto do oceano. */
-function isOcean(map: WorldMap, jitteredCell: number, gx: number, gy: number, h: number): boolean {
-  if (map.water[jitteredCell] === 1 && h < 0.5) return true;
-  if (h >= 0) return false;
+/** Alguma célula de oceano num raio de 2 células. */
+function nearOcean(map: WorldMap, gx: number, gy: number): boolean {
   const cx = Math.floor(gx / CELL), cy = Math.floor(gy / CELL), s = map.size;
-  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+  for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
     const x = cx + dx, y = cy + dy;
     if (x >= 0 && y >= 0 && x < s && y < s && map.water[y * s + x] === 1) return true;
   }
   return false;
+}
+
+/** Nível (altura de mundo) do lago mais alto entre as células de lago num raio de 1 célula, ou null. */
+function lakeLevel(map: WorldMap, gx: number, gy: number): number | null {
+  const cx = Math.floor(gx / CELL), cy = Math.floor(gy / CELL), s = map.size;
+  let best = -1;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const x = cx + dx, y = cy + dy;
+    if (x >= 0 && y >= 0 && x < s && y < s && map.water[y * s + x] === 2) best = Math.max(best, map.lakeSurface[y * s + x]);
+  }
+  return best < 0 ? null : (best - SEA_LEVEL) * HEIGHT_SCALE;
 }
 
 function cellIndex(map: WorldMap, gx: number, gy: number): number {
@@ -144,12 +172,35 @@ function riverSegments(map: WorldMap, cx: number, cy: number): Seg[] {
   return idx.get(cy * CHUNKS_PER_SIDE + cx) ?? [];
 }
 
-function buildRiverIndex(map: WorldMap): Map<number, Seg[]> {
-  const idx = new Map<number, Seg[]>();
-  const M = 10; // margem em tiles (meia largura máx + PAD)
-  for (const r of map.rivers) {
+const MEANDER_AMP = 9, MEANDER_WAVE = 16; // tiles (fbm concentra perto de 0.5: deslocamento típico ~±3)
+const pathCache = new WeakMap<WorldMap, number[][][]>();
+
+/**
+ * Rios finais em tiles: polilinha global suavizada (Chaikin) e deformada por um campo suave de posição.
+ * O campo depende só de (x,y), então pontos de junção compartilhados se movem igual nos dois rios.
+ * Cada ponto: [x, y, fluxo, superfície].
+ */
+export function riverPaths(map: WorldMap): number[][][] {
+  const hit = pathCache.get(map);
+  if (hit) return hit;
+  const s = subSeed(map.seed, 'meandro');
+  const paths = map.rivers.map(r => {
     let pts = Array.from({ length: r.points.length / 2 }, (_, i) => [r.points[2 * i], r.points[2 * i + 1], r.flow[i], r.surface[i]]);
     for (let it = 0; it < 2; it++) pts = chaikin(pts);
+    return pts.map(([x, y, f, sf]) => [
+      x + (fbm(x / MEANDER_WAVE, y / MEANDER_WAVE, s, 3) - 0.5) * 2 * MEANDER_AMP,
+      y + (fbm(x / MEANDER_WAVE, y / MEANDER_WAVE, s + 1, 3) - 0.5) * 2 * MEANDER_AMP,
+      f, sf,
+    ]);
+  });
+  pathCache.set(map, paths);
+  return paths;
+}
+
+function buildRiverIndex(map: WorldMap): Map<number, Seg[]> {
+  const idx = new Map<number, Seg[]>();
+  const M = 10 + MEANDER_AMP; // margem em tiles (meia largura máx + PAD + meandro)
+  for (const pts of riverPaths(map)) {
     for (let i = 1; i < pts.length; i++) {
       const [ax, ay, fa, sa] = pts[i - 1], [bx, by, fb, sb] = pts[i];
       const s: Seg = { ax, ay, bx, by, fa, fb, sa, sb };
@@ -178,16 +229,18 @@ function chaikin(p: number[][]): number[][] {
   return out;
 }
 
-function nearestRiver(segs: Seg[], x: number, y: number): { dist: number; width: number; surface: number } | null {
-  let best: { dist: number; width: number; surface: number } | null = null;
+/** Entre os trechos que cobrem o ponto (dist < largura/2), o mais largo; superfície do trecho mais próximo. */
+function coveringRiver(segs: Seg[], x: number, y: number): { width: number; surface: number } | null {
+  let width = 0, surface = 0, best = Infinity;
   for (const s of segs) {
     const dx = s.bx - s.ax, dy = s.by - s.ay, l2 = dx * dx + dy * dy;
     const t = l2 === 0 ? 0 : Math.min(1, Math.max(0, ((x - s.ax) * dx + (y - s.ay) * dy) / l2));
     const px = s.ax + dx * t - x, py = s.ay + dy * t - y;
     const dist = Math.sqrt(px * px + py * py);
-    if (best && dist >= best.dist) continue;
-    const flow = s.fa + (s.fb - s.fa) * t;
-    best = { dist, width: Math.min(8, 1 + Math.sqrt(flow) * 0.3), surface: s.sa + (s.sb - s.sa) * t };
+    const w = Math.min(8, 1 + Math.sqrt(s.fa + (s.fb - s.fa) * t) * 0.3);
+    if (dist >= w / 2) continue;
+    if (w > width) width = w;
+    if (dist < best) { best = dist; surface = s.sa + (s.sb - s.sa) * t; }
   }
-  return best;
+  return width > 0 ? { width, surface } : null;
 }

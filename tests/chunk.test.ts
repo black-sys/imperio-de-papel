@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { generateChunk } from '../src/worldgen/chunk';
+import { generateChunk, riverPaths } from '../src/worldgen/chunk';
 import { CELL, CHUNK } from '../src/worldgen/constants';
 import { generateWorld } from '../src/worldgen/global/world';
 import { hashArrays } from '../src/worldgen/rng';
@@ -62,5 +62,60 @@ describe('generateChunk', { timeout: 30000 }, () => {
           expect(c.heights[v]).toBeLessThanOrEqual(c.waterLevel[t] + 1e-6);
       }
     }
+  });
+});
+
+describe('água por altura', { timeout: 60000 }, () => {
+  const cache = new Map<string, ReturnType<typeof generateChunk>>();
+  const chunkAt = (cx: number, cy: number) => { const k = `${cx},${cy}`; if (!cache.has(k)) cache.set(k, generateChunk(map, cx, cy)); return cache.get(k)!; };
+  const corners = (c: ReturnType<typeof generateChunk>, x: number, y: number) =>
+    [c.heights[y * V + x], c.heights[y * V + x + 1], c.heights[(y + 1) * V + x], c.heights[(y + 1) * V + x + 1]];
+  const lake = map.water.indexOf(2);
+  const lakeChunk = [Math.floor(((lake % map.size) * CELL) / CHUNK), Math.floor((Math.floor(lake / map.size) * CELL) / CHUNK)];
+  const sample = [[20, 20], [32, 32], [10, 40], [40, 12], [0, 30], lakeChunk];
+
+  test('água não flutua acima da margem', () => {
+    let bad = 0;
+    for (const [cx, cy] of sample) {
+      const c = chunkAt(cx, cy);
+      for (let y = 1; y < CHUNK - 1; y++) for (let x = 1; x < CHUNK - 1; x++) {
+        const t = y * CHUNK + x;
+        if (!c.water[t]) continue;
+        for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+          if (c.water[ny * CHUNK + nx]) continue;
+          if (c.waterLevel[t] - 0.15 > Math.max(...corners(c, nx, ny))) bad++; // superfície desenhada = nível − 0.15
+        }
+      }
+    }
+    expect(bad).toBe(0);
+  });
+  test('margem de lago sem paredes (< 4)', () => {
+    const c = chunkAt(lakeChunk[0], lakeChunk[1]);
+    expect(c.water.some(v => v === 2)).toBe(true);
+    let worst = 0;
+    for (let y = 1; y < CHUNK - 1; y++) for (let x = 1; x < CHUNK - 1; x++) {
+      const t = y * CHUNK + x;
+      if (c.water[t] || ![t - 1, t + 1, t - CHUNK, t + CHUNK].some(n => c.water[n] === 2)) continue;
+      const cs = corners(c, x, y);
+      worst = Math.max(worst, Math.max(...cs) - Math.min(...cs));
+    }
+    expect(worst).toBeLessThan(4);
+  });
+  test('confluência: tiles dentro de largura/2 − 1 do rio são água', () => {
+    let bad = 0, checked = 0;
+    for (const p of riverPaths(map).filter(p => p.length > 40).slice(0, 12)) {
+      for (const [px, py, flow] of p.slice(5, 35)) {
+        const w = Math.min(8, 1 + Math.sqrt(flow) * 0.3), r = w / 2 - 1;
+        if (r <= 0) continue;
+        for (let ty = Math.floor(py - r); ty <= Math.ceil(py + r); ty++) for (let tx = Math.floor(px - r); tx <= Math.ceil(px + r); tx++) {
+          if (Math.hypot(tx + 0.5 - px, ty + 0.5 - py) >= r) continue;
+          const c = chunkAt(Math.floor(tx / CHUNK), Math.floor(ty / CHUNK));
+          checked++;
+          if (!c.water[(ty - c.cy * CHUNK) * CHUNK + tx - c.cx * CHUNK]) bad++;
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(50);
+    expect(bad).toBe(0);
   });
 });

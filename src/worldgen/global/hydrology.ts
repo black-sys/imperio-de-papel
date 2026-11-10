@@ -38,6 +38,12 @@ export function runHydrology(size: number, elevation: Float32Array, land: Uint8A
   return { elevation: elev, filled, water, lakeSurface, flow, river, rivers };
 }
 
+function cellHash(i: number): number {
+  let h = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b);
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
 /** Barnes 2014: superfície sem depressões, estritamente decrescente até o mar. */
 function priorityFlood(size: number, elev: Float32Array, land: Uint8Array): Float32Array {
   const filled = new Float32Array(elev.length);
@@ -53,7 +59,8 @@ function priorityFlood(size: number, elev: Float32Array, land: Uint8Array): Floa
       const n = ny * size + nx;
       if (done[n]) continue;
       done[n] = 1;
-      filled[n] = Math.max(elev[n], filled[c] + EPS);
+      // ε variável por célula: em áreas preenchidas o caminho vira um Dijkstra com pesos irregulares, não uma reta
+      filled[n] = Math.max(elev[n], filled[c] + EPS * (0.2 + 4 * cellHash(n)));
       heap.push(n, filled[n]);
     }
   }

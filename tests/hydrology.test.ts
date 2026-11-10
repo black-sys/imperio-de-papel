@@ -52,3 +52,25 @@ describe.each([1, 2, 3])('mundo semente %i', seed => {
     checkRivers(S, h.rivers, h.water);
   });
 });
+
+describe('rios sem retas longas', { timeout: 120000 }, () => {
+  // reta visual: trecho cujos pontos ficam a < 0.75 tile da corda entre as pontas
+  test.each([860, 1, 2])('semente %i: nenhum trecho reto ≥ 40 tiles', async seed => {
+    const { generateWorld } = await import('../src/worldgen/global/world');
+    const { riverPaths } = await import('../src/worldgen/chunk');
+    let worst = 0;
+    for (const p of riverPaths(generateWorld(seed))) {
+      for (let i = 0; i < p.length; i++) {
+        for (let j = i + 2; j < p.length; j++) {
+          const ax = p[i][0], ay = p[i][1], bx = p[j][0], by = p[j][1];
+          const L = Math.hypot(bx - ax, by - ay);
+          let ok = true;
+          for (let k = i + 1; k < j && ok; k++) ok = Math.abs((bx - ax) * (ay - p[k][1]) - (ax - p[k][0]) * (by - ay)) / L < 0.75;
+          if (!ok) break;
+          worst = Math.max(worst, L);
+        }
+      }
+    }
+    expect(worst).toBeLessThan(40);
+  });
+});
