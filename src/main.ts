@@ -224,17 +224,19 @@ viewCanvas.addEventListener('pointerleave', () => setTip(null));
 /** Fichas do pergaminho: tropas do jogador, fortalezas (com o nº de tropas vivas) e batalhas. */
 function mapUnits(s: GameState, pm: ProvinceMap): { units: MapUnit[]; key: string } {
   const units: MapUnit[] = [], S = moveGrid?.size ?? 1;
+  // posição arredondada ao pixel do mapa: tropa andando menos de 1 px não redesenha o pergaminho
+  const q = Math.max(1, strategic.tilesPerPixel), snap = (v: number) => Math.round(v / q) * q;
   for (const t of s.troops) {
     if (t.owner !== 0) continue;
     const sel = selectedTroops.has(t.id);
     // rota: 1 ponto a cada 6 células (basta para o tracejado)
     const path = sel ? t.path.filter((_, i) => i % 6 === 5 || i === t.path.length - 1).map(c => ({ x: (c % S) * CELL + CELL / 2, y: Math.floor(c / S) * CELL + CELL / 2 })) : undefined;
-    units.push({ x: Math.round(t.x), y: Math.round(t.y), text: `${TROOP_ICON[t.type]} ${Math.ceil(t.soldiers)}`, color: '#8a2a20', selected: sel, path });
+    units.push({ x: snap(t.x), y: snap(t.y), text: `${TROOP_ICON[t.type]} ${Math.ceil(t.soldiers)}`, color: '#8a2a20', selected: sel, path });
   }
   const alive = new Map<number, number>();
   for (const t of s.troops) if (t.owner === -1) alive.set(t.home, (alive.get(t.home) ?? 0) + 1);
   for (const f of s.fortresses) { const c = pm.provinces[f.province].sites[0]; units.push({ x: c.x, y: c.y, text: `♜ ${alive.get(f.province) ?? 0}`, color: '#5a5a55', selected: false }); }
-  for (const b of s.battles) units.push({ x: Math.round(b.x), y: Math.round(b.y), text: '⚔', color: '#c08a20', selected: false });
+  for (const b of s.battles) units.push({ x: snap(b.x), y: snap(b.y), text: '⚔', color: '#c08a20', selected: false });
   return { units, key: units.map(u => `${u.x},${u.y},${u.text},${u.selected ? 1 : 0},${u.path?.length ?? 0}`).join(';') };
 }
 
