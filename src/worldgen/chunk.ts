@@ -1,5 +1,6 @@
 import { CELL, CHUNK, CHUNKS_PER_SIDE, HEIGHT_SCALE, SEA_LEVEL } from './constants';
 import { fbm } from './noise';
+import { finishChunk } from './resources';
 import { subSeed } from './rng';
 import { Biome, type ChunkData, type WorldMap } from './types';
 
@@ -54,8 +55,7 @@ export function generateChunk(map: WorldMap, cx: number, cy: number): ChunkData 
     biome[t] = tBiome[k]; water[t] = tType[k]; waterLevel[t] = tLevel[k]; riverWidth[t] = tWidth[k];
   }
   const chunk: ChunkData = { cx, cy, heights, biome, water, waterLevel, riverWidth, walk: new Uint8Array(CHUNK * CHUNK), resources: [] };
-  chunk.walk.fill(1);
-  return chunk;
+  return finishChunk(map, chunk);
 }
 
 function oceanChunk(cx: number, cy: number): ChunkData {
