@@ -5,7 +5,7 @@ import { subSeed } from './rng';
 import { Biome, type ChunkData, type WorldMap } from './types';
 
 const V = CHUNK + 1;
-const PAD = 1; // tiles extras em volta: vértices de borda dependem de tiles do vizinho
+const PAD = 2; // tiles extras em volta: vértices de borda dependem de tiles do vizinho (e estes dos seus vizinhos)
 const P = CHUNK + 2 * PAD;
 const DETAIL_AMP: Record<Biome, number> = {
   [Biome.Ocean]: 1.0, [Biome.Beach]: 0.2, [Biome.Snow]: 4, [Biome.Taiga]: 1.5, [Biome.TemperateForest]: 1.2,
@@ -29,13 +29,26 @@ export function generateChunk(map: WorldMap, cx: number, cy: number): ChunkData 
     const cell = cellIndex(map, jx, jy);
     tBiome[k] = map.biome[cell];
     if (map.water[cell] === 2) { tType[k] = 2; tLevel[k] = (map.lakeSurface[cell] - SEA_LEVEL) * HEIGHT_SCALE; }
-    else if (map.water[cell] === 1 && heightAt(map, seed, gx, gy) < 0.5) { tType[k] = 1; tLevel[k] = 0; }
+    else if (isOcean(map, cell, gx, gy, heightAt(map, seed, gx, gy))) { tType[k] = 1; tLevel[k] = 0; }
     else {
       const r = nearestRiver(segs, gx, gy);
       if (r && r.dist < r.width / 2) { tType[k] = 3; tLevel[k] = (r.surface - SEA_LEVEL) * HEIGHT_SCALE; tWidth[k] = r.width; }
     }
     if (tType[k] === 1 || tType[k] === 2) tBiome[k] = Biome.Ocean;
+    else if (tBiome[k] === Biome.Ocean) tBiome[k] = Biome.Beach; // terra seca que o jitter puxou de uma célula de mar
   }
+
+  // tile seco com os 4 cantos encostando no oceano afundaria inteiro (cantos rebaixados): vira oceano
+  const sunk: number[] = [];
+  const oc = (k: number) => tType[k] === 1;
+  for (let ty = 1; ty < P - 1; ty++) for (let tx = 1; tx < P - 1; tx++) {
+    const k = ty * P + tx;
+    if (tType[k] !== 0) continue;
+    const tl = oc(k - 1) || oc(k - P) || oc(k - P - 1), tr = oc(k + 1) || oc(k - P) || oc(k - P + 1);
+    const bl = oc(k - 1) || oc(k + P) || oc(k + P - 1), br = oc(k + 1) || oc(k + P) || oc(k + P + 1);
+    if (tl && tr && bl && br) sunk.push(k);
+  }
+  for (const k of sunk) { tType[k] = 1; tLevel[k] = 0; tWidth[k] = 0; tBiome[k] = Biome.Ocean; }
 
   const heights = new Float32Array(V * V);
   for (let vy = 0; vy < V; vy++) for (let vx = 0; vx < V; vx++) {
@@ -64,6 +77,18 @@ function oceanChunk(cx: number, cy: number): ChunkData {
     cx, cy, heights: new Float32Array(V * V).fill(-HEIGHT_SCALE * 0.2), biome: new Uint8Array(n), water: new Uint8Array(n).fill(1),
     waterLevel: new Float32Array(n), riverWidth: new Float32Array(n), walk: new Uint8Array(n), resources: [],
   };
+}
+
+/** Oceano: célula (com jitter) oceânica e terreno baixo, ou terreno abaixo do mar perto do oceano. */
+function isOcean(map: WorldMap, jitteredCell: number, gx: number, gy: number, h: number): boolean {
+  if (map.water[jitteredCell] === 1 && h < 0.5) return true;
+  if (h >= 0) return false;
+  const cx = Math.floor(gx / CELL), cy = Math.floor(gy / CELL), s = map.size;
+  for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+    const x = cx + dx, y = cy + dy;
+    if (x >= 0 && y >= 0 && x < s && y < s && map.water[y * s + x] === 1) return true;
+  }
+  return false;
 }
 
 function cellIndex(map: WorldMap, gx: number, gy: number): number {
