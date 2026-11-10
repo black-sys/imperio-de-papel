@@ -27,6 +27,8 @@ export class ChunkManager {
   private generation = 0;
   private quality: Quality = 'high';
   private painter: Painter | null = null;
+  /** Tiles onde não se desenha árvore/rocha/planta (clareiras dos locais de construção). */
+  hidden: Set<number> | undefined;
 
   constructor(private client: WorldClient, private scene: THREE.Scene) { this.decor = new Decor(scene); this.flora = new Flora(scene); }
 
@@ -72,7 +74,7 @@ export class ChunkManager {
         paintTerrain(terrain, this.painter);
         this.scene.add(terrain);
         if (water) this.scene.add(water);
-        if (full) { this.decor.add(k, full); this.flora.add(k, full, QUALITY[this.quality].flora, (x, y) => chunkHeight(full, x, y)); }
+        if (full) { this.decor.add(k, full, this.hidden); this.flora.add(k, full, QUALITY[this.quality].flora, (x, y) => chunkHeight(full, x, y), this.hidden); }
         this.loaded.set(k, { level, full, coarse, terrain, water });
       };
       const fail = () => { if (mine()) this.inFlight.delete(k); };
@@ -119,7 +121,7 @@ export class ChunkManager {
 
   /** Recria a vegetação decorativa dos chunks L0 com a densidade da qualidade atual. */
   private refreshFlora(): void {
-    for (const [k, l] of this.loaded) if (l.full) { const f = l.full; this.flora.add(k, f, QUALITY[this.quality].flora, (x, y) => chunkHeight(f, x, y)); }
+    for (const [k, l] of this.loaded) if (l.full) { const f = l.full; this.flora.add(k, f, QUALITY[this.quality].flora, (x, y) => chunkHeight(f, x, y), this.hidden); }
   }
 
   private drop(k: string): void {

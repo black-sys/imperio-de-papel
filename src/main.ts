@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { FreeCamera } from './client/camera';
 import { bordersCanvas, makePainter, ownedCanvas, provinceAtTile } from './client/view/borders';
+import { BuildingsView, siteClearings } from './client/view/buildings';
 import { initHud, initTopbar, setInfo, setProgress, setSeedField, setTopbar, showError } from './client/hud';
 import { loadQuality, saveQuality, type Quality } from './client/quality';
 import { FADE_END, StrategicMap } from './client/strategic';
@@ -31,6 +32,7 @@ const strategic = new StrategicMap(document.getElementById('strategic') as HTMLC
   },
   () => iso.setWidth(FADE_END - 1));
 const chunks = new ChunkManager(client, iso.scene);
+const buildingsView = new BuildingsView(iso.scene);
 let seed = parseSeed(new URLSearchParams(location.search).get('seed')) ?? randomSeed();
 let map: WorldMap | null = null;
 let pm: ProvinceMap | null = null;
@@ -52,13 +54,16 @@ async function load(s: number) {
   map = null; pm = null; game = null; selected = -1; seenEvents = 0;
   strategic.setPins([]); paintKey = ''; ownerKey = ''; bordersLayer = null;
   chunks.setPainter(null);
+  buildingsView.clear();
   strategic.setOverlay([], []);
   strategic.setImage(null, 0); // o pergaminho do mundo antigo some já, não só quando o novo ficar pronto
   chunks.reset();
+  chunks.hidden = undefined;
   let w: { map: WorldMap; provinces: ProvinceMap };
   try { w = await client.generate(s, setProgress); }
   catch (e) { if ((e as Error).message !== 'substituído') showError((e as Error).message, s); return; }
   map = w.map; pm = w.provinces; game = newGame(pm);
+  chunks.hidden = siteClearings(pm);
   setProgress(null, 1);
   const m = map;
   client.parchment(2048).then(px => { if (map === m) strategic.setImage(px, 2048); }, () => {});
@@ -173,6 +178,7 @@ function frame(now: number) {
     setTopbar(game.capital >= 0 ? { res: game.res, income: monthlyIncome(game, pm), month: game.month, speed: game.speed } : null);
     setInfo({ fps, tris: iso.renderer.info.render.triangles });
     renderPanel(game, pm, selected, actions);
+    buildingsView.sync(game, pm, (x, y) => chunks.heightAt(x, y));
     // eventos novos viram mensagens (o log guarda os últimos 50; conta pelo total visto)
     for (; seenEvents < game.events.length; seenEvents++) toast(game.events[seenEvents].text);
     if (seenEvents > game.events.length) seenEvents = game.events.length;

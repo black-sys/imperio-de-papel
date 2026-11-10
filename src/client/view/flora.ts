@@ -67,9 +67,9 @@ export class Flora {
   private groups = new Map<string, THREE.Group>();
   constructor(private scene: THREE.Scene) {}
 
-  add(key: string, c: ChunkData, density: number, heightAt: (x: number, y: number) => number): void {
+  add(key: string, c: ChunkData, density: number, heightAt: (x: number, y: number) => number, hidden?: Set<number>): void {
     this.remove(key);
-    const items = placeFlora(c, density);
+    const items = placeFlora(c, density).filter(it => !hidden?.has(Math.floor(it.y) * 4096 + Math.floor(it.x)));
     if (!items.length) return;
     const g = new THREE.Group(), byKind = new Map<FloraKind, FloraItem[]>();
     for (const it of items) (byKind.get(it.kind) ?? byKind.set(it.kind, []).get(it.kind)!).push(it);

@@ -25,10 +25,10 @@ export class Decor {
   private groups = new Map<string, THREE.Group>();
   constructor(private scene: THREE.Scene) {}
 
-  add(key: string, c: ChunkData): void {
+  add(key: string, c: ChunkData, hidden?: Set<number>): void {
     const g = new THREE.Group();
     const byKind = new Map<ResourceKind, typeof c.resources>();
-    for (const r of c.resources) (byKind.get(r.kind) ?? byKind.set(r.kind, []).get(r.kind)!).push(r);
+    for (const r of c.resources) if (!hidden?.has(Math.floor(r.y) * 4096 + Math.floor(r.x))) (byKind.get(r.kind) ?? byKind.set(r.kind, []).get(r.kind)!).push(r);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3(), up = new THREE.Vector3(0, 1, 0);
     for (const [kind, list] of byKind) {
       const inst = new THREE.InstancedMesh(GEOMS[kind], MAT, list.length);
