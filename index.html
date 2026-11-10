@@ -43,6 +43,12 @@
     #toasts { position: fixed; z-index: 3; bottom: 40px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
     #toasts div { background: #2b2118e6; color: #f1e6cf; padding: 6px 12px; border-radius: 6px; border: 1px solid #6b5536; }
     #tip { position: fixed; z-index: 4; display: none; pointer-events: none; background: #2b2118e6; color: #f1e6cf; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
+    #labels div { position: fixed; transform: translate(-50%, -100%); pointer-events: none; font-size: 11px; font-weight: 600; padding: 1px 5px; border-radius: 3px; background: #2b2118cc; color: #f1e6cf; white-space: nowrap; }
+    #labels .mine { background: #8a2a20e6; }
+    #labels .battle { font-size: 16px; text-align: center; }
+    #labels .battle i { display: block; width: 46px; height: 4px; margin-top: 2px; background: #0008; }
+    #labels .battle b { display: block; height: 100%; background: #a8a8a0; }
+    #labels .battle b.mine { background: #e0503c; }
     #help { position: fixed; z-index: 2; bottom: 12px; left: 12px; opacity: .6; font-size: 12px; }
   </style>
 </head>
@@ -61,6 +67,7 @@
     <div id="info"></div>
     <div id="error"></div>
   </div>
+  <div id="labels"></div>
   <canvas id="strategic"></canvas>
   <div id="panel"></div>
   <div id="toasts"></div>

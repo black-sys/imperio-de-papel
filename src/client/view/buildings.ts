@@ -4,7 +4,7 @@ import type { BuildingType } from '../../sim/balance';
 import type { GameState } from '../../sim/state';
 import type { ProvinceMap } from '../../worldgen/provinces';
 
-function part(g: THREE.BufferGeometry, color: number, x = 0, y = 0, z = 0, ry = 0): THREE.BufferGeometry {
+export function part(g: THREE.BufferGeometry, color: number, x = 0, y = 0, z = 0, ry = 0): THREE.BufferGeometry {
   if (g.index) g = g.toNonIndexed();
   if (ry) g.rotateY(ry);
   g.translate(x, y, z);
@@ -13,9 +13,9 @@ function part(g: THREE.BufferGeometry, color: number, x = 0, y = 0, z = 0, ry = 
   g.setAttribute('color', new THREE.BufferAttribute(arr, 3));
   return g;
 }
-const box = (w: number, h: number, d: number, c: number, x = 0, y = 0, z = 0, ry = 0) => part(new THREE.BoxGeometry(w, h, d), c, x, y + h / 2, z, ry);
+export const box = (w: number, h: number, d: number, c: number, x = 0, y = 0, z = 0, ry = 0) => part(new THREE.BoxGeometry(w, h, d), c, x, y + h / 2, z, ry);
 const roof = (w: number, h: number, c: number, x = 0, y = 0, z = 0, ry = 0) => part(new THREE.ConeGeometry(w * 0.75, h, 4).rotateY(Math.PI / 4), c, x, y + h / 2, z, ry);
-const cyl = (r: number, h: number, c: number, x = 0, y = 0, z = 0, seg = 6) => part(new THREE.CylinderGeometry(r, r, h, seg), c, x, y + h / 2, z);
+export const cyl = (r: number, h: number, c: number, x = 0, y = 0, z = 0, seg = 6) => part(new THREE.CylinderGeometry(r, r, h, seg), c, x, y + h / 2, z);
 
 const WALL = 0xe8dcc0, ROOF = [0xa84a32, 0x8a5a3a, 0xb8643a], WOOD = 0x7a5232, STONE = 0x9a948a;
 const house = (x: number, z: number, k: number) => [box(0.9, 0.7, 0.9, WALL, x, 0, z, k * 0.7), roof(0.95, 0.6, ROOF[k % 3], x, 0.7, z, k * 0.7)];
@@ -46,7 +46,7 @@ const SCAFFOLD = mergeGeometries([
   box(1.9, 0.06, 1.9, 0xc8a060, 0, 0.7, 0), box(1.9, 0.06, 1.9, 0xc8a060, 0, 1.35, 0),
 ])!;
 const FLAG = mergeGeometries([cyl(0.04, 2.2, 0xd8d0c0), box(0.02, 0.5, 0.8, 0xb3261e, 0, 1.6, 0.42)])!;
-const MAT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
+export const MAT = new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true });
 const geoCache = new Map<string, THREE.BufferGeometry>();
 const geo = (t: BuildingType, l: number) => { const k = `${t}${l}`; if (!geoCache.has(k)) geoCache.set(k, model(t, l)); return geoCache.get(k)!; };
 

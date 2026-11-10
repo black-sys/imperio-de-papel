@@ -6,12 +6,14 @@ import { initHud, initTopbar, setInfo, setProgress, setSeedField, setTopbar, sho
 import { loadQuality, saveQuality, type Quality } from './client/quality';
 import { FADE_END, StrategicMap } from './client/strategic';
 import { ChunkManager } from './client/view/chunks';
+import { TroopsView } from './client/view/troops';
 import { createScene } from './client/view/scene';
 import { WorldClient } from './client/worldClient';
-import { build, chooseCapital, colonize, setSpeed, upgrade, type Result } from './sim/commands';
+import { build, chooseCapital, colonize, moveTroops, recruit, setSpeed, upgrade, type Result } from './sim/commands';
+import { spawnTroop } from './sim/troops';
 import { renderPanel, setTip, toast } from './client/panel';
 import { monthlyIncome } from './sim/economy';
-import { placeFortresses } from './sim/fortress';
+import { addFortress, placeFortresses } from './sim/fortress';
 import { makeMoveGrid, type MoveGrid } from './sim/movegrid';
 import { newGame, type GameState } from './sim/state';
 import { tick } from './sim/tick';
@@ -35,6 +37,8 @@ const strategic = new StrategicMap(document.getElementById('strategic') as HTMLC
   () => iso.setWidth(FADE_END - 1));
 const chunks = new ChunkManager(client, iso.scene);
 const buildingsView = new BuildingsView(iso.scene);
+const troopsView = new TroopsView(iso.scene, document.getElementById('labels'));
+const selectedTroops = new Set<number>();
 let seed = parseSeed(new URLSearchParams(location.search).get('seed')) ?? randomSeed();
 let map: WorldMap | null = null;
 let pm: ProvinceMap | null = null;
@@ -58,6 +62,7 @@ async function load(s: number) {
   strategic.setPins([]); paintKey = ''; ownerKey = ''; bordersLayer = null;
   chunks.setPainter(null);
   buildingsView.clear();
+  troopsView.clear(); selectedTroops.clear();
   strategic.setOverlay([], []);
   strategic.setImage(null, 0); // o pergaminho do mundo antigo some já, não só quando o novo ficar pronto
   chunks.reset();
@@ -184,6 +189,7 @@ function frame(now: number) {
     setInfo({ fps, tris: iso.renderer.info.render.triangles });
     renderPanel(game, pm, selected, actions);
     buildingsView.sync(game, pm, (x, y) => chunks.heightAt(x, y));
+    if (!strategic.covering) troopsView.sync(game, pm, (x, y) => chunks.heightAt(x, y), { x: camera.x, y: camera.y, width: iso.viewWidth(), camera: iso.camera }, selectedTroops, now / 1000);
     // eventos novos viram mensagens: compara com o total (o log só guarda os últimos 50)
     const fresh = game.eventCount - seenEvents;
     for (const ev of game.events.slice(Math.max(0, game.events.length - fresh))) toast(ev.text);
@@ -198,7 +204,8 @@ function frame(now: number) {
 }
 requestAnimationFrame(frame);
 if (import.meta.env.DEV) { // para testes no console
-  Object.assign(window, { chunks, iso, camera, strategic });
+  Object.assign(window, { chunks, iso, camera, strategic, sim: { recruit, moveTroops, spawnTroop, addFortress, chooseCapital }, selectedTroops });
+  Object.defineProperty(window, 'moveGrid', { get: () => moveGrid });
   Object.defineProperties(window, { game: { get: () => game }, pm: { get: () => pm }, selected: { get: () => selected, set: v => (selected = v) } });
 }
 load(seed);
