@@ -1,5 +1,5 @@
 import { chooseCapital, setSpeed } from '../src/sim/commands';
-import type { MoveGrid } from '../src/sim/movegrid';
+import { labelLand, type MoveGrid } from '../src/sim/movegrid';
 import { newGame, type GameState } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
 import type { Province, ProvinceMap } from '../src/worldgen/provinces';
@@ -22,7 +22,7 @@ export function makeTestWorld(): { pm: ProvinceMap; grid: MoveGrid } {
     id, name: `P${id}`, center: { x: cx, y: 128 }, cells: 2000, neighbors: [1 - id], coastal: false, biome: Biome.Grassland,
     fertility: 1, forest: 1, rock: 1, slots: 4, sites: [{ x: cx, y: 80 }, { x: cx + 20, y: 80 }, { x: cx, y: 100 }, { x: cx + 20, y: 100 }],
   });
-  return { grid: { size, cost, cover }, pm: { cellProvince, suggestedCapitals: [0], provinces: [prov(0, 60), prov(1, 180)] } };
+  return { grid: { size, cost, cover, land: labelLand(size, cost) }, pm: { cellProvince, suggestedCapitals: [0], provinces: [prov(0, 60), prov(1, 180)] } };
 }
 
 export const world = makeTestWorld();

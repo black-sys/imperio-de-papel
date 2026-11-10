@@ -140,9 +140,12 @@ export function moveTroops(s: GameState, grid: MoveGrid, ids: number[], x: numbe
   troops.forEach((t, i) => {
     if (s.clock < t.routedUntil) { result = no('Tropa em fuga'); return; }
     const spot = cellAt(grid, x + ((i % cols) - (cols - 1) / 2) * BATTLE.formation, y + (Math.floor(i / cols) - (rows - 1) / 2) * BATTLE.formation);
-    const from = cellAt(grid, t.x, t.y);
-    // vaga da formação na água ou isolada: vai para o alvo
-    const path = (spot >= 0 && grid.cost[spot] !== 0 ? findCellPath(grid, from, spot) : null) ?? findCellPath(grid, from, target);
+    const from = cellAt(grid, t.x, t.y), land = from < 0 ? 0 : grid.land[from];
+    // outra massa de terra: não há caminho, nem adianta procurar (a busca varreria o continente inteiro)
+    // tropa em célula de água (land 0, ex.: recém-treinada na margem) cai na busca normal
+    const reach = (c: number) => (land && grid.land[c] !== land ? null : findCellPath(grid, from, c));
+    // vaga da formação na água ou em outra terra: vai para o alvo
+    const path = (spot >= 0 && grid.cost[spot] !== 0 ? reach(spot) : null) ?? reach(target);
     if (path) t.path = path; else result = no('Caminho impossível');
   });
   return result;

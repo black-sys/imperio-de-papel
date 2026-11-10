@@ -4,7 +4,7 @@ import { makeMoveGrid, type MoveGrid } from '../src/sim/movegrid';
 import { generateWorld } from '../src/worldgen/global/world';
 import { makeTestWorld } from './troopworld';
 
-const open = (size: number): MoveGrid => ({ size, cost: new Uint8Array(size * size).fill(1), cover: new Uint8Array(size * size) });
+const open = (size: number): MoveGrid => ({ size, cost: new Uint8Array(size * size).fill(1), cover: new Uint8Array(size * size), land: new Int32Array(size * size) });
 const at = (g: MoveGrid, x: number, y: number) => y * g.size + x;
 
 test('caminho reto', () => {

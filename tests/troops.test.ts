@@ -3,6 +3,7 @@ import { checkColonize, checkRecruit, checkUpgrade, moveTroops, recruit, setSpee
 import { monthlyIncome } from '../src/sim/economy';
 import type { GameState } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
+import { labelLand, type MoveGrid } from '../src/sim/movegrid';
 import { spawnTroop, troopCap } from '../src/sim/troops';
 import { game, makeTestWorld, run, world } from './troopworld';
 
@@ -209,5 +210,31 @@ describe('reposição e manutenção', () => {
     run(s, 1);
     expect(s.troops.map(t => t.type)).toEqual(['spear']);
     expect(s.events.at(-1)!.text).toBe('Cavaleiros dispersos por falta de ouro');
+  });
+});
+
+describe('massas de terra', () => {
+  test('labelLand: mesma terra, mesmo rótulo; água 0; ilhas diferentes', () => {
+    const { grid: g } = makeTestWorld();
+    for (let x = 0; x < 64; x++) g.cost[20 * 64 + x] = 0; // canal: norte e sul viram terras separadas
+    const land = labelLand(g.size, g.cost);
+    expect(land[20 * 64 + 5]).toBe(0);
+    expect(land[5 * 64 + 5]).toBe(land[10 * 64 + 60]);
+    expect(land[5 * 64 + 5]).not.toBe(land[30 * 64 + 5]);
+    expect(land[5 * 64 + 5]).toBeGreaterThan(0);
+  });
+  test('ordem para outra ilha é recusada sem varrer o continente (10 tropas, mapa 1024²)', () => {
+    const size = 1024, cost = new Uint8Array(size * size).fill(1);
+    for (let d = -2; d <= 2; d++) for (let e = -2; e <= 2; e++) if (Math.max(Math.abs(d), Math.abs(e)) === 2) cost[(500 + e) * size + 500 + d] = 0; // ilhota 3×3 cercada de água
+    const big: MoveGrid = { size, cost, cover: new Uint8Array(size * size), land: labelLand(size, cost) };
+    const s = game(), ids = Array.from({ length: 10 }, (_, i) => spawnTroop(s, 0, 'spear', 40 + i * 8, 40).id);
+    const t = performance.now();
+    expect(moveTroops(s, big, ids, 2002, 2002)).toEqual({ ok: false, reason: 'Caminho impossível' });
+    expect(performance.now() - t).toBeLessThan(50);
+    expect(s.troops.some(t => t.path.length === 0)).toBe(true); // as vagas da formação na ilhota ficam sem rota
+    // vaga da formação que cai na ilhota não custa uma busca: o grupo vai para o alvo em terra
+    const t2 = performance.now();
+    expect(moveTroops(s, big, ids, 2002, 2016)).toEqual({ ok: true });
+    expect(performance.now() - t2).toBeLessThan(400);
   });
 });
