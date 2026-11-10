@@ -1,4 +1,7 @@
+import { chooseCapital, setSpeed } from '../src/sim/commands';
 import type { MoveGrid } from '../src/sim/movegrid';
+import { newGame, type GameState } from '../src/sim/state';
+import { tick } from '../src/sim/tick';
 import type { Province, ProvinceMap } from '../src/worldgen/provinces';
 import { Biome } from '../src/worldgen/types';
 
@@ -21,3 +24,15 @@ export function makeTestWorld(): { pm: ProvinceMap; grid: MoveGrid } {
   });
   return { grid: { size, cost, cover }, pm: { cellProvince, suggestedCapitals: [0], provinces: [prov(0, 60), prov(1, 180)] } };
 }
+
+export const world = makeTestWorld();
+/** Capital na província 0, guarnição pronta na vaga 1 e recursos de sobra. */
+export const game = (level = 1): GameState => {
+  const s = newGame(world.pm);
+  chooseCapital(s, world.pm, 0);
+  s.buildings[0][1] = { type: 'garrison', level, remaining: 0 };
+  s.res = { gold: 1000, wood: 1000, stone: 1000 };
+  return s;
+};
+/** Avança `months` na velocidade dada, em ticks de 0.1 s. */
+export const run = (s: GameState, months: number, speed = 1) => { setSpeed(s, speed); for (let i = 0; i < Math.round((months * 100) / speed); i++) tick(s, world.pm, 0.1, world.grid); };

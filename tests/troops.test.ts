@@ -1,22 +1,13 @@
 import { describe, expect, test } from 'vitest';
-import { checkColonize, checkRecruit, checkUpgrade, chooseCapital, moveTroops, recruit, setSpeed, upgrade } from '../src/sim/commands';
+import { checkColonize, checkRecruit, checkUpgrade, moveTroops, recruit, setSpeed, upgrade } from '../src/sim/commands';
 import { monthlyIncome } from '../src/sim/economy';
-import { newGame, type GameState } from '../src/sim/state';
+import type { GameState } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
 import { spawnTroop, troopCap } from '../src/sim/troops';
-import { makeTestWorld } from './troopworld';
+import { game, makeTestWorld, run, world } from './troopworld';
 
-const { pm, grid } = makeTestWorld();
+const { pm, grid } = world;
 const garrison = (level = 1) => ({ type: 'garrison' as const, level, remaining: 0 });
-/** Capital na província 0, guarnição pronta na vaga 1 e recursos de sobra. */
-export const game = (level = 1): GameState => {
-  const s = newGame(pm);
-  chooseCapital(s, pm, 0);
-  s.buildings[0][1] = garrison(level);
-  s.res = { gold: 1000, wood: 1000, stone: 1000 };
-  return s;
-};
-export const run = (s: GameState, months: number, speed = 1) => { setSpeed(s, speed); for (let i = 0; i < Math.round(months * 100 / speed); i++) tick(s, pm, 0.1, grid); };
 
 describe('recrutamento', () => {
   test('recusas: sem guarnição, nível, fila ocupada', () => {

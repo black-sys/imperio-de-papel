@@ -29,7 +29,18 @@ export const TROOPS: Record<TroopType, { name: string; level: number; soldiers: 
   archer: { name: 'Arqueiros', level: 2, soldiers: 15, attack: 1.0, defense: 0.6, speed: 150, cost: { gold: 50, wood: 40, stone: 0 }, upkeep: 1.5, months: 2 },
   cavalry: { name: 'Cavaleiros', level: 3, soldiers: 12, attack: 1.6, defense: 1.0, speed: 240, cost: { gold: 90, wood: 20, stone: 20 }, upkeep: 3, months: 3 },
 };
-export const BATTLE = { step: 0.02, formation: 10 }; // passo fixo da simulação de tropas (meses); distância entre tropas em formação (tiles)
+export const BATTLE = {
+  step: 0.02, // passo fixo da simulação de tropas (meses)
+  formation: 10, // tiles entre tropas em formação
+  contact: 6, join: 20, // tiles: distância que começa a batalha; raio em que as tropas entram nela
+  rate: 1.3, // dano por soldado por mês (calibra a duração: lanceiros iguais ≈ 0.5 mês, com a abertura)
+  archerOpening: 0.1, // meses iniciais em que só arqueiros causam dano
+  counter: 1.5, // lanceiros → cavaleiros, cavaleiros → arqueiros
+  cover: 1.25, river: 0.75, fortress: 1.5, // defesa em floresta/colina; dano de quem está no rio; defesa de fortaleza
+  moraleLoss: 2, breakAt: 0.3, // moral = 1 − moraleLoss × fração perdida; abaixo de breakAt o lado foge (35% de baixas)
+  rout: 0.5, // meses em fuga, sem obedecer
+  minSoldiers: 3, // abaixo disso a tropa se dispersa
+};
 export const REFILL = { rate: 1, garrisonRate: 3, gold: 2 }; // soldados/mês parado no reino (com Guarnição na província); ouro por soldado
 export const TROOP_CAP = [0, 2, 3, 4]; // tropas sustentadas por nível de Guarnição
 export const GARRISON_GOAL = [0, 0, 3, 3]; // por nível alvo: guarnições do reino no nível anterior ou maior (contando a própria)
