@@ -12,3 +12,9 @@ export const LAKE_MIN_CELLS = 12;
 export const LAKE_MIN_DEPTH = 0.01;
 export const MAX_WALK_SLOPE = 1.2;
 export const FORD_MAX_WIDTH = 3;
+// erosão (stream power + térmica); calibrados na escala 512
+export const EROSION_ITER = 40;
+export const EROSION_K = 0.05;
+export const EROSION_UPLIFT = 0.0015;
+export const EROSION_TALUS = 0.12;
+export const EROSION_THERMAL_EVERY = 5;
