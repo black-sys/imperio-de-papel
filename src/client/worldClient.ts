@@ -9,6 +9,7 @@ type Out =
   | { type: 'chunk'; data: ChunkData; token: number }
   | { type: 'coarse'; data: CoarseChunk; token: number }
   | { type: 'parchment'; pixels: Uint8ClampedArray; size: number; token: number }
+  | { type: 'tile'; L: number; x: number; y: number; pixels: Uint8ClampedArray; token: number }
   | { type: 'error'; message: string; seed: number; token: number };
 
 /** Lado principal do worker. Cada generate() invalida respostas de mundos anteriores. */
@@ -28,6 +29,10 @@ export class WorldClient {
       else if (m.type === 'chunk') {
         const k = `${m.data.cx},${m.data.cy}`;
         this.pendingChunks.get(k)?.resolve(m.data);
+        this.pendingChunks.delete(k);
+      } else if (m.type === 'tile') {
+        const k = `t${m.L},${m.x},${m.y}`;
+        this.pendingChunks.get(k)?.resolve(m.pixels);
         this.pendingChunks.delete(k);
       } else if (m.type === 'parchment') {
         this.pendingChunks.get('parchment')?.resolve(m.pixels);
@@ -68,6 +73,16 @@ export class WorldClient {
       this.pendingChunks.get(k)?.reject(new Error('duplicado'));
       this.pendingChunks.set(k, { resolve, reject });
       this.post({ type: 'chunk', cx, cy, token: this.token });
+    });
+  }
+
+  /** Ladrilho do mapa (nível L, posição x, y na grade do nível), desenhado no worker. */
+  tile(L: number, x: number, y: number): Promise<Uint8ClampedArray> {
+    const k = `t${L},${x},${y}`;
+    return new Promise((resolve, reject) => {
+      this.pendingChunks.get(k)?.reject(new Error('duplicado'));
+      this.pendingChunks.set(k, { resolve, reject });
+      this.post({ type: 'tile', L, x, y, token: this.token });
     });
   }
 
