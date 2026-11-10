@@ -16,22 +16,25 @@ export interface Hydrology {
 }
 
 export function runHydrology(size: number, elevation: Float32Array, land: Uint8Array, moisture: Float32Array): Hydrology {
+  const res2 = (size / 512) * (size / 512), flowMin = RIVER_FLOW_MIN * res2;
   // 1ª passada só para saber onde erodir
   let filled = priorityFlood(size, elevation, land);
   let down = downstream(size, filled, land);
   let flow = accumulate(size, filled, land, moisture, down);
   const elev = Float32Array.from(elevation);
   for (let i = 0; i < elev.length; i++)
-    if (land[i] && flow[i] >= RIVER_FLOW_MIN)
-      elev[i] = Math.max(SEA_LEVEL + 0.001, elev[i] - Math.min(0.03, 0.004 * Math.sqrt(flow[i])));
+    if (land[i] && flow[i] >= flowMin)
+      elev[i] = Math.max(SEA_LEVEL + 0.001, elev[i] - Math.min(0.03, 0.004 * Math.sqrt(flow[i] / res2)));
 
   filled = priorityFlood(size, elev, land);
-  const { water, lakeSurface } = findLakes(size, elev, filled, land);
+  const { water, lakeSurface } = findLakes(size, elev, filled, land, Math.max(LAKE_MIN_CELLS, Math.round(LAKE_MIN_CELLS * res2)));
   down = downstream(size, filled, land);
   flow = accumulate(size, filled, land, moisture, down);
   const river = new Uint8Array(size * size);
-  for (let i = 0; i < river.length; i++) river[i] = land[i] && water[i] === 0 && flow[i] >= RIVER_FLOW_MIN ? 1 : 0;
+  for (let i = 0; i < river.length; i++) river[i] = land[i] && water[i] === 0 && flow[i] >= flowMin ? 1 : 0;
   const rivers = tracePolylines(size, river, water, down, flow, filled);
+  // fluxo normalizado para a escala 512, para que larguras de rio não dependam da resolução
+  for (const r of rivers) for (let k = 0; k < r.flow.length; k++) r.flow[k] /= res2;
   return { elevation: elev, filled, water, lakeSurface, flow, river, rivers };
 }
 
@@ -57,7 +60,7 @@ function priorityFlood(size: number, elev: Float32Array, land: Uint8Array): Floa
   return filled;
 }
 
-function findLakes(size: number, elev: Float32Array, filled: Float32Array, land: Uint8Array) {
+function findLakes(size: number, elev: Float32Array, filled: Float32Array, land: Uint8Array, minCells: number) {
   const water = new Uint8Array(elev.length);
   const lakeSurface = new Float32Array(elev.length);
   for (let i = 0; i < water.length; i++) if (!land[i]) water[i] = 1;
@@ -79,7 +82,7 @@ function findLakes(size: number, elev: Float32Array, filled: Float32Array, land:
         if (!seen[n] && isDepr(n)) { seen[n] = 1; st.push(n); }
       }
     }
-    if (comp.length < LAKE_MIN_CELLS) continue;
+    if (comp.length < minCells) continue;
     for (const c of comp) { water[c] = 2; lakeSurface[c] = top; }
   }
   return { water, lakeSurface };

@@ -1,11 +1,12 @@
 export const WORLD_TILES = 4096;
-export const GLOBAL_SIZE = 512;
-export const CELL = 8; // tiles por célula global
+export const GLOBAL_SIZE = 1024;
+export const CELL = 4; // tiles por célula global
 export const CHUNK = 64;
 export const CHUNKS_PER_SIDE = WORLD_TILES / CHUNK;
 export const SEA_LEVEL = 0.4;
 export const MOUNTAIN_LEVEL = 0.75;
 export const HEIGHT_SCALE = 64;
+/** Valores calibrados numa grade 512; escalar por res = size/512 (fluxo e áreas ∝ res²). */
 export const RIVER_FLOW_MIN = 40;
 export const LAKE_MIN_CELLS = 12;
 export const LAKE_MIN_DEPTH = 0.01;

@@ -2,11 +2,11 @@ import { SEA_LEVEL } from '../constants';
 import { fbm, warp } from '../noise';
 
 const LAND_TARGET = 0.45;
-const BORDER = 4;
-const MIN_ISLAND = 20;
 
 /** Máscara do continente; base reescalada para que terra ⇔ base ≥ SEA_LEVEL. */
 export function landShape(seed: number, size: number): { base: Float32Array; land: Uint8Array } {
+  const res = size / 512;
+  const BORDER = Math.max(4, Math.round(4 * res));
   const raw = new Float32Array(size * size);
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const i = y * size + x;
@@ -22,7 +22,7 @@ export function landShape(seed: number, size: number): { base: Float32Array; lan
   const thr = sorted[Math.floor(sorted.length * (1 - LAND_TARGET))];
   const land = new Uint8Array(size * size);
   for (let i = 0; i < raw.length; i++) land[i] = raw[i] >= thr && raw[i] > -1 ? 1 : 0;
-  keepMainLand(land, size);
+  keepMainLand(land, size, Math.max(20, Math.round(20 * res * res)));
 
   let min = Infinity, max = -Infinity;
   for (let i = 0; i < raw.length; i++) { if (raw[i] < min) min = raw[i]; if (raw[i] > max) max = raw[i]; }
@@ -35,7 +35,7 @@ export function landShape(seed: number, size: number): { base: Float32Array; lan
 }
 
 /** Mantém a maior massa e ilhas ≥ MIN_ISLAND células (4-vizinhos). */
-function keepMainLand(land: Uint8Array, size: number): void {
+function keepMainLand(land: Uint8Array, size: number, MIN_ISLAND: number): void {
   const label = new Int32Array(land.length).fill(-1);
   const sizes: number[] = [];
   const stack: number[] = [];

@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { generateChunk } from '../src/worldgen/chunk';
-import { CHUNK } from '../src/worldgen/constants';
+import { CELL, CHUNK } from '../src/worldgen/constants';
 import { generateWorld } from '../src/worldgen/global/world';
 import { hashArrays } from '../src/worldgen/rng';
 
@@ -51,7 +51,7 @@ describe('generateChunk', { timeout: 30000 }, () => {
   });
   test('tiles com água têm os 4 vértices ≤ nível da água', () => {
     const lake = map.water.indexOf(2);
-    const lakeChunk = [Math.floor(((lake % map.size) * 8) / CHUNK), Math.floor((Math.floor(lake / map.size) * 8) / CHUNK)];
+    const lakeChunk = [Math.floor(((lake % map.size) * CELL) / CHUNK), Math.floor((Math.floor(lake / map.size) * CELL) / CHUNK)];
     expect(generateChunk(map, lakeChunk[0], lakeChunk[1]).water.some(v => v === 2)).toBe(true);
     for (const [cx, cy] of [[20, 20], [32, 32], [10, 40], [40, 12], lakeChunk]) {
       const c = generateChunk(map, cx, cy);

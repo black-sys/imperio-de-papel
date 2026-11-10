@@ -36,7 +36,7 @@ function findSpawn(size: number, biome: Uint8Array, water: Uint8Array, river: Ui
     }
     return true;
   };
-  for (const maxSlope of [0.012, 0.03, 1]) {
+  for (const maxSlope of [0.012, 0.03, 1].map(v => (v * 512) / size)) {
     let best = -1, bd = Infinity;
     for (let i = 0; i < biome.length; i++) {
       if (biome[i] !== Biome.Grassland && biome[i] !== Biome.TemperateForest) continue;

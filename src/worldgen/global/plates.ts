@@ -19,13 +19,14 @@ export function applyPlates(seed: number, size: number, base: Float32Array, land
     plates.push({ x: cell % size, y: Math.floor(cell / size), dx, dy });
   }
   const width = size * 0.055;
+  const res = size / 512;
   const out = new Float32Array(size * size);
   const mtn = new Float32Array(size * size);
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const i = y * size + x;
     if (!land[i]) { out[i] = base[i]; continue; }
-    const px = x + (fbm(x / 40, y / 40, seed + 1, 3) - 0.5) * size * 0.12;
-    const py = y + (fbm(x / 40, y / 40, seed + 2, 3) - 0.5) * size * 0.12;
+    const px = x + (fbm(x / (40 * res), y / (40 * res), seed + 1, 3) - 0.5) * size * 0.12;
+    const py = y + (fbm(x / (40 * res), y / (40 * res), seed + 2, 3) - 0.5) * size * 0.12;
     let a = 0, b = 0, d1 = Infinity, d2 = Infinity;
     for (let p = 0; p < count; p++) {
       const ddx = px - plates[p].x, ddy = py - plates[p].y, d = ddx * ddx + ddy * ddy;

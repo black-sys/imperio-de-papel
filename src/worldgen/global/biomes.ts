@@ -4,10 +4,11 @@ import { Biome } from '../types';
 
 /** Norte (y=0) frio, sul quente; esfria com a altitude. */
 export function temperatureMap(size: number, elevation: Float32Array, seed: number): Float32Array {
+  const res = size / 512;
   const t = new Float32Array(size * size);
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const i = y * size + x;
-    const v = (y / (size - 1)) * 1.2 - 0.1 - Math.max(0, elevation[i] - SEA_LEVEL) * 0.7 + (fbm(x / 30, y / 30, seed, 3) - 0.5) * 0.1;
+    const v = (y / (size - 1)) * 1.2 - 0.1 - Math.max(0, elevation[i] - SEA_LEVEL) * 0.7 + (fbm(x / (30 * res), y / (30 * res), seed, 3) - 0.5) * 0.1;
     t[i] = Math.min(1, Math.max(0, v));
   }
   return t;
@@ -33,7 +34,7 @@ export function biomeMap(size: number, elevation: Float32Array, temperature: Flo
       if (nx < 0 || ny < 0 || nx >= size || ny >= size) continue;
       const n = ny * size + nx;
       if (water[n] === 1) coastal = true;
-      slope = Math.max(slope, Math.abs(elevation[n] - elevation[i]));
+      slope = Math.max(slope, Math.abs(elevation[n] - elevation[i]) * (size / 512)); // inclinação por distância na escala 512
     }
     out[i] = classifyBiome(elevation[i], temperature[i], moisture[i], water[i], coastal, slope);
   }
