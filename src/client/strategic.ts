@@ -10,6 +10,12 @@ export const FADE_START = 500, FADE_END = 600;
 export class StrategicMap {
   private img: HTMLCanvasElement | null = null;
   private layers: HTMLCanvasElement[] = [];
+  // pergaminho + camadas já compostos, em 3 resoluções (2048/1024/512): desenhar 1 imagem, na resolução da tela
+  private mips: HTMLCanvasElement[] = [];
+  private lastKey = '';
+  private lastAlpha = 0;
+  /** Quantas vezes o pergaminho foi de fato redesenhado (diagnóstico). */
+  paints = 0;
   private labels: { x: number; y: number; name: string; size: number }[] = [];
   private pins: { x: number; y: number }[] = [];
   private ctx: CanvasRenderingContext2D;
@@ -48,16 +54,38 @@ export class StrategicMap {
     c.width = c.height = size;
     c.getContext('2d')!.putImageData(new ImageData(pixels, size, size), 0, 0);
     this.img = c;
+    this.compose();
+  }
+
+  /** Compõe pergaminho + camadas uma vez (quando mudam) e gera as reduções. */
+  private compose(): void {
+    this.lastKey = '';
+    if (!this.img) { this.mips = []; return; }
+    let prev = document.createElement('canvas');
+    prev.width = prev.height = this.img.width;
+    const g = prev.getContext('2d')!;
+    g.drawImage(this.img, 0, 0);
+    for (const l of this.layers) g.drawImage(l, 0, 0, l.width, l.height, 0, 0, prev.width, prev.height);
+    this.mips = [prev];
+    for (let i = 0; i < 2; i++) {
+      const m = document.createElement('canvas');
+      m.width = m.height = prev.width / 2;
+      const mg = m.getContext('2d')!;
+      mg.imageSmoothingQuality = 'high';
+      mg.drawImage(prev, 0, 0, m.width, m.height);
+      this.mips.push(m); prev = m;
+    }
   }
 
   setMarker(x: number, y: number): void { this.marker = { x, y }; }
 
   /** Selos (capitais sugeridas na tela inicial). */
-  setPins(pins: { x: number; y: number }[]): void { this.pins = pins; }
+  setPins(pins: { x: number; y: number }[]): void { this.pins = pins; this.lastKey = ''; }
 
   /** Camadas desenhadas por cima do pergaminho (aquarela dos donos, fronteiras) e nomes das províncias. */
   setOverlay(layers: HTMLCanvasElement[], labels: { x: number; y: number; name: string; size: number }[]): void {
     this.layers = layers; this.labels = labels;
+    this.compose();
   }
 
   /** Entra no modo mapa centrado em (x,y). */
@@ -75,7 +103,7 @@ export class StrategicMap {
   zoomTo(across: number): void { this.across = across; }
 
   /** Modo mapa com a transição concluída: o 3D está totalmente escondido. */
-  get covering(): boolean { return this.mode === 'map' && this.t > 0.98 && this.img !== null; }
+  get covering(): boolean { return this.img !== null && (this.mode === 'map' ? this.t > 0.98 : this.lastAlpha >= 1); }
 
   /** Desenha. Em 3D: `viewWidth` e `yaw` da câmera e o alvo (cx, cy). */
   draw(viewWidth: number, yaw: number, cx: number, cy: number): void {
@@ -84,22 +112,29 @@ export class StrategicMap {
     this.t += ((this.mode === 'map' ? 1 : 0) - this.t) * 0.15;
     this.canvas.style.opacity = String(alpha);
     this.canvas.style.pointerEvents = this.mode === 'map' ? 'auto' : 'none';
+    this.lastAlpha = alpha;
     if (alpha <= 0) return;
-    if (!this.img) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#b0bcb0'; ctx.fillRect(0, 0, W, H); return; } // pergaminho do novo mundo ainda gerando
+    if (!this.img) { this.lastKey = ''; ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#b0bcb0'; ctx.fillRect(0, 0, W, H); return; } // pergaminho do novo mundo ainda gerando
     if (this.mode === '3d') { this.center = { x: cx, y: cy }; this.across = viewWidth; }
+    // nada mudou na vista: o canvas já mostra a imagem certa (mapa parado custa zero)
+    const key = [W, H, this.center.x, this.center.y, this.across, this.t.toFixed(3), yaw.toFixed(4), this.marker?.x, this.marker?.y].join('|');
+    if (key === this.lastKey) return;
+    this.lastKey = key;
+    this.paints++;
     // ângulo de norte-acima é 90°; interpola pelo caminho mais curto
     let target = Math.PI / 2, d = target - yaw;
     d = Math.atan2(Math.sin(d), Math.cos(d)); target = yaw + d;
     const th = yaw + (target - yaw) * this.t, s = PITCH_SIN + (1 - PITCH_SIN) * this.t;
     const rx = Math.sin(th), rz = -Math.cos(th), fx = -Math.cos(th), fz = -Math.sin(th);
-    const scale = W / this.across, k = WORLD_TILES / this.img.width, c = this.center;
+    // resolução da redução ≈ resolução da tela (menos pixels reamostrados de longe)
+    const scale = W / this.across, ppx = scale * (WORLD_TILES / this.img.width);
+    const mip = this.mips[ppx < 0.3 ? 2 : ppx < 0.6 ? 1 : 0] ?? this.img, k = WORLD_TILES / mip.width, c = this.center;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#b0bcb0'; ctx.fillRect(0, 0, W, H);
     ctx.imageSmoothingEnabled = true;
     ctx.setTransform(k * scale * rx, -k * scale * s * fx, k * scale * rz, -k * scale * s * fz,
       W / 2 - scale * (c.x * rx + c.y * rz), H / 2 + scale * s * (c.x * fx + c.y * fz));
-    ctx.drawImage(this.img, 0, 0);
-    for (const l of this.layers) ctx.drawImage(l, 0, 0, l.width, l.height, 0, 0, this.img.width, this.img.height);
+    ctx.drawImage(mip, 0, 0);
     // nomes à mão, só quando cabem na tela (tamanho ∝ área, em tiles → pixels)
     if (this.t > 0.5) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);

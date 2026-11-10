@@ -193,7 +193,7 @@ function frame(now: number) {
 }
 requestAnimationFrame(frame);
 if (import.meta.env.DEV) { // para testes no console
-  Object.assign(window, { chunks, iso, camera });
+  Object.assign(window, { chunks, iso, camera, strategic });
   Object.defineProperties(window, { game: { get: () => game }, pm: { get: () => pm }, selected: { get: () => selected, set: v => (selected = v) } });
 }
 load(seed);
