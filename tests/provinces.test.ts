@@ -81,3 +81,46 @@ test('determinístico', { timeout: 60000 }, () => {
   const { map, pm } = get(860);
   expect(hashArrays(generateProvinces(map).cellProvince)).toBe(hashArrays(pm.cellProvince));
 });
+
+describe('atributos', { timeout: 60000 }, () => {
+  test('fatores em [0,1.5]; floresta maior em províncias de floresta que de deserto', () => {
+    const { pm } = get(860);
+    for (const p of pm.provinces) for (const v of [p.fertility, p.forest, p.rock]) { expect(v).toBeGreaterThanOrEqual(0); expect(v).toBeLessThanOrEqual(1.5); }
+    const avg = (b: number) => { const l = pm.provinces.filter(p => p.biome === b); return l.reduce((a, p) => a + p.forest, 0) / l.length; };
+    expect(avg(4)).toBeGreaterThan(avg(8) + 0.3); // floresta temperada vs deserto
+  });
+  test('vagas 3–6 e um local seco por vaga, dentro da província e afastados', () => {
+    const { map, pm } = get(860), S = map.size;
+    for (const p of pm.provinces) {
+      expect(p.slots).toBeGreaterThanOrEqual(3); expect(p.slots).toBeLessThanOrEqual(6);
+      expect(p.sites.length).toBe(p.slots);
+      for (const s of p.sites) {
+        const c = Math.floor(s.y / 4) * S + Math.floor(s.x / 4);
+        expect(pm.cellProvince[c]).toBe(p.id);
+        expect(map.water[c]).toBe(0);
+        expect(map.river[c]).toBe(0);
+      }
+      for (let i = 0; i < p.sites.length; i++) for (let j = i + 1; j < p.sites.length; j++)
+        expect(Math.hypot(p.sites[i].x - p.sites[j].x, p.sites[i].y - p.sites[j].y)).toBeGreaterThanOrEqual(4);
+    }
+  });
+  test('nomes únicos, não vazios e determinísticos', () => {
+    const { map, pm } = get(860);
+    const names = pm.provinces.map(p => p.name);
+    expect(names.every(n => n.length >= 3)).toBe(true);
+    expect(new Set(names).size).toBe(names.length);
+    expect(generateProvinces(map).provinces.map(p => p.name)).toEqual(names);
+  });
+  test.each([860, 1, 2])('semente %i: 5–8 capitais sugeridas, afastadas e acima da mediana', seed => {
+    const { pm } = get(seed);
+    const caps = pm.suggestedCapitals;
+    expect(caps.length).toBeGreaterThanOrEqual(5); expect(caps.length).toBeLessThanOrEqual(8);
+    const score = (p: (typeof pm.provinces)[0]) => p.fertility + 0.6 * p.forest + 0.6 * p.rock;
+    const sorted = pm.provinces.map(score).sort((a, b) => a - b), median = sorted[Math.floor(sorted.length / 2)];
+    for (const c of caps) expect(score(pm.provinces[c])).toBeGreaterThanOrEqual(median);
+    for (let i = 0; i < caps.length; i++) for (let j = i + 1; j < caps.length; j++) {
+      const a = pm.provinces[caps[i]].center, b = pm.provinces[caps[j]].center;
+      expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(400);
+    }
+  });
+});

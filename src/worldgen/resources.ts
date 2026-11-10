@@ -4,7 +4,7 @@ import { Biome, type ChunkData, type Resource, type ResourceKind, type WorldMap 
 
 const V = CHUNK + 1;
 /** Densidade por tile e tipo, por bioma (somadas = chance total de recurso). */
-const DENSITY: Partial<Record<Biome, [ResourceKind, number][]>> = {
+export const DENSITY: Partial<Record<Biome, [ResourceKind, number][]>> = {
   [Biome.TemperateForest]: [['tree', 0.25]],
   [Biome.Taiga]: [['pine', 0.25]],
   [Biome.Jungle]: [['tree', 0.3]],

@@ -1,4 +1,5 @@
 import { CELL, MOUNTAIN_LEVEL } from './constants';
+import { DENSITY } from './resources';
 import { makeRng, subSeed } from './rng';
 import { Biome, type WorldMap } from './types';
 
@@ -40,7 +41,8 @@ export function generateProvinces(map: WorldMap): ProvinceMap {
   const cellProvince = compact(region);
   const provinces = describe(map, cellProvince);
   void n;
-  return { cellProvince, provinces, suggestedCapitals: [] };
+  addAttributes(map, cellProvince, provinces);
+  return { cellProvince, provinces, suggestedCapitals: suggestCapitals(provinces) };
 }
 
 /** Sementes espalhadas por "dart throwing" com distância mínima, ~TARGET em terra. */
@@ -288,4 +290,110 @@ class Heap {
     }
     return top;
   }
+}
+
+// ---- atributos ----
+
+const FERTILITY: Record<Biome, number> = {
+  [Biome.Ocean]: 0, [Biome.Beach]: 0.5, [Biome.Snow]: 0.1, [Biome.Taiga]: 0.6, [Biome.TemperateForest]: 1.0, [Biome.Grassland]: 1.2,
+  [Biome.Swamp]: 0.7, [Biome.Savanna]: 0.9, [Biome.Desert]: 0.2, [Biome.Jungle]: 1.0, [Biome.Mountain]: 0.2,
+};
+const treeDensity = (b: Biome) => (DENSITY[b] ?? []).reduce((a, [k, p]) => a + (k === 'tree' || k === 'pine' ? p : 0), 0);
+const rockDensity = (b: Biome) => (DENSITY[b] ?? []).reduce((a, [k, p]) => a + (k === 'rock' ? p : 0), 0);
+const clamp15 = (v: number) => Math.min(1.5, Math.max(0, v));
+
+/** Fatores (fertilidade, floresta e rocha estimadas pela densidade esperada por bioma), vagas, locais e nomes. */
+function addAttributes(map: WorldMap, cp: Int16Array, provinces: Province[]): void {
+  const S = map.size, count = provinces.length;
+  const biomeCount = Array.from({ length: count }, () => new Array<number>(11).fill(0));
+  const fert = new Float64Array(count), tree = new Float64Array(count), rock = new Float64Array(count), mtn = new Float64Array(count), riv = new Float64Array(count);
+  const cellsOf: number[][] = Array.from({ length: count }, () => []);
+  for (let i = 0; i < cp.length; i++) {
+    const p = cp[i];
+    if (p < 0) continue;
+    cellsOf[p].push(i);
+    if (map.water[i] !== 0) continue;
+    const b = map.biome[i] as Biome;
+    biomeCount[p][b]++;
+    fert[p] += FERTILITY[b]; tree[p] += treeDensity(b); rock[p] += rockDensity(b);
+    if (map.elevation[i] >= MOUNTAIN_LEVEL) mtn[p]++;
+    if (map.river[i]) riv[p]++;
+  }
+  const mean = provinces.reduce((a, p) => a + p.cells, 0) / count;
+  const rng = makeRng(subSeed(map.seed, 'nomes')), used = new Set<string>();
+  for (const p of provinces) {
+    const dry = Math.max(1, biomeCount[p.id].reduce((a, b) => a + b, 0));
+    p.biome = biomeCount[p.id].indexOf(Math.max(...biomeCount[p.id])) as Biome;
+    p.fertility = clamp15(fert[p.id] / dry + Math.min(0.3, (riv[p.id] / dry) * 3) + (p.coastal ? 0.1 : 0));
+    p.forest = clamp15(tree[p.id] / dry / 0.15);
+    const mFrac = mtn[p.id] / dry;
+    p.rock = clamp15((rock[p.id] / dry / 0.02) * 0.5 + mFrac * 1.5);
+    let slots = 3 + (p.cells > mean ? 1 : 0) + (p.cells > 1.5 * mean ? 1 : 0) + (p.fertility > 0.9 ? 1 : 0);
+    if (mFrac > 0.4 || p.biome === Biome.Swamp) slots--;
+    p.slots = Math.min(6, Math.max(3, slots));
+    p.sites = pickSites(map, cellsOf[p.id], p);
+    let name = '';
+    do name = makeName(rng); while (used.has(name));
+    used.add(name);
+    p.name = name;
+  }
+}
+
+/** Um local por vaga: células secas, sem rio e sem montanha, mais planas e perto do centro primeiro, afastadas ≥ 4 tiles. */
+function pickSites(map: WorldMap, cells: number[], p: Province): { x: number; y: number }[] {
+  const S = map.size;
+  const slope = (i: number) => {
+    const x = i % S; let m = 0;
+    for (const j of [x > 0 ? i - 1 : i, x < S - 1 ? i + 1 : i, i - S >= 0 ? i - S : i, i + S < S * S ? i + S : i]) m = Math.max(m, Math.abs(map.elevation[j] - map.elevation[i]));
+    return m;
+  };
+  const cand = cells.filter(i => map.water[i] === 0 && !map.river[i]);
+  const score = (i: number) => {
+    const x = (i % S) * CELL + CELL / 2, y = Math.floor(i / S) * CELL + CELL / 2;
+    return Math.hypot(x - p.center.x, y - p.center.y) / CELL + slope(i) * 2000 + (map.elevation[i] >= MOUNTAIN_LEVEL ? 50 : 0);
+  };
+  const ranked = cand.map(i => [score(i), i] as const).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(e => e[1]);
+  const out: { x: number; y: number }[] = [];
+  for (const minD of [12, 8, 4]) {
+    for (const i of ranked) {
+      if (out.length >= p.slots) break;
+      const x = (i % S) * CELL + CELL / 2, y = Math.floor(i / S) * CELL + CELL / 2;
+      if (out.some(o => Math.hypot(o.x - x, o.y - y) < minD)) continue;
+      out.push({ x, y });
+    }
+    if (out.length >= p.slots) break;
+  }
+  if (out.length < p.slots) p.slots = Math.max(1, out.length); // ilhota sem espaço: menos vagas
+  return out;
+}
+
+const ONSET = ['b', 'c', 'd', 'f', 'g', 'l', 'm', 'n', 'p', 'r', 's', 't', 'v', 'br', 'tr', 'gr', 'dr', 'st', 'ch', 'th', 'val', 'mor', 'kar', 'el'];
+const VOWEL = ['a', 'e', 'i', 'o', 'u', 'ae', 'ia', 'ou'];
+const CODA = ['', '', 'n', 'r', 'l', 's', 'th', 'nd', 'rk', 'm'];
+const SUFFIX = ['ia', 'or', 'en', 'heim', 'mar', 'dor', 'wick', 'ana', 'ova', 'ar', 'ell', 'ford'];
+
+function makeName(rng: () => number): string {
+  const pick = <T>(a: T[]) => a[Math.floor(rng() * a.length)];
+  const syl = 1 + Math.floor(rng() * 2);
+  let s = '';
+  for (let i = 0; i < syl; i++) s += pick(ONSET) + pick(VOWEL) + pick(CODA);
+  s += pick(SUFFIX);
+  return s[0].toUpperCase() + s.slice(1);
+}
+
+/** 5–8 capitais sugeridas: acima da mediana de pontuação, longe umas das outras. */
+function suggestCapitals(provinces: Province[]): number[] {
+  const score = (p: Province) => p.fertility + 0.6 * p.forest + 0.6 * p.rock;
+  const sorted = provinces.map(score).sort((a, b) => a - b), median = sorted[Math.floor(sorted.length / 2)];
+  const cand = provinces.filter(p => score(p) >= median && p.neighbors.length >= 3 && p.slots >= 3)
+    .sort((a, b) => score(b) - score(a) || a.id - b.id);
+  for (let d = 1100; d >= 400; d -= 100) {
+    const chosen: Province[] = [];
+    for (const p of cand) {
+      if (chosen.length >= 8) break;
+      if (chosen.every(c => Math.hypot(c.center.x - p.center.x, c.center.y - p.center.y) >= d)) chosen.push(p);
+    }
+    if (chosen.length >= 5) return chosen.map(p => p.id);
+  }
+  return cand.slice(0, 5).map(p => p.id);
 }
