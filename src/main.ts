@@ -7,6 +7,7 @@ import { ChunkManager } from './client/view/chunks';
 import { createScene } from './client/view/scene';
 import { WorldClient } from './client/worldClient';
 import { parseSeed, randomSeed } from './worldgen/seed';
+import { nearestLandTile } from './worldgen/global/world';
 import type { Biome, WorldMap } from './worldgen/types';
 
 const client = new WorldClient();
@@ -26,6 +27,7 @@ async function load(s: number) {
   history.replaceState(null, '', `?seed=${s}`);
   showError(null);
   map = null;
+  pendingTeleport = null;
   chunks.reset();
   let m: WorldMap;
   try { m = await client.generate(s, setProgress); }
@@ -33,7 +35,9 @@ async function load(s: number) {
   map = m;
   setProgress(null, 1);
   drawMap2d(mapCanvas, m);
+  // passa pelo mesmo caminho do teleporte: confirma chão firme quando o chunk carregar
   player.teleport({ x: Math.floor(m.spawn.x), y: Math.floor(m.spawn.y) });
+  pendingTeleport = { x: Math.floor(m.spawn.x), y: Math.floor(m.spawn.y) };
 }
 
 initHud({
@@ -69,7 +73,8 @@ viewCanvas.addEventListener('click', e => {
 });
 
 // clique no mapa 2D: teleporta (espera o chunk carregar para achar chão firme)
-onMapClick(mapCanvas, (x, y) => { if (map) pendingTeleport = { x, y }; });
+// clique no oceano: primeiro a terra seca mais próxima pelo mapa global, depois o tile andável quando o chunk carregar
+onMapClick(mapCanvas, (x, y) => { if (map) pendingTeleport = nearestLandTile(map, x, y); });
 
 let last = performance.now(), frames = 0, fps = 0, fpsT = last;
 function frame(now: number) {
