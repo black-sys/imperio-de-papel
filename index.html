@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mundo</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #14171c; color: #e8e6e1; font: 14px system-ui, sans-serif; }
+    #view { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+    #hud { position: fixed; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 8px; background: #14171ccc; padding: 10px 12px; border-radius: 8px; }
+    #hud .row { display: flex; gap: 6px; align-items: center; }
+    #hud input { width: 120px; background: #20242b; color: inherit; border: 1px solid #3a404a; border-radius: 4px; padding: 4px 6px; }
+    #hud button { background: #2f6f4f; color: #fff; border: 0; border-radius: 4px; padding: 5px 10px; cursor: pointer; }
+    #hud button.ghost { background: #2a2f37; }
+    #progress { height: 4px; background: #2a2f37; border-radius: 2px; overflow: hidden; }
+    #progress > div { height: 100%; width: 0; background: #5fb37f; transition: width .15s; }
+    #info { font-variant-numeric: tabular-nums; opacity: .85; }
+    #error { color: #ff8a80; display: none; max-width: 280px; }
+    #map2d { position: fixed; right: 12px; bottom: 12px; width: min(70vmin, 512px); height: min(70vmin, 512px); image-rendering: pixelated; border: 2px solid #3a404a; border-radius: 6px; cursor: crosshair; display: none; }
+    #map2d.open { display: block; }
+    #help { position: fixed; bottom: 12px; left: 12px; opacity: .6; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <canvas id="view"></canvas>
+  <div id="hud">
+    <div class="row">
+      <label for="seed">Semente</label>
+      <input id="seed" inputmode="numeric" />
+      <button id="gen">Gerar</button>
+      <button id="link" class="ghost">Copiar link</button>
+    </div>
+    <div id="stage"></div>
+    <div id="progress"><div></div></div>
+    <div id="info"></div>
+    <div id="error"></div>
+  </div>
+  <canvas id="map2d" width="512" height="512"></canvas>
+  <div id="help">WASD / clique: andar · Q/E: girar · roda: zoom · M: mapa</div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
