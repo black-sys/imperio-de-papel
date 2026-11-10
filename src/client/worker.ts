@@ -1,8 +1,12 @@
 import { generateChunk } from '../worldgen/chunk';
+import { generateCoarseChunk } from '../worldgen/coarse';
 import { generateWorld } from '../worldgen/global/world';
 import type { WorldMap } from '../worldgen/types';
 
-export type WorkerIn = { type: 'world'; seed: number; token: number } | { type: 'chunk'; cx: number; cy: number; token: number };
+export type WorkerIn =
+  | { type: 'world'; seed: number; token: number }
+  | { type: 'chunk'; cx: number; cy: number; token: number }
+  | { type: 'coarse'; cx: number; cy: number; step: 2 | 4; token: number };
 
 let map: WorldMap | null = null;
 let current = -1;
@@ -14,6 +18,10 @@ self.onmessage = (e: MessageEvent<WorkerIn>) => {
       current = msg.token;
       map = generateWorld(msg.seed, (stage, pct) => postMessage({ type: 'progress', stage, pct, token: msg.token }));
       postMessage({ type: 'world', map, token: msg.token }); // cópia; o worker mantém o original para os chunks
+    } else if (msg.type === 'coarse') {
+      if (!map || msg.token !== current) return;
+      const data = generateCoarseChunk(map, msg.cx, msg.cy, msg.step);
+      postMessage({ type: 'coarse', data, token: msg.token }, { transfer: [data.heights, data.biome, data.water, data.waterLevel].map(a => a.buffer) });
     } else {
       if (!map || msg.token !== current) return; // pedido de um mundo antigo
       const data = generateChunk(map, msg.cx, msg.cy);

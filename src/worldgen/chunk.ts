@@ -186,10 +186,10 @@ function bilinear(map: WorldMap, u: number, v: number): number {
 
 // ---- rios: polilinhas suavizadas, indexadas por chunk ----
 
-interface Seg { ax: number; ay: number; bx: number; by: number; fa: number; fb: number; sa: number; sb: number }
+export interface Seg { ax: number; ay: number; bx: number; by: number; fa: number; fb: number; sa: number; sb: number }
 const riverIndex = new WeakMap<WorldMap, Map<number, Seg[]>>();
 
-function riverSegments(map: WorldMap, cx: number, cy: number): Seg[] {
+export function riverSegments(map: WorldMap, cx: number, cy: number): Seg[] {
   let idx = riverIndex.get(map);
   if (!idx) { idx = buildRiverIndex(map); riverIndex.set(map, idx); }
   return idx.get(cy * CHUNKS_PER_SIDE + cx) ?? [];
@@ -260,14 +260,14 @@ function chaikin(p: number[][]): number[][] {
 }
 
 /** Entre os trechos que cobrem o ponto (dist < largura/2), o mais largo; superfície do trecho mais próximo. */
-function coveringRiver(segs: Seg[], x: number, y: number): { width: number; surface: number } | null {
+export function coveringRiver(segs: Seg[], x: number, y: number, minWidth = 0): { width: number; surface: number } | null {
   let width = 0, surface = 0, best = Infinity;
   for (const s of segs) {
     const dx = s.bx - s.ax, dy = s.by - s.ay, l2 = dx * dx + dy * dy;
     const t = l2 === 0 ? 0 : Math.min(1, Math.max(0, ((x - s.ax) * dx + (y - s.ay) * dy) / l2));
     const px = s.ax + dx * t - x, py = s.ay + dy * t - y;
     const dist = Math.sqrt(px * px + py * py);
-    const w = Math.min(8, 1 + Math.sqrt(s.fa + (s.fb - s.fa) * t) * 0.3);
+    const w = Math.max(minWidth, Math.min(8, 1 + Math.sqrt(s.fa + (s.fb - s.fa) * t) * 0.3));
     if (dist >= w / 2) continue;
     if (w > width) width = w;
     if (dist < best) { best = dist; surface = s.sa + (s.sb - s.sa) * t; }

@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { generateChunk } from '../src/worldgen/chunk';
+import { generateChunk, riverPaths } from '../src/worldgen/chunk';
 import { generateCoarseChunk } from '../src/worldgen/coarse';
 import { CHUNK } from '../src/worldgen/constants';
 import { generateWorld } from '../src/worldgen/global/world';
@@ -30,6 +30,16 @@ describe('generateCoarseChunk', { timeout: 60000 }, () => {
   test('costura entre vizinhos grossos', () => {
     const a = generateCoarseChunk(map, 20, 20, 4), b = generateCoarseChunk(map, 21, 20, 4), N = CHUNK / 4 + 1;
     for (let j = 0; j < N; j++) expect(a.heights[j * N + N - 1]).toBe(b.heights[j * N]);
+  });
+  test('rios aparecem no chunk grosso', () => {
+    let hits = 0, n = 0;
+    for (const p of riverPaths(map).filter(p => p.length > 60).slice(0, 10)) {
+      const [x, y] = p[Math.floor(p.length / 2)];
+      const c = generateCoarseChunk(map, Math.floor(x / CHUNK), Math.floor(y / CHUNK), 4);
+      n++; if (c.water.some(w => w === 3)) hits++;
+    }
+    expect(n).toBeGreaterThan(5);
+    expect(hits).toBe(n);
   });
   test('fora do mundo é oceano', () => {
     const c = generateCoarseChunk(map, -1, 5, 4);

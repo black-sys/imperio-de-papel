@@ -1,3 +1,4 @@
+import type { CoarseChunk } from '../worldgen/coarse';
 import type { ChunkData, WorldMap } from '../worldgen/types';
 import type { WorkerIn } from './worker';
 
@@ -5,6 +6,7 @@ type Out =
   | { type: 'progress'; stage: string; pct: number; token: number }
   | { type: 'world'; map: WorldMap; token: number }
   | { type: 'chunk'; data: ChunkData; token: number }
+  | { type: 'coarse'; data: CoarseChunk; token: number }
   | { type: 'error'; message: string; seed: number; token: number };
 
 /** Lado principal do worker. Cada generate() invalida respostas de mundos anteriores. */
@@ -12,7 +14,8 @@ export class WorldClient {
   private worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   private token = 0;
   private pendingWorld: { resolve: (m: WorldMap) => void; reject: (e: Error) => void; onProgress: (s: string, p: number) => void } | null = null;
-  private pendingChunks = new Map<string, { resolve: (c: ChunkData) => void; reject: (e: Error) => void }>();
+  // chave `cx,cy` (completo) ou `cx,cy,step` (grosso)
+  private pendingChunks = new Map<string, { resolve: (c: any) => void; reject: (e: Error) => void }>();
 
   constructor() {
     this.worker.onmessage = (e: MessageEvent<Out>) => {
@@ -22,6 +25,10 @@ export class WorldClient {
       else if (m.type === 'world') { this.pendingWorld?.resolve(m.map); this.pendingWorld = null; }
       else if (m.type === 'chunk') {
         const k = `${m.data.cx},${m.data.cy}`;
+        this.pendingChunks.get(k)?.resolve(m.data);
+        this.pendingChunks.delete(k);
+      } else if (m.type === 'coarse') {
+        const k = `${m.data.cx},${m.data.cy},${m.data.step}`;
         this.pendingChunks.get(k)?.resolve(m.data);
         this.pendingChunks.delete(k);
       } else {
@@ -34,6 +41,8 @@ export class WorldClient {
     this.worker.onerror = e => {
       const err = new Error(e.message || 'falha no worker');
       this.pendingWorld?.reject(err); this.pendingWorld = null;
+      for (const p of this.pendingChunks.values()) p.reject(err);
+      this.pendingChunks.clear();
     };
   }
 
@@ -54,6 +63,15 @@ export class WorldClient {
       this.pendingChunks.get(k)?.reject(new Error('duplicado'));
       this.pendingChunks.set(k, { resolve, reject });
       this.post({ type: 'chunk', cx, cy, token: this.token });
+    });
+  }
+
+  coarse(cx: number, cy: number, step: 2 | 4): Promise<CoarseChunk> {
+    const k = `${cx},${cy},${step}`;
+    return new Promise((resolve, reject) => {
+      this.pendingChunks.get(k)?.reject(new Error('duplicado'));
+      this.pendingChunks.set(k, { resolve, reject });
+      this.post({ type: 'coarse', cx, cy, step, token: this.token });
     });
   }
 

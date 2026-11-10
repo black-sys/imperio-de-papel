@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 const PITCH = (35.264 * Math.PI) / 180;
-const MIN_W = 20, MAX_W = 80;
+export const MIN_W = 20, MAX_W = 600;
 
 export interface IsoScene {
   renderer: THREE.WebGLRenderer;
@@ -10,6 +10,8 @@ export interface IsoScene {
   setTarget(x: number, z: number, y?: number): void;
   rotate(dir: 1 | -1): void;
   zoom(delta: number): void;
+  /** Largura da vista em tiles. */
+  viewWidth(): number;
   /** Ângulo de giro atual (rad) — usado para WASD relativo à câmera. */
   yaw(): number;
   render(): void;
@@ -25,7 +27,7 @@ export function createScene(canvas: HTMLCanvasElement): IsoScene {
   sun.position.set(-0.5, 1, -0.3);
   scene.add(sun);
 
-  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 2000);
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 4000);
   let width = 40, k = 0, yawAnim = Math.PI / 4;
   const target = new THREE.Vector3();
   const resize = () => {
@@ -39,7 +41,7 @@ export function createScene(canvas: HTMLCanvasElement): IsoScene {
   resize();
 
   const place = () => {
-    const d = 400;
+    const d = 1500;
     camera.position.set(
       target.x + Math.cos(yawAnim) * Math.cos(PITCH) * d,
       target.y + Math.sin(PITCH) * d,
@@ -54,6 +56,7 @@ export function createScene(canvas: HTMLCanvasElement): IsoScene {
     rotate(dir) { k = (k + dir + 4) % 4; },
     zoom(delta) { width = Math.min(MAX_W, Math.max(MIN_W, width * (delta > 0 ? 1.1 : 1 / 1.1))); resize(); },
     yaw() { return yawAnim; },
+    viewWidth() { return width; },
     render() {
       const goal = Math.PI / 4 + (k * Math.PI) / 2;
       let diff = goal - yawAnim;

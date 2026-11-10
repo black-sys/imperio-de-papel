@@ -4,6 +4,8 @@ import { initHud, setInfo, setProgress, setSeedField, showError } from './client
 import { BIOME_NAMES, drawMap2d, onMapClick, setMarker } from './client/map2d';
 import { Player } from './client/player';
 import { ChunkManager } from './client/view/chunks';
+import { loadQuality } from './client/quality';
+import { CHUNK } from './worldgen/constants';
 import { createScene } from './client/view/scene';
 import { WorldClient } from './client/worldClient';
 import { parseSeed, randomSeed } from './worldgen/seed';
@@ -19,6 +21,9 @@ const player = new Player(iso.scene);
 let seed = parseSeed(new URLSearchParams(location.search).get('seed')) ?? randomSeed();
 let map: WorldMap | null = null;
 let pendingTeleport: { x: number; y: number } | null = null;
+let quality = loadQuality();
+// raio (em chunks) que cobre a vista isométrica: o chão visto é ~1.8× mais alto que largo na tela
+const viewRadius = () => Math.ceil((iso.viewWidth() * 0.9) / CHUNK) + 1;
 const walk = (x: number, y: number) => chunks.walkAt(x, y);
 
 async function load(s: number) {
@@ -82,7 +87,7 @@ function frame(now: number) {
   last = now;
   if (map) {
     if (pendingTeleport) {
-      chunks.update(pendingTeleport.x, pendingTeleport.y);
+      chunks.update(pendingTeleport.x, pendingTeleport.y, viewRadius(), quality);
       if (chunks.isLoaded(pendingTeleport.x, pendingTeleport.y)) {
         const t = nearestWalkable(walk, pendingTeleport.x, pendingTeleport.y);
         if (t) player.teleport(t);
@@ -94,7 +99,7 @@ function frame(now: number) {
     player.moveDir(f.x * fw + r.x * rt, f.y * fw + r.y * rt);
     player.update(dt, chunks);
     const p = player.position;
-    chunks.update(p.x, p.y);
+    chunks.update(p.x, p.y, viewRadius(), quality);
     iso.setTarget(p.x, p.y, chunks.heightAt(p.x, p.y));
     setMarker(p.x, p.y);
     const b = chunks.biomeAt(p.x, p.y);
