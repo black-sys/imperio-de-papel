@@ -11,6 +11,7 @@ export class StrategicMap {
   private img: HTMLCanvasElement | null = null;
   private layers: HTMLCanvasElement[] = [];
   private labels: { x: number; y: number; name: string; size: number }[] = [];
+  private pins: { x: number; y: number }[] = [];
   private ctx: CanvasRenderingContext2D;
   mode: '3d' | 'map' = '3d';
   private center = { x: 0, y: 0 };
@@ -51,6 +52,9 @@ export class StrategicMap {
 
   setMarker(x: number, y: number): void { this.marker = { x, y }; }
 
+  /** Selos (capitais sugeridas na tela inicial). */
+  setPins(pins: { x: number; y: number }[]): void { this.pins = pins; }
+
   /** Camadas desenhadas por cima do pergaminho (aquarela dos donos, fronteiras) e nomes das províncias. */
   setOverlay(layers: HTMLCanvasElement[], labels: { x: number; y: number; name: string; size: number }[]): void {
     this.layers = layers; this.labels = labels;
@@ -66,6 +70,9 @@ export class StrategicMap {
   }
 
   get focus() { return this.center; }
+
+  /** Largura (em tiles) mostrada no modo mapa. */
+  zoomTo(across: number): void { this.across = across; }
 
   /** Modo mapa com a transição concluída: o 3D está totalmente escondido. */
   get covering(): boolean { return this.mode === 'map' && this.t > 0.98 && this.img !== null; }
@@ -105,6 +112,14 @@ export class StrategicMap {
         ctx.fillStyle = 'rgba(60, 38, 20, 0.85)';
         ctx.fillText(l.name, px, py);
       }
+    }
+    for (const p of this.pins) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const px = W / 2 + scale * ((p.x - c.x) * rx + (p.y - c.y) * rz), py = H / 2 - scale * s * ((p.x - c.x) * fx + (p.y - c.y) * fz);
+      ctx.fillStyle = '#8a2a20'; ctx.strokeStyle = '#f1e6cf'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.arc(px, py, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = '#f1e6cf'; ctx.font = 'bold 13px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText('♜', px, py + 1);
     }
     if (this.marker) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);

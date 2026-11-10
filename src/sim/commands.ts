@@ -32,21 +32,27 @@ export function setSpeed(s: GameState, v: number): Result {
   return OK;
 }
 
-export function colonize(s: GameState, pm: ProvinceMap, id: number): Result {
+/** Verifica sem alterar o estado (a interface usa para mostrar o motivo de botões desabilitados). */
+export function checkColonize(s: GameState, pm: ProvinceMap, id: number): Result {
   if (!validProvince(pm, id)) return no('Província inválida');
   if (s.owner[id] !== -1) return no('Esta província não é neutra');
   if (s.colonizing.some(c => c.province === id)) return no('Já está sendo colonizada');
   if (s.colonizing.length >= COLONIZE.max) return no(`Já há ${COLONIZE.max} colonizações em andamento`);
   if (!pm.provinces[id].neighbors.some(n => s.owner[n] === 0)) return no('Precisa ser vizinha de uma província sua');
-  const c = colonizeCost(s, pm, id), a = afford(s, c);
-  if (!a.ok) return a;
+  return afford(s, colonizeCost(s, pm, id));
+}
+
+export function colonize(s: GameState, pm: ProvinceMap, id: number): Result {
+  const chk = checkColonize(s, pm, id);
+  if (!chk.ok) return chk;
+  const c = colonizeCost(s, pm, id);
   pay(s, c);
   s.colonizing.push({ province: id, remaining: c.months });
   logEvent(s, `Colonização de ${pm.provinces[id].name} iniciada`);
   return OK;
 }
 
-export function build(s: GameState, pm: ProvinceMap, id: number, slot: number, type: BuildingType): Result {
+export function checkBuild(s: GameState, pm: ProvinceMap, id: number, slot: number, type: BuildingType): Result {
   if (!validProvince(pm, id)) return no('Província inválida');
   if (s.owner[id] !== 0) return no('Esta província não é sua');
   if (!Number.isInteger(slot) || slot < 0 || slot >= s.buildings[id].length) return no('Vaga inválida');
@@ -57,22 +63,32 @@ export function build(s: GameState, pm: ProvinceMap, id: number, slot: number, t
   if (type === 'sawmill' && p.forest < MIN_FOREST) return no(`Precisa de floresta (≥ ${MIN_FOREST})`);
   if (type === 'quarry' && p.rock < MIN_ROCK) return no(`Precisa de rocha (≥ ${MIN_ROCK})`);
   if (type === 'market' && !here.some(b => b?.type === 'village' && activeLevel(b) >= 2)) return no('Precisa de Vila nível 2');
-  const c = buildCost(type, 1), a = afford(s, c);
-  if (!a.ok) return a;
+  return afford(s, buildCost(type, 1));
+}
+
+export function build(s: GameState, pm: ProvinceMap, id: number, slot: number, type: BuildingType): Result {
+  const chk = checkBuild(s, pm, id, slot, type);
+  if (!chk.ok) return chk;
+  const c = buildCost(type, 1);
   pay(s, c);
-  here[slot] = { type, level: 1, remaining: c.months };
+  s.buildings[id][slot] = { type, level: 1, remaining: c.months };
   return OK;
 }
 
-export function upgrade(s: GameState, pm: ProvinceMap, id: number, slot: number): Result {
+export function checkUpgrade(s: GameState, pm: ProvinceMap, id: number, slot: number): Result {
   if (!validProvince(pm, id)) return no('Província inválida');
   if (s.owner[id] !== 0) return no('Esta província não é sua');
   const b = s.buildings[id]?.[slot];
   if (!b) return no('Vaga vazia');
   if (b.remaining > 0) return no('Já está em obra');
   if (b.level >= MAX_LEVEL) return no('Nível máximo');
-  const c = buildCost(b.type, b.level + 1), a = afford(s, c);
-  if (!a.ok) return a;
+  return afford(s, buildCost(b.type, b.level + 1));
+}
+
+export function upgrade(s: GameState, pm: ProvinceMap, id: number, slot: number): Result {
+  const chk = checkUpgrade(s, pm, id, slot);
+  if (!chk.ok) return chk;
+  const b = s.buildings[id][slot]!, c = buildCost(b.type, b.level + 1);
   pay(s, c);
   b.level++; b.remaining = c.months;
   return OK;

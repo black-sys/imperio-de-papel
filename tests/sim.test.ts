@@ -153,3 +153,14 @@ describe('tempo e estado', () => {
     expect(c.buildings[0][1].remaining).toBe(0);
   });
 });
+
+describe('verificações sem efeito', () => {
+  test('check* não altera o estado e concorda com o comando', async () => {
+    const { checkBuild, checkColonize, checkUpgrade } = await import('../src/sim/commands');
+    const s = game(), before = JSON.stringify(s);
+    expect(checkBuild(s, pm, 0, 1, 'sawmill')).toEqual({ ok: true });
+    expect(checkColonize(s, pm, 1)).toEqual({ ok: false, reason: 'Falta 40 de ouro' });
+    expect(checkUpgrade(s, pm, 0, 0).ok).toBe(false);
+    expect(JSON.stringify(s)).toBe(before);
+  });
+});
