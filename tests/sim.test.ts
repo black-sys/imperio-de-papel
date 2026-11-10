@@ -8,7 +8,7 @@ import { Biome } from '../src/worldgen/types';
 
 const prov = (id: number, neighbors: number[], o: Partial<Province> = {}): Province => ({
   id, name: `P${id}`, center: { x: id * 100, y: 0 }, cells: 1000, neighbors, coastal: false, biome: Biome.Grassland,
-  fertility: 1, forest: 1, rock: 1, slots: 4, sites: [], ...o,
+  fertility: 1, forest: 1, rock: 1, slots: 4, sites: [{ x: 1, y: 1 }, { x: 9, y: 1 }, { x: 1, y: 9 }, { x: 9, y: 9 }], ...o,
 });
 // 0-1-2-3 em cadeia; 4 isolada; 2 é montanha (colonizar demora mais); 3 sem floresta nem rocha
 const pm: ProvinceMap = {
@@ -162,5 +162,30 @@ describe('verificações sem efeito', () => {
     expect(checkColonize(s, pm, 1)).toEqual({ ok: false, reason: 'Falta 40 de ouro' });
     expect(checkUpgrade(s, pm, 0, 0).ok).toBe(false);
     expect(JSON.stringify(s)).toBe(before);
+  });
+});
+
+describe('correções da revisão', () => {
+  test('contador total de eventos continua depois do limite de 50 do log', async () => {
+    const { logEvent } = await import('../src/sim/state');
+    const s = game();
+    for (let i = 0; i < 60; i++) logEvent(s, `e${i}`);
+    expect(s.events.length).toBe(50);
+    expect(s.eventCount).toBe(61); // 1 da capital + 60
+  });
+  test('segundo mercado ou guarnição na mesma província é recusado', () => {
+    const s = game();
+    s.res = { gold: 9999, wood: 9999, stone: 9999 };
+    s.buildings[0][0]!.level = 2;
+    expect(build(s, pm, 0, 1, 'market').ok).toBe(true);
+    expect(build(s, pm, 0, 2, 'market')).toEqual({ ok: false, reason: 'Já existe um Mercado nesta província' });
+    expect(build(s, pm, 0, 2, 'garrison').ok).toBe(true);
+    expect(build(s, pm, 0, 3, 'garrison')).toEqual({ ok: false, reason: 'Já existe uma Guarnição nesta província' });
+  });
+  test('província sem local de construção não pode ser colonizada', () => {
+    const s = game();
+    s.res.gold = 999;
+    const pm2: ProvinceMap = { ...pm, provinces: pm.provinces.map(p => (p.id === 1 ? { ...p, sites: [], slots: 1 } : p)) };
+    expect(colonize(s, pm2, 1)).toEqual({ ok: false, reason: 'Não há terra firme para fundar uma vila' });
   });
 });

@@ -32,15 +32,15 @@ const MOUNTAIN_COST = 4;
 const DX = [0, -1, 1, 0], DY = [-1, 0, 0, 1];
 
 export function generateProvinces(map: WorldMap): ProvinceMap {
-  const S = map.size, n = S * S;
+  const S = map.size;
   const land = (i: number) => map.water[i] !== 1;
   const region = growRegions(map, pickSeeds(map));
   mergeSmall(region, S, land);
   splitLarge(map, region);
+  mergeLakeOnly(region, map);
   mergeSmall(region, S, land); // pedaços pequenos que a divisão possa ter deixado
   const cellProvince = compact(region);
   const provinces = describe(map, cellProvince);
-  void n;
   addAttributes(map, cellProvince, provinces);
   return { cellProvince, provinces, suggestedCapitals: suggestCapitals(provinces) };
 }
@@ -172,6 +172,32 @@ function mergeSmall(region: Int32Array, S: number, land: (i: number) => boolean)
     }
     for (let i = 0; i < S * S; i++) { const t = into.get(region[i]); if (t !== undefined && t !== region[i]) region[i] = t; }
   }
+}
+
+const MIN_DRY_CELLS = 12; // abaixo disso não cabem 3 locais de construção
+/** Regiões (quase) sem terra seca — lago inteiro ou faixa de margem — não servem para construir: vão para a vizinha de maior fronteira. */
+function mergeLakeOnly(region: Int32Array, map: WorldMap): void {
+  const S = map.size, dry = new Map<number, number>(), border = new Map<number, Map<number, number>>();
+  for (let i = 0; i < region.length; i++) {
+    const r = region[i];
+    if (r < 0) continue;
+    if (!dry.has(r)) dry.set(r, 0);
+    if (map.water[i] === 0) dry.set(r, dry.get(r)! + 1);
+    for (const j of n4(i, S)) {
+      const q = region[j];
+      if (q < 0 || q === r) continue;
+      const m = border.get(r) ?? border.set(r, new Map()).get(r)!;
+      m.set(q, (m.get(q) ?? 0) + 1);
+    }
+  }
+  const into = new Map<number, number>();
+  for (const [r, d] of dry) {
+    if (d >= MIN_DRY_CELLS || !border.has(r)) continue;
+    let to = -1, m = 0;
+    for (const [q, k] of border.get(r)!) if (dry.get(q)! >= MIN_DRY_CELLS && (k > m || (k === m && q < to))) { m = k; to = q; }
+    if (to >= 0) into.set(r, to);
+  }
+  for (let i = 0; i < region.length; i++) { const t = into.get(region[i]); if (t !== undefined) region[i] = t; }
 }
 
 /** Regiões acima de 2.5× a média (planícies cercadas por rios) são divididas com novas sementes internas. */
@@ -381,8 +407,8 @@ function makeName(rng: () => number): string {
   return s[0].toUpperCase() + s.slice(1);
 }
 
-/** 5–8 capitais sugeridas: acima da mediana de pontuação, longe umas das outras. */
-function suggestCapitals(provinces: Province[]): number[] {
+/** 5–8 capitais sugeridas: acima da mediana de pontuação, longe umas das outras. Nunca vazio. */
+export function suggestCapitals(provinces: Province[]): number[] {
   const score = (p: Province) => p.fertility + 0.6 * p.forest + 0.6 * p.rock;
   const sorted = provinces.map(score).sort((a, b) => a - b), median = sorted[Math.floor(sorted.length / 2)];
   // capital precisa de madeira e pedra por perto (nela ou numa vizinha), senão trava a economia inicial
@@ -398,5 +424,9 @@ function suggestCapitals(provinces: Province[]): number[] {
     }
     if (chosen.length >= 5) return chosen.map(p => p.id);
   }
-  return cand.slice(0, 5).map(p => p.id);
+  if (cand.length) return cand.slice(0, 5).map(p => p.id);
+  // continente pequeno/ilhado: sem filtros, as melhores com local de construção (ou qualquer uma)
+  const any = [...provinces].sort((a, b) => score(b) - score(a) || a.id - b.id);
+  const withSites = any.filter(p => p.sites.length > 0);
+  return (withSites.length ? withSites : any).slice(0, 5).map(p => p.id);
 }

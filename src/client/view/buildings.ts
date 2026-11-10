@@ -61,7 +61,8 @@ export class BuildingsView {
     s.buildings.forEach((slots, id) => {
       const col = s.colonizing.some(c => c.province === id);
       if (!col && slots.every(b => !b)) { if (this.groups.has(id)) this.remove(id); return; }
-      const key = JSON.stringify(slots) + col;
+      // só o que muda o desenho (tipo, nível, em obra ou não): `remaining` muda a cada quadro
+      const key = slots.map(b => (b ? `${b.type}${b.level}${b.remaining > 0 ? 'o' : ''}` : '-')).join(',') + col;
       if (this.groups.get(id)?.key === key) return;
       this.remove(id);
       const g = new THREE.Group(), sites = pm.provinces[id].sites;

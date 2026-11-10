@@ -13,12 +13,13 @@ export interface GameState {
   buildings: (Building | null)[][];
   colonizing: { province: number; remaining: number }[];
   capital: number;
-  events: { month: number; text: string }[];
+  events: { month: number; text: string }[]; // últimos 50
+  eventCount: number; // total já registrado (a interface compara com ele para achar os novos)
 }
 
 export function newGame(pm: ProvinceMap): GameState {
   return {
-    month: 0, speed: 0, res: { ...START_RES }, capital: -1, colonizing: [], events: [],
+    month: 0, speed: 0, res: { ...START_RES }, capital: -1, colonizing: [], events: [], eventCount: 0,
     owner: pm.provinces.map(() => -1),
     buildings: pm.provinces.map(p => new Array<Building | null>(p.slots).fill(null)),
   };
@@ -28,5 +29,6 @@ export const activeLevel = (b: Building | null) => (!b ? 0 : b.remaining > 0 ? b
 
 export function logEvent(s: GameState, text: string): void {
   s.events.push({ month: s.month, text });
+  s.eventCount++;
   if (s.events.length > 50) s.events.shift();
 }

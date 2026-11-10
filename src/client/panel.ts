@@ -57,7 +57,10 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
   lastHtml = html;
   el.innerHTML = html;
   el.style.display = 'block';
-  el.onclick = e => {
+  // pointerdown (não click): o painel é refeito várias vezes por segundo com o tempo correndo e um click
+  // que começa num botão e termina no botão novo se perderia
+  el.onpointerdown = e => {
+    if (e.button !== 0) return;
     const a = (e.target as HTMLElement).closest('button')?.dataset.a;
     if (!a) return;
     if (a === 'close') act.close();

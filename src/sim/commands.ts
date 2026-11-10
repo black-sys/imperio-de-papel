@@ -36,6 +36,7 @@ export function setSpeed(s: GameState, v: number): Result {
 export function checkColonize(s: GameState, pm: ProvinceMap, id: number): Result {
   if (!validProvince(pm, id)) return no('Província inválida');
   if (s.owner[id] !== -1) return no('Esta província não é neutra');
+  if (pm.provinces[id].sites.length === 0) return no('Não há terra firme para fundar uma vila');
   if (s.colonizing.some(c => c.province === id)) return no('Já está sendo colonizada');
   if (s.colonizing.length >= COLONIZE.max) return no(`Já há ${COLONIZE.max} colonizações em andamento`);
   if (!pm.provinces[id].neighbors.some(n => s.owner[n] === 0)) return no('Precisa ser vizinha de uma província sua');
@@ -56,10 +57,13 @@ export function checkBuild(s: GameState, pm: ProvinceMap, id: number, slot: numb
   if (!validProvince(pm, id)) return no('Província inválida');
   if (s.owner[id] !== 0) return no('Esta província não é sua');
   if (!Number.isInteger(slot) || slot < 0 || slot >= s.buildings[id].length) return no('Vaga inválida');
-  if (!(type in BUILDINGS)) return no('Prédio desconhecido');
+  if (!Object.hasOwn(BUILDINGS, type)) return no('Prédio desconhecido');
   if (s.buildings[id][slot]) return no('Vaga ocupada');
   const p = pm.provinces[id], here = s.buildings[id];
   if (type === 'village' && here.some(b => b?.type === 'village')) return no('Já existe uma vila nesta província');
+  // efeito de mercado/guarnição não acumula: a segunda só custaria
+  if (type === 'market' && here.some(b => b?.type === 'market')) return no('Já existe um Mercado nesta província');
+  if (type === 'garrison' && here.some(b => b?.type === 'garrison')) return no('Já existe uma Guarnição nesta província');
   if (type === 'sawmill' && p.forest < MIN_FOREST) return no(`Precisa de floresta (≥ ${MIN_FOREST})`);
   if (type === 'quarry' && p.rock < MIN_ROCK) return no(`Precisa de rocha (≥ ${MIN_ROCK})`);
   if (type === 'market' && !here.some(b => b?.type === 'village' && activeLevel(b) >= 2)) return no('Precisa de Vila nível 2');

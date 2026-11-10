@@ -124,3 +124,18 @@ describe('atributos', { timeout: 60000 }, () => {
     }
   });
 });
+
+describe('correções da revisão', { timeout: 120000 }, () => {
+  test.each([8, 9, 123])('semente %i: nenhuma província só de lago (todas com terra e 3+ locais)', seed => {
+    const { map, pm } = get(seed);
+    const dry = new Int32Array(pm.provinces.length);
+    pm.cellProvince.forEach((p, i) => { if (p >= 0 && map.water[i] === 0) dry[p]++; });
+    expect(pm.provinces.filter(p => dry[p.id] === 0).map(p => p.id)).toEqual([]);
+    expect(pm.provinces.filter(p => p.sites.length < 3).map(p => p.id)).toEqual([]);
+  });
+  test('capitais sugeridas nunca ficam vazias (sem vizinhos/recursos, cai para as melhores)', async () => {
+    const { suggestCapitals } = await import('../src/worldgen/provinces');
+    const lone = [0, 1, 2].map(id => ({ id, name: `L${id}`, center: { x: id * 900, y: 0 }, cells: 100, neighbors: [], coastal: true, biome: 5, fertility: 1, forest: 0, rock: 0, slots: 3, sites: [] }));
+    expect(suggestCapitals(lone as never).length).toBeGreaterThanOrEqual(1);
+  });
+});

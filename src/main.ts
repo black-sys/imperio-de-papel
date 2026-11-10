@@ -51,7 +51,7 @@ async function load(s: number) {
   setSeedField(s);
   history.replaceState(null, '', `?seed=${s}`);
   showError(null);
-  map = null; pm = null; game = null; selected = -1; seenEvents = 0;
+  map = null; pm = null; game = null; selected = -1; seenEvents = 0; lastSpeed = 1;
   strategic.setPins([]); paintKey = ''; ownerKey = ''; bordersLayer = null;
   chunks.setPainter(null);
   buildingsView.clear();
@@ -68,8 +68,8 @@ async function load(s: number) {
   const m = map;
   client.parchment(2048).then(px => { if (map === m) strategic.setImage(px, 2048); }, () => {});
   bordersLayer = bordersCanvas(pm, 2048);
-  const first = pm.provinces[pm.suggestedCapitals[0]];
-  camera.center(first.center.x, first.center.y);
+  const first = pm.provinces[pm.suggestedCapitals[0]] ?? pm.provinces[0];
+  if (first) camera.center(first.center.x, first.center.y);
   // tela inicial: pergaminho com selos nas capitais sugeridas
   strategic.setPins(pm.suggestedCapitals.map(i => pm!.provinces[i].center));
   strategic.open(2048, 2048);
@@ -120,7 +120,7 @@ window.addEventListener('keydown', e => {
   }
   if (k === 'q') iso.rotate(-1);
   if (k === 'e') iso.rotate(1);
-  if (k === ' ' && game) { speed(game.speed === 0 ? lastSpeed : 0); e.preventDefault(); }
+  if (k === ' ' && game) { e.preventDefault(); if (game.capital >= 0) speed(game.speed === 0 ? lastSpeed : 0); } // antes da capital o tempo fica parado
   if (strategic.mode !== 'map') keys.add(k); // com o mapa aberto, o teclado não move a câmera escondida
 });
 window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
@@ -179,9 +179,10 @@ function frame(now: number) {
     setInfo({ fps, tris: iso.renderer.info.render.triangles });
     renderPanel(game, pm, selected, actions);
     buildingsView.sync(game, pm, (x, y) => chunks.heightAt(x, y));
-    // eventos novos viram mensagens (o log guarda os últimos 50; conta pelo total visto)
-    for (; seenEvents < game.events.length; seenEvents++) toast(game.events[seenEvents].text);
-    if (seenEvents > game.events.length) seenEvents = game.events.length;
+    // eventos novos viram mensagens: compara com o total (o log só guarda os últimos 50)
+    const fresh = game.eventCount - seenEvents;
+    for (const ev of game.events.slice(Math.max(0, game.events.length - fresh))) toast(ev.text);
+    seenEvents = game.eventCount;
   }
   // pergaminho opaco cobrindo tudo: não desenha (nem sombreia) o 3D escondido
   if (!strategic.covering) iso.render();
