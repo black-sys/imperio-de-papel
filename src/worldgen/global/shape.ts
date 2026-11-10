@@ -11,11 +11,11 @@ export function landShape(seed: number, size: number): { base: Float32Array; lan
   for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
     const i = y * size + x;
     if (x < BORDER || y < BORDER || x >= size - BORDER || y >= size - BORDER) { raw[i] = -1; continue; }
-    const nx = (x / size) * 4, ny = (y / size) * 4;
-    const [wx, wy] = warp(nx, ny, seed, 1.6);
+    const nx = (x / size) * 3, ny = (y / size) * 3;
+    const [wx, wy] = warp(nx, ny, seed, 2.6);
     const dx = x / size - 0.5, dy = y / size - 0.5;
     const d = Math.sqrt(dx * dx + dy * dy) * 2; // 0 centro, ~1 borda
-    raw[i] = fbm(wx, wy, seed, 6) - d * d * 0.8;
+    raw[i] = fbm(wx, wy, seed, 6) + (fbm(wx * 3, wy * 3, seed + 7, 4) - 0.5) * 0.35 - d * d * 0.55;
   }
 
   const sorted = Float32Array.from(raw).sort();

@@ -11,15 +11,16 @@ test.each([
   ['pico nevado', [0.8, 0.1, 0.5, 0, false, 0], Biome.Snow],
   ['neve', [0.5, 0.1, 0.5, 0, false, 0], Biome.Snow],
   ['taiga', [0.5, 0.25, 0.6, 0, false, 0], Biome.Taiga],
-  ['estepe fria', [0.5, 0.25, 0.3, 0, false, 0], Biome.Grassland],
-  ['campo', [0.5, 0.5, 0.1, 0, false, 0], Biome.Grassland],
+  ['estepe fria', [0.5, 0.25, 0.2, 0, false, 0], Biome.Grassland],
+  ['campo', [0.5, 0.5, 0.2, 0, false, 0], Biome.Grassland],
+  ['deserto frio', [0.5, 0.5, 0.05, 0, false, 0], Biome.Desert],
   ['floresta', [0.5, 0.5, 0.5, 0, false, 0.01], Biome.TemperateForest],
   ['pântano', [0.5, 0.5, 0.9, 0, false, 0.001], Biome.Swamp],
   ['floresta úmida inclinada', [0.5, 0.5, 0.9, 0, false, 0.01], Biome.TemperateForest],
   ['deserto', [0.5, 0.9, 0.1, 0, false, 0.01], Biome.Desert],
   ['savana', [0.5, 0.9, 0.3, 0, false, 0.01], Biome.Savanna],
-  ['campo quente', [0.5, 0.9, 0.6, 0, false, 0.01], Biome.Grassland],
-  ['selva', [0.5, 0.9, 0.9, 0, false, 0.01], Biome.Jungle],
+  ['savana úmida', [0.5, 0.9, 0.45, 0, false, 0.01], Biome.Savanna],
+  ['selva', [0.5, 0.9, 0.6, 0, false, 0.01], Biome.Jungle],
 ] as const)('%s', (_, args, expected) => expect(classifyBiome(...(args as unknown as Parameters<typeof classifyBiome>))).toBe(expected));
 
 test('norte mais frio que o sul', () => {

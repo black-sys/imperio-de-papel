@@ -10,9 +10,9 @@ export function windMoisture(size: number, elevation: Float32Array, land: Uint8A
       if (!land[i]) { carried += (1 - carried) * 0.15; m[i] = 1; continue; }
       // o degrau mar→terra não conta como subida; só relevo entre células de terra
       const rise = x > 0 && land[i - 1] ? Math.max(0, elevation[i] - elevation[i - 1]) : 0;
-      const rain = carried * Math.min(0.6, 0.015 + rise * 6);
+      const rain = carried * Math.min(0.6, 0.004 + rise * 3);
       carried = Math.max(0, carried - rain);
-      const v = carried * 0.8 + rain * 4 + (fbm(x / 20, y / 20, seed, 3) - 0.5) * 0.1;
+      const v = carried * 1.05 + rain * 4 + (fbm(x / 24, y / 24, seed, 4) - 0.5) * 0.35;
       m[i] = Math.min(1, Math.max(0, v));
     }
   }
