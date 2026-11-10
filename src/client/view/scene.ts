@@ -12,6 +12,7 @@ export interface IsoScene {
   zoom(delta: number): void;
   /** Largura da vista em tiles. */
   viewWidth(): number;
+  setWidth(w: number): void;
   /** Ângulo de giro atual (rad) — usado para WASD relativo à câmera. */
   yaw(): number;
   render(): void;
@@ -57,6 +58,7 @@ export function createScene(canvas: HTMLCanvasElement): IsoScene {
     zoom(delta) { width = Math.min(MAX_W, Math.max(MIN_W, width * (delta > 0 ? 1.1 : 1 / 1.1))); resize(); },
     yaw() { return yawAnim; },
     viewWidth() { return width; },
+    setWidth(w) { width = Math.min(MAX_W, Math.max(MIN_W, w)); resize(); },
     render() {
       const goal = Math.PI / 4 + (k * Math.PI) / 2;
       let diff = goal - yawAnim;

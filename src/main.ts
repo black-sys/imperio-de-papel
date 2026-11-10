@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import { findPath, nearestWalkable } from './client/astar';
 import { initHud, setInfo, setProgress, setSeedField, showError } from './client/hud';
-import { BIOME_NAMES, drawMap2d, onMapClick, setMarker } from './client/map2d';
+import { BIOME_NAMES } from './client/map2d';
+import { FADE_END, StrategicMap } from './client/strategic';
 import { Player } from './client/player';
 import { ChunkManager } from './client/view/chunks';
 import { loadQuality } from './client/quality';
@@ -14,8 +15,11 @@ import type { Biome, WorldMap } from './worldgen/types';
 
 const client = new WorldClient();
 const viewCanvas = document.getElementById('view') as HTMLCanvasElement;
-const mapCanvas = document.getElementById('map2d') as HTMLCanvasElement;
 const iso = createScene(viewCanvas);
+// clique no pergaminho: teleporta para a terra seca mais próxima e volta ao 3D
+const strategic = new StrategicMap(document.getElementById('strategic') as HTMLCanvasElement,
+  (x, y) => { if (map) { pendingTeleport = nearestLandTile(map, x, y); strategic.mode = '3d'; iso.setWidth(300); } },
+  () => iso.setWidth(FADE_END - 1));
 const chunks = new ChunkManager(client, iso.scene);
 const player = new Player(iso.scene);
 let seed = parseSeed(new URLSearchParams(location.search).get('seed')) ?? randomSeed();
@@ -39,7 +43,8 @@ async function load(s: number) {
   catch (e) { if ((e as Error).message !== 'substituído') showError((e as Error).message, s); return; }
   map = m;
   setProgress(null, 1);
-  drawMap2d(mapCanvas, m);
+  strategic.setImage(null, 0);
+  client.parchment(2048).then(px => { if (map === m) strategic.setImage(px, 2048); }, () => {});
   // passa pelo mesmo caminho do teleporte: confirma chão firme quando o chunk carregar
   player.teleport({ x: Math.floor(m.spawn.x), y: Math.floor(m.spawn.y) });
   pendingTeleport = { x: Math.floor(m.spawn.x), y: Math.floor(m.spawn.y) };
@@ -55,14 +60,21 @@ initHud({
 const keys = new Set<string>();
 window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
-  if (k === 'm') mapCanvas.classList.toggle('open');
+  if (k === 'm') {
+    if (strategic.mode === 'map') { strategic.mode = '3d'; iso.setWidth(Math.min(400, FADE_END - 1)); }
+    else strategic.open(player.position.x, player.position.y);
+  }
   if (k === 'q') iso.rotate(-1);
   if (k === 'e') iso.rotate(1);
   keys.add(k);
 });
 window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 window.addEventListener('blur', () => keys.clear());
-window.addEventListener('wheel', e => iso.zoom(e.deltaY), { passive: true });
+window.addEventListener('wheel', e => {
+  if (strategic.mode === 'map') return strategic.wheel(e.deltaY);
+  iso.zoom(e.deltaY);
+  if (iso.viewWidth() >= FADE_END && e.deltaY > 0) strategic.open(player.position.x, player.position.y);
+}, { passive: true });
 
 // clique no terreno: anda até lá pelo A*
 const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
@@ -79,7 +91,7 @@ viewCanvas.addEventListener('click', e => {
 
 // clique no mapa 2D: teleporta (espera o chunk carregar para achar chão firme)
 // clique no oceano: primeiro a terra seca mais próxima pelo mapa global, depois o tile andável quando o chunk carregar
-onMapClick(mapCanvas, (x, y) => { if (map) pendingTeleport = nearestLandTile(map, x, y); });
+
 
 let last = performance.now(), frames = 0, fps = 0, fpsT = last;
 function frame(now: number) {
@@ -101,11 +113,12 @@ function frame(now: number) {
     const p = player.position;
     chunks.update(p.x, p.y, viewRadius(), quality);
     iso.setTarget(p.x, p.y, chunks.heightAt(p.x, p.y));
-    setMarker(p.x, p.y);
+    strategic.setMarker(p.x, p.y);
     const b = chunks.biomeAt(p.x, p.y);
     setInfo({ x: p.x, y: p.y, biome: b === null ? '…' : BIOME_NAMES[b as Biome], fps });
   }
   iso.render();
+  strategic.draw(iso.viewWidth(), iso.yaw(), player.position.x, player.position.y);
   frames++;
   if (now - fpsT > 500) { fps = Math.round((frames * 1000) / (now - fpsT)); frames = 0; fpsT = now; }
   requestAnimationFrame(frame);

@@ -7,6 +7,7 @@ type Out =
   | { type: 'world'; map: WorldMap; token: number }
   | { type: 'chunk'; data: ChunkData; token: number }
   | { type: 'coarse'; data: CoarseChunk; token: number }
+  | { type: 'parchment'; pixels: Uint8ClampedArray; size: number; token: number }
   | { type: 'error'; message: string; seed: number; token: number };
 
 /** Lado principal do worker. Cada generate() invalida respostas de mundos anteriores. */
@@ -27,6 +28,9 @@ export class WorldClient {
         const k = `${m.data.cx},${m.data.cy}`;
         this.pendingChunks.get(k)?.resolve(m.data);
         this.pendingChunks.delete(k);
+      } else if (m.type === 'parchment') {
+        this.pendingChunks.get('parchment')?.resolve(m.pixels);
+        this.pendingChunks.delete('parchment');
       } else if (m.type === 'coarse') {
         const k = `${m.data.cx},${m.data.cy},${m.data.step}`;
         this.pendingChunks.get(k)?.resolve(m.data);
@@ -63,6 +67,14 @@ export class WorldClient {
       this.pendingChunks.get(k)?.reject(new Error('duplicado'));
       this.pendingChunks.set(k, { resolve, reject });
       this.post({ type: 'chunk', cx, cy, token: this.token });
+    });
+  }
+
+  parchment(size: number): Promise<Uint8ClampedArray> {
+    return new Promise((resolve, reject) => {
+      this.pendingChunks.get('parchment')?.reject(new Error('duplicado'));
+      this.pendingChunks.set('parchment', { resolve, reject });
+      this.post({ type: 'parchment', size, token: this.token });
     });
   }
 
