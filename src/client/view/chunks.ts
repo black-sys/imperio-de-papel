@@ -2,9 +2,10 @@ import * as THREE from 'three';
 import type { CoarseChunk } from '../../worldgen/coarse';
 import { CHUNK, CHUNKS_PER_SIDE } from '../../worldgen/constants';
 import type { Biome, ChunkData } from '../../worldgen/types';
-import { lodFor, type Quality } from '../quality';
+import { lodFor, QUALITY, type Quality } from '../quality';
 import type { WorldClient } from '../worldClient';
 import { Decor } from './decor';
+import { Flora } from './flora';
 import { buildCoarseTerrain, buildCoarseWater, buildTerrain, buildWater, chunkHeight, coarseHeight } from './terrainMesh';
 
 const MAX_IN_FLIGHT = 6;
@@ -20,9 +21,11 @@ export class ChunkManager {
   private loaded = new Map<string, Loaded>();
   private inFlight = new Map<string, Level>();
   private decor: Decor;
+  private flora: Flora;
   private generation = 0;
+  private quality: Quality = 'high';
 
-  constructor(private client: WorldClient, private scene: THREE.Scene) { this.decor = new Decor(scene); }
+  constructor(private client: WorldClient, private scene: THREE.Scene) { this.decor = new Decor(scene); this.flora = new Flora(scene); }
 
   reset(): void {
     this.generation++;
@@ -32,6 +35,7 @@ export class ChunkManager {
 
   /** `radius`: raio (em chunks) da área visível. */
   update(tx: number, ty: number, radius: number, quality: Quality): void {
+    if (quality !== this.quality) { this.quality = quality; this.refreshFlora(); }
     const ccx = Math.floor(tx / CHUNK), ccy = Math.floor(ty / CHUNK);
     for (const [k, l] of this.loaded) {
       const [cx, cy] = k.split(',').map(Number);
@@ -63,7 +67,7 @@ export class ChunkManager {
         const water = full ? buildWater(full) : buildCoarseWater(coarse!);
         this.scene.add(terrain);
         if (water) this.scene.add(water);
-        if (full) this.decor.add(k, full);
+        if (full) { this.decor.add(k, full); this.flora.add(k, full, QUALITY[this.quality].flora, (x, y) => chunkHeight(full, x, y)); }
         this.loaded.set(k, { level, full, coarse, terrain, water });
       };
       const fail = () => { if (gen === this.generation && this.inFlight.get(k) === level) this.inFlight.delete(k); };
@@ -102,12 +106,17 @@ export class ChunkManager {
   /** Chunks L0 carregados (para sombras/flora). */
   fullChunks(): ChunkData[] { return [...this.loaded.values()].flatMap(l => (l.full ? [l.full] : [])); }
 
+  /** Recria a vegetação decorativa dos chunks L0 com a densidade da qualidade atual. */
+  private refreshFlora(): void {
+    for (const [k, l] of this.loaded) if (l.full) { const f = l.full; this.flora.add(k, f, QUALITY[this.quality].flora, (x, y) => chunkHeight(f, x, y)); }
+  }
+
   private drop(k: string): void {
     const l = this.loaded.get(k);
     if (!l) return;
     this.scene.remove(l.terrain); l.terrain.geometry.dispose();
     if (l.water) { this.scene.remove(l.water); l.water.geometry.dispose(); }
-    if (l.full) this.decor.remove(k);
+    if (l.full) { this.decor.remove(k); this.flora.remove(k); }
     this.loaded.delete(k);
   }
 }
