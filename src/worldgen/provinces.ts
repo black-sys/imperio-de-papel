@@ -327,7 +327,7 @@ function addAttributes(map: WorldMap, cp: Int16Array, provinces: Province[]): vo
     p.fertility = clamp15(fert[p.id] / dry + Math.min(0.3, (riv[p.id] / dry) * 3) + (p.coastal ? 0.1 : 0));
     p.forest = clamp15(tree[p.id] / dry / 0.15);
     const mFrac = mtn[p.id] / dry;
-    p.rock = clamp15((rock[p.id] / dry / 0.02) * 0.5 + mFrac * 1.5);
+    p.rock = clamp15((rock[p.id] / dry / 0.02) * 0.7 + mFrac * 1.5);
     let slots = 3 + (p.cells > mean ? 1 : 0) + (p.cells > 1.5 * mean ? 1 : 0) + (p.fertility > 0.9 ? 1 : 0);
     if (mFrac > 0.4 || p.biome === Biome.Swamp) slots--;
     p.slots = Math.min(6, Math.max(3, slots));
@@ -385,7 +385,10 @@ function makeName(rng: () => number): string {
 function suggestCapitals(provinces: Province[]): number[] {
   const score = (p: Province) => p.fertility + 0.6 * p.forest + 0.6 * p.rock;
   const sorted = provinces.map(score).sort((a, b) => a - b), median = sorted[Math.floor(sorted.length / 2)];
-  const cand = provinces.filter(p => score(p) >= median && p.neighbors.length >= 3 && p.slots >= 3)
+  // capital precisa de madeira e pedra por perto (nela ou numa vizinha), senão trava a economia inicial
+  const near = (p: Province, f: (q: Province) => number) => Math.max(f(p), ...p.neighbors.map(n => f(provinces[n])));
+  const cand = provinces.filter(p => score(p) >= median && p.neighbors.length >= 3 && p.slots >= 3 &&
+    near(p, q => q.rock) >= 0.3 && near(p, q => q.forest) >= 0.3)
     .sort((a, b) => score(b) - score(a) || a.id - b.id);
   for (let d = 1100; d >= 400; d -= 100) {
     const chosen: Province[] = [];
