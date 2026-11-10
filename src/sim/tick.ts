@@ -48,7 +48,7 @@ function advance(s: GameState, pm: ProvinceMap, step: number): void {
     if (r.remaining > EPS) continue;
     s.recruiting.splice(s.recruiting.indexOf(r), 1);
     const p = pm.provinces[r.province], site = p.sites[r.slot] ?? p.center;
-    spawnTroop(s, 0, r.type, site.x, site.y);
+    spawnTroop(s, 0, r.type, site.x, site.y + 4); // ao lado do prédio, não em cima
     logEvent(s, `${TROOPS[r.type].name} treinados em ${p.name}`);
   }
   for (const c of [...s.colonizing]) {

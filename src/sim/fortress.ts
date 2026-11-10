@@ -4,7 +4,7 @@ import { FORTRESS, TROOPS, type TroopType } from './balance';
 import { logEvent, type GameState, type Troop } from './state';
 import { inBattle, spawnTroop } from './troops';
 
-const SPOTS = [[0, 3], [3, 0], [-3, 0], [0, -3]];
+const RING = 5; // tiles do local até cada tropa da guarnição (menor que BATTLE.contact: quem chega ao local entra em combate)
 
 /** Saltos no grafo de províncias até a capital sugerida mais próxima (Infinity se não há caminho por terra). */
 export function capitalHops(pm: ProvinceMap): number[] {
@@ -17,7 +17,7 @@ export function capitalHops(pm: ProvinceMap): number[] {
 
 function spawnGarrison(s: GameState, pm: ProvinceMap, province: number, garrison: TroopType[]): void {
   const site = pm.provinces[province].sites[0];
-  garrison.forEach((type, i) => spawnTroop(s, -1, type, site.x + SPOTS[i % 4][0], site.y + SPOTS[i % 4][1], province));
+  garrison.forEach((type, i) => { const a = (i / garrison.length) * Math.PI * 2; spawnTroop(s, -1, type, Math.round(site.x + Math.cos(a) * RING), Math.round(site.y + Math.sin(a) * RING), province); });
 }
 
 export function addFortress(s: GameState, pm: ProvinceMap, province: number, garrison: TroopType[]): void {

@@ -36,7 +36,7 @@ describe('recrutamento', () => {
     run(s, 1.9);
     expect(s.troops.length).toBe(0);
     run(s, 0.2);
-    expect(s.troops).toMatchObject([{ owner: 0, type: 'spear', soldiers: 20, x: 80, y: 80, morale: 1 }]);
+    expect(s.troops).toMatchObject([{ owner: 0, type: 'spear', soldiers: 20, x: 80, y: 84, morale: 1 }]);
     expect(s.recruiting).toEqual([]);
     expect(s.events.at(-1)!.text).toBe('Lanceiros treinados em P0');
   });

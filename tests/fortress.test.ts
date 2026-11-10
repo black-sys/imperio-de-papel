@@ -35,6 +35,7 @@ describe('distribuição no mundo real', { timeout: 60000 }, () => {
       const there = s.troops.filter(t => t.home === f.province);
       expect(there.map(t => t.type).sort()).toEqual([...f.garrison].sort());
       expect(there.every(t => t.owner === -1)).toBe(true);
+      expect(new Set(there.map(t => `${t.x},${t.y}`)).size).toBe(there.length); // não empilhadas
     }
     expect(size(h => h === 2)).toBe(2);
     expect(size(h => h >= 5)).toBeGreaterThan(size(h => h <= 3));
@@ -49,7 +50,7 @@ describe('conquista e regeneração', () => {
   test('derrotar a guarnição dá a província com Vila N1', () => {
     const s = game();
     addFortress(s, pm, 1, ['spear']);
-    for (let i = 0; i < 3; i++) spawnTroop(s, 0, 'spear', 176, 76 + i * 4);
+    for (let i = 0; i < 3; i++) spawnTroop(s, 0, 'spear', 180, 76 + i * 4); // no local da fortaleza
     run(s, 2);
     expect(s.owner[1]).toBe(0);
     expect(s.buildings[1][0]).toEqual({ type: 'village', level: 1, remaining: 0 });
@@ -60,7 +61,7 @@ describe('conquista e regeneração', () => {
   test('sem combate há 3 meses, volta à força total; antes disso não', () => {
     const s = game();
     addFortress(s, pm, 1, ['spear', 'spear']);
-    spawnTroop(s, 0, 'spear', 176, 80);
+    spawnTroop(s, 0, 'spear', 180, 80);
     run(s, 1);
     const hurt = () => s.troops.filter(t => t.owner === -1).reduce((n, t) => n + t.soldiers, 0);
     expect(s.owner[1]).toBe(-1);

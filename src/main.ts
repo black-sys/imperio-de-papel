@@ -10,7 +10,7 @@ import { TROOP_ICON, TroopsView } from './client/view/troops';
 import { createScene } from './client/view/scene';
 import { WorldClient } from './client/worldClient';
 import { build, chooseCapital, colonize, moveTroops, recruit, setSpeed, upgrade, type Result } from './sim/commands';
-import { spawnTroop } from './sim/troops';
+import { spawnTroop, troopCap } from './sim/troops';
 import { renderPanel, setTip, toast } from './client/panel';
 import { monthlyIncome } from './sim/economy';
 import { addFortress, placeFortresses } from './sim/fortress';
@@ -28,13 +28,18 @@ const iso = createScene(viewCanvas);
 const camera = new FreeCamera(viewCanvas, () => iso.yaw(), () => iso.viewWidth());
 // clique no pergaminho: centraliza a câmera ali e volta ao 3D
 const strategic = new StrategicMap(document.getElementById('strategic') as HTMLCanvasElement,
-  (x, y) => {
+  (x, y, shift) => {
     if (!pm || !game) return;
+    // ficha de tropa sob o clique: seleciona sem sair do mapa
+    const r = 14 * strategic.tilesPerPixel, hit = game.troops.filter(t => t.owner === 0 && Math.hypot(t.x - x, t.y - y) < r).sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0];
+    if (hit) return pickTroops([hit.id], shift);
+    if (selectedTroops.size) { selectedTroops.clear(); return; }
     selected = provinceAtTile(pm, x, y);
     if (game.capital < 0) return; // escolhendo a capital: fica no mapa
     camera.center(x, y); strategic.mode = '3d'; iso.setWidth(300);
   },
   () => iso.setWidth(FADE_END - 1));
+strategic.onOrder = (x, y) => order(x, y);
 const chunks = new ChunkManager(client, iso.scene);
 const buildingsView = new BuildingsView(iso.scene);
 const troopsView = new TroopsView(iso.scene, document.getElementById('labels'));
@@ -58,7 +63,7 @@ async function load(s: number) {
   setSeedField(s);
   history.replaceState(null, '', `?seed=${s}`);
   showError(null);
-  map = null; pm = null; game = null; moveGrid = null; selected = -1; seenEvents = 0; lastSpeed = 1;
+  map = null; pm = null; game = null; moveGrid = null; groups.clear(); selected = -1; seenEvents = 0; lastSpeed = 1;
   strategic.setPins([]); paintKey = ''; ownerKey = ''; bordersLayer = null;
   chunks.setPainter(null);
   buildingsView.clear();
@@ -89,10 +94,21 @@ async function load(s: number) {
 }
 
 const report = (r: Result) => { if (!r.ok) toast(r.reason); };
+const groups = new Map<string, number[]>(); // Shift+1–9 salva, 1–9 chama
+/** Seleciona tropas; com Shift soma (ou tira, se já estavam todas). */
+function pickTroops(ids: number[], add: boolean): void {
+  if (!add) selectedTroops.clear();
+  const all = add && ids.every(id => selectedTroops.has(id));
+  for (const id of ids) all ? selectedTroops.delete(id) : selectedTroops.add(id);
+}
+function order(x: number, y: number): void {
+  if (game && moveGrid && selectedTroops.size) report(moveTroops(game, moveGrid, [...selectedTroops], x, y));
+}
 const actions = {
   colonize: (id: number) => game && pm && report(colonize(game, pm, id)),
   build: (id: number, slot: number, t: Parameters<typeof build>[4]) => game && pm && report(build(game, pm, id, slot, t)),
   upgrade: (id: number, slot: number) => game && pm && report(upgrade(game, pm, id, slot)),
+  recruit: (id: number, slot: number, t: Parameters<typeof recruit>[4]) => game && pm && report(recruit(game, pm, id, slot, t)),
   foundCapital: (id: number) => {
     if (!game || !pm) return;
     const r = chooseCapital(game, pm, id);
@@ -104,7 +120,7 @@ const actions = {
     iso.setWidth(140);
     toast('Capital fundada. O tempo está pausado: espaço ou 1× para começar.');
   },
-  close: () => { selected = -1; },
+  close: () => { selected = -1; selectedTroops.clear(); },
 };
 
 function speed(v: number) {
@@ -129,6 +145,11 @@ window.addEventListener('keydown', e => {
     if (strategic.mode === 'map') { strategic.mode = '3d'; iso.setWidth(Math.min(400, FADE_END - 1)); }
     else strategic.open(camera.x, camera.y);
   }
+  if (k === 'escape') selectedTroops.clear();
+  if (/^Digit[1-9]$/.test(e.code) && game && !(e.target instanceof HTMLInputElement)) {
+    if (e.shiftKey) groups.set(e.code, [...selectedTroops]);
+    else pickTroops((groups.get(e.code) ?? []).filter(id => game!.troops.some(t => t.id === id)), false);
+  }
   if (k === 'q') iso.rotate(-1);
   if (k === 'e') iso.rotate(1);
   if (k === ' ' && game) { e.preventDefault(); if (game.capital >= 0) speed(game.speed === 0 ? lastSpeed : 0); } // antes da capital o tempo fica parado
@@ -142,17 +163,50 @@ window.addEventListener('wheel', e => {
   if (iso.viewWidth() >= FADE_END && e.deltaY > 0) strategic.open(camera.x, camera.y);
 }, { passive: true });
 
-// clique esquerdo (sem arrastar) no terreno: seleciona a província
-const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
-let down: { x: number; y: number } | null = null;
-viewCanvas.addEventListener('pointerdown', e => { if (e.button === 0) down = { x: e.clientX, y: e.clientY }; });
-viewCanvas.addEventListener('pointerup', e => {
-  if (e.button !== 0 || !down || !pm || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
-  down = null;
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+// botão esquerdo: clique seleciona tropa (prioridade) ou província; arrastar desenha a caixa de seleção de tropas
+// botão direito sem arrastar: manda as tropas selecionadas (arrastar continua movendo a câmera)
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), proj = new THREE.Vector3();
+const boxEl = document.getElementById('box') as HTMLDivElement;
+let down: { x: number; y: number } | null = null, rdown: { x: number; y: number } | null = null;
+const groundAt = (cx: number, cy: number) => {
+  ndc.set((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1);
   ray.setFromCamera(ndc, iso.camera);
-  const hit = ray.intersectObjects(chunks.terrainMeshes(), false)[0];
-  selected = hit ? provinceAtTile(pm, hit.point.x, hit.point.z) : -1;
+  return ray.intersectObjects(chunks.terrainMeshes(), false)[0]?.point ?? null;
+};
+/** Tropas do jogador com a posição na tela (px). */
+const troopsOnScreen = () => (game?.troops ?? []).filter(t => t.owner === 0).map(t => {
+  proj.set(t.x, chunks.heightAt(t.x, t.y) + 0.5, t.y).project(iso.camera);
+  return { id: t.id, x: ((proj.x + 1) / 2) * innerWidth, y: ((1 - proj.y) / 2) * innerHeight };
+});
+viewCanvas.addEventListener('pointerdown', e => {
+  if (e.button === 0) { down = { x: e.clientX, y: e.clientY }; viewCanvas.setPointerCapture(e.pointerId); }
+  if (e.button === 2) rdown = { x: e.clientX, y: e.clientY };
+});
+viewCanvas.addEventListener('pointermove', e => {
+  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) <= 5) return;
+  Object.assign(boxEl.style, { display: 'block', left: `${Math.min(down.x, e.clientX)}px`, top: `${Math.min(down.y, e.clientY)}px`, width: `${Math.abs(e.clientX - down.x)}px`, height: `${Math.abs(e.clientY - down.y)}px` });
+});
+viewCanvas.addEventListener('pointerup', e => {
+  if (e.button === 2 && rdown) {
+    const still = Math.hypot(e.clientX - rdown.x, e.clientY - rdown.y) <= 5, hit = still && selectedTroops.size ? groundAt(e.clientX, e.clientY) : null;
+    rdown = null;
+    if (hit) order(hit.x, hit.z);
+    return;
+  }
+  if (e.button !== 0 || !down || !pm) return;
+  const d = down, dragged = Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5;
+  down = null; boxEl.style.display = 'none';
+  const pts = troopsOnScreen();
+  if (dragged) {
+    const x0 = Math.min(d.x, e.clientX), x1 = Math.max(d.x, e.clientX), y0 = Math.min(d.y, e.clientY), y1 = Math.max(d.y, e.clientY);
+    return pickTroops(pts.filter(p => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1).map(p => p.id), e.shiftKey);
+  }
+  const near = pts.map(p => ({ id: p.id, d: Math.hypot(p.x - e.clientX, p.y - e.clientY) })).filter(p => p.d <= 20).sort((a, b) => a.d - b.d)[0];
+  if (near) return pickTroops([near.id], e.shiftKey);
+  if (e.shiftKey) return;
+  selectedTroops.clear();
+  const hit = groundAt(e.clientX, e.clientY);
+  selected = hit ? provinceAtTile(pm, hit.x, hit.z) : -1;
 });
 
 // dica ao passar o mouse: nome e dono da província (raycast limitado a ~10/s)
@@ -161,11 +215,9 @@ viewCanvas.addEventListener('pointermove', e => {
   const now = performance.now();
   if (!pm || !game || now - tipAt < 100) return;
   tipAt = now;
-  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, iso.camera);
-  const hit = ray.intersectObjects(chunks.terrainMeshes(), false)[0];
-  const p = hit ? provinceAtTile(pm, hit.point.x, hit.point.z) : -1;
-  setTip(p < 0 ? null : `${pm.provinces[p].name} · ${game.owner[p] === 0 ? 'seu reino' : 'neutra'}`, e.clientX, e.clientY);
+  const hit = groundAt(e.clientX, e.clientY);
+  const p = hit ? provinceAtTile(pm, hit.x, hit.z) : -1;
+  setTip(p < 0 ? null : `${pm.provinces[p].name} · ${game.owner[p] === 0 ? 'seu reino' : game.fortresses.some(f => f.province === p) ? 'fortaleza neutra' : 'neutra'}`, e.clientX, e.clientY);
 });
 viewCanvas.addEventListener('pointerleave', () => setTip(null));
 
@@ -203,9 +255,11 @@ function frame(now: number) {
     camera.update(Math.min(dt, 0.1), keys);
     chunks.update(camera.x, camera.y, viewRadius(), quality);
     iso.setTarget(camera.x, camera.y, chunks.heightAt(camera.x, camera.y));
-    setTopbar(game.capital >= 0 ? { res: game.res, income: monthlyIncome(game, pm), month: game.month, speed: game.speed } : null);
+    for (const id of selectedTroops) if (!game.troops.some(t => t.id === id)) selectedTroops.delete(id); // mortas saem da seleção
+    setTopbar(game.capital >= 0 ? { res: game.res, income: monthlyIncome(game, pm), month: game.month, speed: game.speed,
+      troops: `${game.troops.filter(t => t.owner === 0).length + game.recruiting.length}/${troopCap(game)}` } : null);
     setInfo({ fps, tris: iso.renderer.info.render.triangles });
-    renderPanel(game, pm, selected, actions);
+    renderPanel(game, pm, selected, actions, [...selectedTroops]);
     buildingsView.sync(game, pm, (x, y) => chunks.heightAt(x, y));
     if (!strategic.covering) troopsView.sync(game, pm, (x, y) => chunks.heightAt(x, y), { x: camera.x, y: camera.y, width: iso.viewWidth(), camera: iso.camera }, selectedTroops, now / 1000);
     if (strategic.mode === 'map' || iso.viewWidth() > FADE_START) { const u = mapUnits(game, pm); strategic.setUnits(u.units, u.key); }

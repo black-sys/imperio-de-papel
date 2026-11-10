@@ -45,13 +45,14 @@ export function initTopbar(onSpeed: (v: number) => void): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>('#speeds button')) b.onclick = () => { onSpeed(Number(b.dataset.speed)); b.blur(); };
 }
 
-export function setTopbar(t: { res: { gold: number; wood: number; stone: number }; income: { gold: number; wood: number; stone: number }; month: number; speed: number } | null): void {
+export function setTopbar(t: { res: { gold: number; wood: number; stone: number }; income: { gold: number; wood: number; stone: number }; month: number; speed: number; troops: string } | null): void {
   $('topbar').style.display = t ? 'flex' : 'none';
   if (!t) return;
   for (const k of ['gold', 'wood', 'stone'] as const) {
     $(`r-${k}`).textContent = fmt(t.res[k]);
     $(`i-${k}`).textContent = `${sign(t.income[k])}/mês`;
   }
+  $('troops').textContent = t.troops;
   $('date').textContent = formatDate(t.month);
   for (const b of document.querySelectorAll<HTMLButtonElement>('#speeds button')) b.classList.toggle('on', Number(b.dataset.speed) === t.speed);
 }

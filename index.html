@@ -49,6 +49,7 @@
     #labels .battle i { display: block; width: 46px; height: 4px; margin-top: 2px; background: #0008; }
     #labels .battle b { display: block; height: 100%; background: #a8a8a0; }
     #labels .battle b.mine { background: #e0503c; }
+    #box { position: fixed; z-index: 2; display: none; pointer-events: none; border: 1px solid #fff2c0; background: #fff2c022; }
     #help { position: fixed; z-index: 2; bottom: 12px; left: 12px; opacity: .6; font-size: 12px; }
   </style>
 </head>
@@ -69,6 +70,7 @@
   </div>
   <div id="labels"></div>
   <canvas id="strategic"></canvas>
+  <div id="box"></div>
   <div id="panel"></div>
   <div id="toasts"></div>
   <div id="tip"></div>
@@ -76,12 +78,13 @@
     <span class="res" title="Ouro">🪙 <b id="r-gold">0</b> <small id="i-gold"></small></span>
     <span class="res" title="Madeira">🪵 <b id="r-wood">0</b> <small id="i-wood"></small></span>
     <span class="res" title="Pedra">🪨 <b id="r-stone">0</b> <small id="i-stone"></small></span>
+    <span class="res" title="Tropas / teto das guarnições">⚔ <b id="troops">0/0</b></span>
     <span id="date"></span>
     <span id="speeds">
       <button data-speed="0" title="Pausa (espaço)">⏸</button><button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button>
     </span>
   </div>
-  <div id="help">WASD / arrastar (botão direito): mover · Q/E: girar · roda: zoom · M: mapa · espaço: pausa</div>
+  <div id="help">WASD / arrastar (botão direito): mover · Q/E: girar · roda: zoom · M: mapa · espaço: pausa · clique / caixa: selecionar tropas · clique direito: mandar · Shift+1–9: salvar grupo · 1–9: chamar · Esc: soltar</div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
