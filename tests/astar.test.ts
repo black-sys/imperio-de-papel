@@ -1,42 +1,58 @@
 import { expect, test } from 'vitest';
-import { findPath, nearestWalkable } from '../src/client/astar';
+import { findCellPath } from '../src/sim/astar';
+import { makeMoveGrid, type MoveGrid } from '../src/sim/movegrid';
+import { generateWorld } from '../src/worldgen/global/world';
+import { makeTestWorld } from './troopworld';
 
-const open = () => 1;
-test('caminho reto tem 11 nós', () => {
-  const p = findPath(open, { x: 0, y: 0 }, { x: 10, y: 0 })!;
-  expect(p.length).toBe(11);
-  expect(p.at(-1)).toEqual({ x: 10, y: 0 });
+const open = (size: number): MoveGrid => ({ size, cost: new Uint8Array(size * size).fill(1), cover: new Uint8Array(size * size) });
+const at = (g: MoveGrid, x: number, y: number) => y * g.size + x;
+
+test('caminho reto', () => {
+  const g = open(64), p = findCellPath(g, at(g, 0, 0), at(g, 10, 0))!;
+  expect(p.length).toBe(10);
+  expect(p.at(-1)).toBe(10);
+  expect(findCellPath(g, 5, 5)).toEqual([]);
 });
-test('contorna parede com abertura', () => {
-  const wall = (x: number, y: number) => (x === 5 && y !== 8 ? 0 : 1);
-  const p = findPath(wall, { x: 0, y: 0 }, { x: 10, y: 0 })!;
-  expect(p).not.toBeNull();
-  expect(p.some(n => n.x === 5 && n.y === 8)).toBe(true);
-  expect(p.every(n => wall(n.x, n.y) !== 0)).toBe(true);
+test('contorna o lago', () => {
+  const { grid: g } = makeTestWorld(), p = findCellPath(g, at(g, 36, 45), at(g, 56, 45))!;
+  expect(p.length).toBeGreaterThan(20);
+  expect(p.every(c => g.cost[c] !== 0)).toBe(true);
+});
+test('prefere a ponte quando compensa; cruza o rio quando a ponte está longe', () => {
+  const { grid: g } = makeTestWorld();
+  expect(findCellPath(g, at(g, 28, 10), at(g, 36, 12))!.every(c => g.cost[c] !== 3)).toBe(true);
+  expect(findCellPath(g, at(g, 28, 40), at(g, 36, 40))!.some(c => g.cost[c] === 3)).toBe(true);
 });
 test('não corta quina de bloqueado', () => {
-  const w = (x: number, y: number) => ((x === 1 && y === 0) || (x === 0 && y === 1) ? 0 : 1);
-  const p = findPath(w, { x: 0, y: 0 }, { x: 1, y: 1 })!;
-  expect(p.length).toBeGreaterThan(2); // contorna em vez de passar na diagonal entre os dois bloqueios
+  const g = open(8);
+  g.cost[at(g, 1, 0)] = 0; g.cost[at(g, 0, 1)] = 0;
+  expect(findCellPath(g, at(g, 0, 0), at(g, 1, 1))).toBeNull(); // (0,0) fica cercado
+  g.cost[at(g, 0, 1)] = 1;
+  expect(findCellPath(g, at(g, 0, 0), at(g, 1, 1))!.length).toBe(2); // contorna em vez de passar na diagonal
 });
-test('destino cercado, bloqueado ou fora do raio → null', () => {
-  const ring = (x: number, y: number) => (Math.max(Math.abs(x - 20), Math.abs(y - 20)) === 1 ? 0 : 1);
-  expect(findPath(ring, { x: 0, y: 0 }, { x: 20, y: 20 })).toBeNull();
-  expect(findPath((x, y) => (x === 3 && y === 3 ? 0 : 1), { x: 0, y: 0 }, { x: 3, y: 3 })).toBeNull();
-  expect(findPath(open, { x: 0, y: 0 }, { x: 100, y: 0 }, 64)).toBeNull();
+test('inalcançável → null', () => {
+  const { grid: g } = makeTestWorld();
+  expect(findCellPath(g, at(g, 5, 5), at(g, 45, 45))).toBeNull(); // dentro do lago
+  for (let d = -1; d <= 1; d++) for (let e = -1; e <= 1; e++) if (d || e) g.cost[at(g, 20 + d, 20 + e)] = 0;
+  expect(findCellPath(g, at(g, 5, 5), at(g, 20, 20))).toBeNull(); // cercado
+  expect(findCellPath(g, -1, 5)).toBeNull();
 });
-test('desvia do vau quando o desvio é mais barato', () => {
-  const ford = (x: number, y: number) => (x >= 4 && x <= 6 && y === 0 ? 2 : 1);
-  const p = findPath(ford, { x: 0, y: 0 }, { x: 10, y: 0 })!;
-  expect(p.filter(n => ford(n.x, n.y) === 2).length).toBe(0);
+test('desempenho: > 1000 células no mapa 1024² em < 300 ms', () => {
+  const g = open(1024);
+  for (let y = 0; y < 1000; y++) g.cost[at(g, 500, y)] = 0;
+  const t = performance.now(), p = findCellPath(g, at(g, 10, 10), at(g, 1000, 10))!;
+  expect(performance.now() - t).toBeLessThan(300);
+  expect(p.length).toBeGreaterThan(1000);
 });
-test('nearestWalkable', () => {
-  const lake = (x: number, y: number) => (Math.max(Math.abs(x), Math.abs(y)) <= 5 ? 0 : 1);
-  const n = nearestWalkable(lake, 0, 0)!;
-  expect(Math.max(Math.abs(n.x), Math.abs(n.y))).toBe(6);
-  expect(nearestWalkable(() => 0, 0, 0)).toBeNull();
-  expect(nearestWalkable(open, 3, 4)).toEqual({ x: 3, y: 4 });
-  // ilhota de 1 tile mais perto que a margem: deve ir para a margem (chão com vizinhos andáveis)
-  const islet = (x: number, y: number) => ((x === 2 && y === 0) || x >= 8 ? 1 : 0);
-  expect(nearestWalkable(islet, 0, 0)!.x).toBeGreaterThanOrEqual(8);
+test('makeMoveGrid: água bloqueia, rio custa 3', { timeout: 30000 }, () => {
+  const map = generateWorld(1), g = makeMoveGrid(map);
+  expect(g.size).toBe(map.size);
+  let rivers = 0, bad = 0;
+  for (let i = 0; i < g.cost.length; i++) {
+    const want = map.water[i] ? [0] : map.river[i] ? [3] : [1, 2];
+    if (!want.includes(g.cost[i])) bad++;
+    if (g.cost[i] === 3) rivers++;
+  }
+  expect(bad).toBe(0);
+  expect(rivers).toBeGreaterThan(0);
 });

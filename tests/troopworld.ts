@@ -1,0 +1,23 @@
+import type { MoveGrid } from '../src/sim/movegrid';
+import type { Province, ProvinceMap } from '../src/worldgen/provinces';
+import { Biome } from '../src/worldgen/types';
+
+/**
+ * Mundo de teste 64² células (256² tiles): rio (custo 3) na coluna x=32 com ponte em y=10; lago em x,y∈[40,50];
+ * floresta (cobertura) em x∈[0,8]. Província 0 = x<32, província 1 = x≥32.
+ */
+export function makeTestWorld(): { pm: ProvinceMap; grid: MoveGrid } {
+  const size = 64, cost = new Uint8Array(size * size).fill(1), cover = new Uint8Array(size * size), cellProvince = new Int16Array(size * size);
+  for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+    const i = y * size + x;
+    cellProvince[i] = x < 32 ? 0 : 1;
+    if (x === 32 && y !== 10) cost[i] = 3;
+    if (x >= 40 && x <= 50 && y >= 40 && y <= 50) { cost[i] = 0; cellProvince[i] = -1; }
+    if (x <= 8) cover[i] = 1;
+  }
+  const prov = (id: number, cx: number): Province => ({
+    id, name: `P${id}`, center: { x: cx, y: 128 }, cells: 2000, neighbors: [1 - id], coastal: false, biome: Biome.Grassland,
+    fertility: 1, forest: 1, rock: 1, slots: 4, sites: [{ x: cx, y: 80 }, { x: cx + 20, y: 80 }, { x: cx, y: 100 }, { x: cx + 20, y: 100 }],
+  });
+  return { grid: { size, cost, cover }, pm: { cellProvince, suggestedCapitals: [0], provinces: [prov(0, 60), prov(1, 180)] } };
+}
