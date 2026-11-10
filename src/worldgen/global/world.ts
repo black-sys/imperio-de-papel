@@ -13,7 +13,7 @@ export function generateWorld(seed: number, onProgress?: (stage: string, pct: nu
   p('forma', 0);
   const { base, land } = landShape(subSeed(seed, 'forma'), S);
   p('placas', 0.2);
-  const plated = applyPlates(subSeed(seed, 'placas'), S, base, land);
+  const { elevation: plated } = applyPlates(subSeed(seed, 'placas'), S, base, land);
   p('umidade', 0.4);
   const moisture = windMoisture(S, plated, land, subSeed(seed, 'umidade'));
   p('rios', 0.55);

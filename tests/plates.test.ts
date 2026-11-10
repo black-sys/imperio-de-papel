@@ -27,7 +27,7 @@ function largestComponent(mask: Uint8Array, size: number) {
 
 describe.each([1, 2, 3, 4])('semente %i', seed => {
   const { base, land } = landShape(seed, S);
-  const elev = applyPlates(seed, S, base, land);
+  const { elevation: elev, uplift } = applyPlates(seed, S, base, land);
   test('máscara preservada', () => {
     let bad = 0;
     for (let i = 0; i < land.length; i++) if ((elev[i] >= SEA_LEVEL) !== (land[i] === 1) || elev[i] < 0 || elev[i] > 1) bad++;
@@ -39,6 +39,16 @@ describe.each([1, 2, 3, 4])('semente %i', seed => {
     expect(m / l).toBeGreaterThanOrEqual(0.02);
     expect(m / l).toBeLessThanOrEqual(0.2);
   });
+  test('uplift em [0,1], zero no oceano, concentrado nas montanhas', () => {
+    let mSum = 0, mN = 0, lSum = 0, lN = 0;
+    for (let i = 0; i < land.length; i++) {
+      expect(uplift[i]).toBeGreaterThanOrEqual(0); expect(uplift[i]).toBeLessThanOrEqual(1);
+      if (!land[i]) { expect(uplift[i]).toBe(0); continue; }
+      lSum += uplift[i]; lN++;
+      if (elev[i] >= MOUNTAIN_LEVEL) { mSum += uplift[i]; mN++; }
+    }
+    expect(mSum / mN).toBeGreaterThan((lSum / lN) * 3);
+  });
   test('cordilheira alongada', () => {
     const mask = Uint8Array.from(elev, v => (v >= MOUNTAIN_LEVEL ? 1 : 0));
     const c = largestComponent(mask, S);
@@ -47,5 +57,5 @@ describe.each([1, 2, 3, 4])('semente %i', seed => {
 });
 test('determinístico', () => {
   const { base, land } = landShape(5, S);
-  expect(hashArrays(applyPlates(5, S, base, land))).toBe(hashArrays(applyPlates(5, S, base, land)));
+  expect(hashArrays(applyPlates(5, S, base, land).elevation)).toBe(hashArrays(applyPlates(5, S, base, land).elevation));
 });

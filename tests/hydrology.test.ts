@@ -47,7 +47,7 @@ describe.each([1, 2, 3])('mundo semente %i', seed => {
   test('regras dos rios', () => {
     const S = 256;
     const { base, land } = landShape(seed, S);
-    const elev = applyPlates(seed, S, base, land);
+    const elev = applyPlates(seed, S, base, land).elevation;
     const h = runHydrology(S, elev, land, windMoisture(S, elev, land, seed));
     checkRivers(S, h.rivers, h.water);
   });

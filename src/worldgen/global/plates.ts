@@ -5,7 +5,8 @@ import { makeRng } from '../rng';
 interface Plate { x: number; y: number; dx: number; dy: number }
 
 /** Relevo: base suavizada + cordilheiras em fronteiras convergentes de placas. */
-export function applyPlates(seed: number, size: number, base: Float32Array, land: Uint8Array): Float32Array {
+/** Relevo + uplift (soerguimento ∈ [0,1], alto nas cordilheiras) usado pela erosão. */
+export function applyPlates(seed: number, size: number, base: Float32Array, land: Uint8Array): { elevation: Float32Array; uplift: Float32Array } {
   const rng = makeRng(seed);
   const plates: Plate[] = [];
   const count = 8 + Math.floor(rng() * 5);
@@ -52,8 +53,11 @@ export function applyPlates(seed: number, size: number, base: Float32Array, land
     if (mountainFraction(out, mtn, land, k) > MOUNTAIN_TARGET) hi = k; else lo = k;
   }
   const k = (lo + hi) / 2;
-  for (let i = 0; i < out.length; i++) if (land[i]) out[i] = Math.min(1, Math.max(SEA_LEVEL, out[i] + mtn[i] * k));
-  return out;
+  let maxM = 0;
+  for (let i = 0; i < out.length; i++) if (land[i]) { out[i] = Math.min(1, Math.max(SEA_LEVEL, out[i] + mtn[i] * k)); maxM = Math.max(maxM, mtn[i]); }
+  const uplift = new Float32Array(out.length);
+  for (let i = 0; i < out.length; i++) if (land[i]) uplift[i] = mtn[i] / (maxM || 1);
+  return { elevation: out, uplift };
 }
 
 const MOUNTAIN_TARGET = 0.07;
