@@ -71,7 +71,8 @@ vira pacote compartilhado sem reescrita. Sem monorepo na v1.
   `spawn: {x, y}` (em tiles), e a rede de rios como polilinhas para a fase local.
 - `ChunkData` (chunk `cx, cy`): `heights: Float32Array` (65×65 vértices),
   `biome: Uint8Array` (64×64), `water: Uint8Array` (64×64: 0 seco, 1 oceano, 2 lago, 3 rio),
-  `waterLevel: Float32Array` (64×64, altura da superfície da água), `walk: Uint8Array` (64×64: 0 bloqueado, 1 normal,
+  `waterLevel: Float32Array` (64×64, altura da superfície da água),
+  `riverWidth: Float32Array` (64×64, 0 fora de rio; decide vau vs. bloqueio), `walk: Uint8Array` (64×64: 0 bloqueado, 1 normal,
   2 lento/vau), `resources: Resource[]`.
 - `Resource`: `{ id: string, kind: 'pine' | 'tree' | 'cactus' | 'rock', x, y }`.
   `id = "c{cx}_{cy}#{i}"` — estável e determinístico, base para a futura camada de
