@@ -11,7 +11,7 @@ const h = (m: WorldMap) => hashArrays(m.elevation, m.water, m.biome, m.moisture,
 describe('generateWorld', { timeout: 60000 }, () => {
   test('determinístico + hash de referência', () => {
     expect(h(generateWorld(860))).toBe(h(world(860)));
-    expect(h(world(860))).toMatchInlineSnapshot(`"b2dc3fd2"`);
+    expect(h(world(860))).toMatchInlineSnapshot(`"242d6ae1"`);
   });
   test.each([1, 2, 3])('semente %i: terra, biomas, spawn', s => {
     const m = world(s);
@@ -35,9 +35,15 @@ describe('generateWorld', { timeout: 60000 }, () => {
     expect(n).toBeGreaterThan(0);
     expect(w / n).toBeGreaterThan(e / n);
   });
+  test.each([0, 4294967295])('semente extrema %i gera mundo válido', s => {
+    const m = generateWorld(s);
+    const landFrac = m.water.reduce((a, v) => a + (v === 1 ? 0 : 1), 0) / m.water.length;
+    expect(landFrac).toBeGreaterThanOrEqual(0.35);
+    expect(landFrac).toBeLessThanOrEqual(0.55);
+  });
   test('onProgress na ordem', () => {
     const st: string[] = [];
     generateWorld(5, s => { if (st.at(-1) !== s) st.push(s); });
-    expect(st).toEqual(['forma', 'placas', 'umidade', 'rios', 'biomas']);
+    expect(st).toEqual(['forma', 'placas', 'umidade', 'erosão', 'rios', 'biomas']);
   });
 });

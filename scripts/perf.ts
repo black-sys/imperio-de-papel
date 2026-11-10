@@ -3,7 +3,7 @@ import { generateWorld } from '../src/worldgen/global/world';
 
 const t0 = performance.now();
 const map = generateWorld(860);
-console.log(`global: ${(performance.now() - t0).toFixed(0)} ms (meta 3000)`);
+console.log(`global: ${(performance.now() - t0).toFixed(0)} ms (meta 8000)`);
 generateChunk(map, 0, 0); // aquece o índice de rios
 const t1 = performance.now();
 let water = 0;
