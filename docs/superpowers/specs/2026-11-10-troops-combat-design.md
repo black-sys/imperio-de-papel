@@ -49,8 +49,8 @@ Escala: 1 mês = 10 s a 1×; uma província tem ~150 tiles de largura.
   com Guarnição), a 2 ouro por soldado.
 - Ouro negativo na virada do mês: dispersa a tropa de maior manutenção (evento no log).
 - Fortalezas: ~25% das províncias neutras, nunca vizinhas de capital sugerida. Força pela distância
-  (saltos no grafo de províncias) até a capital sugerida mais próxima: 1–4 tropas de lanceiros;
-  as mais distantes incluem arqueiros. Defesa +50%, não fogem (lutam até cair). Sem combate há
+  (saltos no grafo de províncias) até a capital sugerida mais próxima: `2 × (saltos − 1)` tropas, de 2 a 10,
+  um terço delas arqueiros a partir de 3 tropas (calibrado pelo teste de ritmo; o rascunho de 1–4 caía cedo demais). Defesa +50%, não fogem (lutam até cair). Sem combate há
   3 meses, voltam à força total. Não podem ser colonizadas (motivo no painel).
   Vencer = a província vira sua com Vila N1, sem custo.
 - Tropas suas em província neutra comum: nada acontece.
@@ -118,7 +118,8 @@ Simulação (vitest):
   ouro negativo dispersa uma tropa.
 - Estado com tropas e batalhas faz o caminho de ida e volta pelo JSON.
 - Ritmo: jogador guloso estendido (recruta e ataca fortalezas próximas): 1ª fortaleza tomada entre
-  15–40 min a 1×, sem quebrar 20 províncias em 1.5–4 h.
+  15–40 min a 1×; 20 províncias entre 0.6 e 4 h (medido 0.7–1 h: conquistar não paga colonização e o ouro sobra
+  no meio do jogo; o freio fino fica para o subprojeto 3, quando os rivais disputarem as fortalezas).
 
 Manual (headless + autor): recrutar, mover em grupo, cruzar rio, atacar fortaleza, perder e ver a fuga;
 FPS com ~15 tropas no 3D e no pergaminho com zoom máximo.

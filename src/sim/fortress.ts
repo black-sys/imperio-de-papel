@@ -1,7 +1,7 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { makeRng, subSeed } from '../worldgen/rng';
 import { FORTRESS, TROOPS, type TroopType } from './balance';
-import { logEvent, type GameState } from './state';
+import { logEvent, type GameState, type Troop } from './state';
 import { inBattle, spawnTroop } from './troops';
 
 const SPOTS = [[0, 3], [3, 0], [-3, 0], [0, -3]];
@@ -32,15 +32,17 @@ export function placeFortresses(s: GameState, pm: ProvinceMap, seed: number): vo
   const candidates = withSites.filter(p => hops[p.id] >= 2 && hops[p.id] < Infinity).map(p => p.id);
   for (let i = candidates.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [candidates[i], candidates[j]] = [candidates[j], candidates[i]]; }
   for (const id of candidates.slice(0, Math.round(FORTRESS.share * withSites.length))) {
-    const h = hops[id], n = Math.min(4, 1 + Math.floor((h - 2) / 3)), archers = h >= 11 ? 2 : h >= 8 ? 1 : 0;
+    const h = hops[id], n = Math.min(FORTRESS.max, 2 * (h - 1)), archers = Math.floor(n / 3); // um terço de arqueiros a partir de 3 tropas
     addFortress(s, pm, id, Array.from({ length: n }, (_, i): TroopType => (i >= n - archers ? 'archer' : 'spear')));
   }
 }
 
 /** Combate recente, conquista e recomposição das fortalezas. */
 export function fortressStep(s: GameState, pm: ProvinceMap): void {
+  const byHome = new Map<number, Troop[]>();
+  for (const t of s.troops) if (t.owner === -1) byHome.set(t.home, [...(byHome.get(t.home) ?? []), t]);
   for (const f of [...s.fortresses]) {
-    const alive = s.troops.filter(t => t.owner === -1 && t.home === f.province);
+    const alive = byHome.get(f.province) ?? [];
     if (alive.length === 0) {
       s.fortresses.splice(s.fortresses.indexOf(f), 1);
       s.owner[f.province] = 0;

@@ -25,20 +25,19 @@ describe('distribuição no mundo real', { timeout: 60000 }, () => {
       expect(checkColonize(s, real, f.province)).toEqual({ ok: false, reason: 'Fortaleza: só cai com tropas' });
     }
   });
-  test('força cresce com a distância: 1 a 4 tropas, arqueiros só nas distantes', () => {
+  test('força cresce com a distância: 2 a 10 tropas, um terço de arqueiros nas maiores', () => {
     const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
     const size = (pred: (h: number) => boolean) => mean(s.fortresses.filter(f => pred(hops[f.province])).map(f => f.garrison.length));
     for (const f of s.fortresses) {
-      expect(f.garrison.length).toBeGreaterThanOrEqual(1);
-      expect(f.garrison.length).toBeLessThanOrEqual(4);
-      if (hops[f.province] < 8) expect(f.garrison).not.toContain('archer');
+      expect(f.garrison.length).toBe(Math.min(10, 2 * (hops[f.province] - 1)));
+      expect(f.garrison.filter(t => t === 'archer').length).toBe(Math.floor(f.garrison.length / 3));
       expect(f.garrison).not.toContain('cavalry');
       const there = s.troops.filter(t => t.home === f.province);
       expect(there.map(t => t.type).sort()).toEqual([...f.garrison].sort());
       expect(there.every(t => t.owner === -1)).toBe(true);
     }
-    expect(size(h => h <= 4)).toBe(1);
-    expect(size(h => h >= 8)).toBeGreaterThan(size(h => h <= 4));
+    expect(size(h => h === 2)).toBe(2);
+    expect(size(h => h >= 5)).toBeGreaterThan(size(h => h <= 3));
   });
   test('determinístico por semente', () => {
     expect(place(860).fortresses).toEqual(s.fortresses);

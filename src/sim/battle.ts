@@ -29,7 +29,7 @@ export function battleStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: nu
   }
   // contato: inimigas a ≤ contact abrem (ou entram em) uma batalha
   for (const a of s.troops) {
-    if (engaged.has(a.id) || routed(a)) continue;
+    if (a.owner === -1 || engaged.has(a.id) || routed(a)) continue; // fortalezas não se enfrentam: todo contato tem uma tropa móvel
     for (const d of s.troops) {
       if (d.owner === a.owner || routed(d) || dist(a, d) > BATTLE.contact) continue;
       let b = s.battles.find(b => b.troopIds.includes(d.id));
