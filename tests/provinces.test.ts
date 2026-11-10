@@ -18,11 +18,15 @@ describe.each([860, 1, 2])('províncias semente %i', { timeout: 60000 }, seed =>
     expect(n).toBeGreaterThanOrEqual(250);
     expect(n).toBeLessThanOrEqual(350);
   });
-  test('toda terra (e lago) tem província; mar não', () => {
+  test('terra seca tem província (exceto ilhotas, < 0.5%); mar e lago não', () => {
     const { map, pm } = get(seed);
-    let bad = 0;
-    for (let i = 0; i < map.water.length; i++) if ((map.water[i] !== 1) !== (pm.cellProvince[i] >= 0)) bad++;
-    expect(bad).toBe(0);
+    let wetWithProvince = 0, dry = 0, dryWithout = 0;
+    for (let i = 0; i < map.water.length; i++) {
+      if (map.water[i] !== 0) { if (pm.cellProvince[i] >= 0) wetWithProvince++; continue; }
+      dry++; if (pm.cellProvince[i] < 0) dryWithout++;
+    }
+    expect(wetWithProvince).toBe(0);
+    expect(dryWithout / dry).toBeLessThan(0.005);
   });
   test('cada província é contígua', () => {
     const { map, pm } = get(seed), S = map.size, seen = new Uint8Array(S * S);
@@ -131,11 +135,30 @@ describe('correções da revisão', { timeout: 120000 }, () => {
     const dry = new Int32Array(pm.provinces.length);
     pm.cellProvince.forEach((p, i) => { if (p >= 0 && map.water[i] === 0) dry[p]++; });
     expect(pm.provinces.filter(p => dry[p.id] === 0).map(p => p.id)).toEqual([]);
-    expect(pm.provinces.filter(p => p.sites.length < 3).map(p => p.id)).toEqual([]);
+    // ilhas isoladas (sem vizinhas, não colonizáveis) podem ficar sem chão firme para construir
+    expect(pm.provinces.filter(p => p.sites.length < 3 && p.neighbors.length > 0).map(p => p.id)).toEqual([]);
+    for (const p of pm.provinces) expect(p.sites.length).toBe(p.slots);
   });
   test('capitais sugeridas nunca ficam vazias (sem vizinhos/recursos, cai para as melhores)', async () => {
     const { suggestCapitals } = await import('../src/worldgen/provinces');
     const lone = [0, 1, 2].map(id => ({ id, name: `L${id}`, center: { x: id * 900, y: 0 }, cells: 100, neighbors: [], coastal: true, biome: 5, fertility: 1, forest: 0, rock: 0, slots: 3, sites: [] }));
     expect(suggestCapitals(lone as never).length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe('locais de construção na terra local', { timeout: 180000 }, () => {
+  test('nenhum local (nem vizinhos a 2 tiles) cai em água do chunk 3D', async () => {
+    const { generateChunk } = await import('../src/worldgen/chunk');
+    const { map, pm } = get(860), cache = new Map<string, ReturnType<typeof generateChunk>>();
+    const water = (x: number, y: number) => {
+      const k = `${x >> 6},${y >> 6}`;
+      if (!cache.has(k)) cache.set(k, generateChunk(map, x >> 6, y >> 6));
+      return cache.get(k)!.water[(y & 63) * 64 + (x & 63)];
+    };
+    const bad: string[] = [];
+    for (const p of pm.provinces) for (const s of p.sites)
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
+        if (water(s.x + dx, s.y + dy)) { bad.push(`${p.name} (${s.x},${s.y})`); dy = dx = 9; }
+    expect(bad).toEqual([]);
   });
 });

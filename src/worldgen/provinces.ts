@@ -1,4 +1,5 @@
-import { CELL, MOUNTAIN_LEVEL } from './constants';
+import { coveringRiver, riverSegments, standingWaterAt, terrainHeight } from './chunk';
+import { CELL, CHUNK, MOUNTAIN_LEVEL } from './constants';
 import { DENSITY } from './resources';
 import { makeRng, subSeed } from './rng';
 import { Biome, type WorldMap } from './types';
@@ -25,6 +26,7 @@ export interface ProvinceMap {
 }
 
 const TARGET = 300;
+const MIN_ISLAND_CELLS = 60;
 const RIVER_COST = 30; // cruzar rio/lago custa caro: fronteira para nele
 const RIDGE_COST = 600; // por unidade de elevação subida
 const MOUNTAIN_COST = 4;
@@ -33,11 +35,11 @@ const DX = [0, -1, 1, 0], DY = [-1, 0, 0, 1];
 
 export function generateProvinces(map: WorldMap): ProvinceMap {
   const S = map.size;
-  const land = (i: number) => map.water[i] !== 1;
+  // lagos ficam fora das províncias, como o mar: são fronteira natural, não território
+  const land = (i: number) => map.water[i] === 0;
   const region = growRegions(map, pickSeeds(map));
   mergeSmall(region, S, land);
   splitLarge(map, region);
-  mergeLakeOnly(region, map);
   mergeSmall(region, S, land); // pedaços pequenos que a divisão possa ter deixado
   const cellProvince = compact(region);
   const provinces = describe(map, cellProvince);
@@ -49,14 +51,14 @@ export function generateProvinces(map: WorldMap): ProvinceMap {
 function pickSeeds(map: WorldMap): number[] {
   const S = map.size, rng = makeRng(subSeed(map.seed, 'províncias'));
   let landCells = 0;
-  for (let i = 0; i < S * S; i++) if (map.water[i] !== 1) landCells++;
+  for (let i = 0; i < S * S; i++) if (map.water[i] === 0) landCells++;
   const d = Math.sqrt(landCells / TARGET) * 0.85, d2 = d * d;
   const gs = Math.max(1, Math.floor(d)), gw = Math.ceil(S / gs), grid: number[][] = Array.from({ length: gw * gw }, () => []);
   const seeds: number[] = [];
   const tries = landCells * 3;
   for (let t = 0; t < tries; t++) {
     const i = Math.floor(rng() * S * S);
-    if (map.water[i] === 1) continue;
+    if (map.water[i] !== 0) continue;
     const x = i % S, y = (i - x) / S, gx = Math.floor(x / gs), gy = Math.floor(y / gs);
     let ok = true;
     for (let yy = gy - 2; yy <= gy + 2 && ok; yy++) for (let xx = gx - 2; xx <= gx + 2 && ok; xx++) {
@@ -74,7 +76,7 @@ function growRegions(map: WorldMap, seeds: number[]): Int32Array {
   const S = map.size, region = new Int32Array(S * S).fill(-1), cost = new Float64Array(S * S).fill(Infinity);
   const heap = new Heap();
   seeds.forEach((s, k) => { region[s] = k; cost[s] = 0; heap.push(s, 0); });
-  const wet = (i: number) => map.river[i] === 1 || map.water[i] === 2;
+  const wet = (i: number) => map.river[i] === 1;
   while (heap.size) {
     const [c, cc] = heap.pop();
     if (cc > cost[c]) continue;
@@ -83,29 +85,32 @@ function growRegions(map: WorldMap, seeds: number[]): Int32Array {
       const nx = x + DX[k], ny = y + DY[k];
       if (nx < 0 || ny < 0 || nx >= S || ny >= S) continue;
       const nb = ny * S + nx;
-      if (map.water[nb] === 1) continue;
+      if (map.water[nb] !== 0) continue;
       let step = 1 + (map.elevation[nb] >= MOUNTAIN_LEVEL ? MOUNTAIN_COST : 0);
       step += RIDGE_COST * Math.max(0, map.elevation[nb] - map.elevation[c]);
-      if (wet(nb) !== wet(c)) step += RIVER_COST; // entrar ou sair do rio/lago
+      if (wet(nb) !== wet(c)) step += RIVER_COST; // entrar ou sair do rio
       const nc = cc + step;
       if (nc < cost[nb]) { cost[nb] = nc; region[nb] = region[c]; heap.push(nb, nc); }
     }
   }
-  // terra sem semente alcançável (ilhas isoladas): cada massa vira uma região nova
+  // terra sem semente alcançável (ilhas isoladas): cada massa vira uma região nova;
+  // ilhotas menores que MIN_ISLAND_CELLS (pedrinhas em lagos/costa) ficam sem província
   let next = seeds.length;
   for (let s = 0; s < S * S; s++) {
-    if (map.water[s] === 1 || region[s] >= 0) continue;
-    const id = next++, st = [s];
+    if (map.water[s] !== 0 || region[s] !== -1) continue;
+    const id = next++, st = [s], comp = [s];
     region[s] = id;
     while (st.length) {
       const c = st.pop()!, x = c % S, y = (c - x) / S;
       for (let k = 0; k < 4; k++) {
         const nx = x + DX[k], ny = y + DY[k], nb = ny * S + nx;
-        if (nx < 0 || ny < 0 || nx >= S || ny >= S || map.water[nb] === 1 || region[nb] >= 0) continue;
-        region[nb] = id; st.push(nb);
+        if (nx < 0 || ny < 0 || nx >= S || ny >= S || map.water[nb] !== 0 || region[nb] !== -1) continue;
+        region[nb] = id; st.push(nb); comp.push(nb);
       }
     }
+    if (comp.length < MIN_ISLAND_CELLS) for (const c of comp) region[c] = -2; // marca: visitada, sem província
   }
+  for (let i = 0; i < region.length; i++) if (region[i] === -2) region[i] = -1;
   fixFragments(region, S);
   return region;
 }
@@ -172,32 +177,6 @@ function mergeSmall(region: Int32Array, S: number, land: (i: number) => boolean)
     }
     for (let i = 0; i < S * S; i++) { const t = into.get(region[i]); if (t !== undefined && t !== region[i]) region[i] = t; }
   }
-}
-
-const MIN_DRY_CELLS = 12; // abaixo disso não cabem 3 locais de construção
-/** Regiões (quase) sem terra seca — lago inteiro ou faixa de margem — não servem para construir: vão para a vizinha de maior fronteira. */
-function mergeLakeOnly(region: Int32Array, map: WorldMap): void {
-  const S = map.size, dry = new Map<number, number>(), border = new Map<number, Map<number, number>>();
-  for (let i = 0; i < region.length; i++) {
-    const r = region[i];
-    if (r < 0) continue;
-    if (!dry.has(r)) dry.set(r, 0);
-    if (map.water[i] === 0) dry.set(r, dry.get(r)! + 1);
-    for (const j of n4(i, S)) {
-      const q = region[j];
-      if (q < 0 || q === r) continue;
-      const m = border.get(r) ?? border.set(r, new Map()).get(r)!;
-      m.set(q, (m.get(q) ?? 0) + 1);
-    }
-  }
-  const into = new Map<number, number>();
-  for (const [r, d] of dry) {
-    if (d >= MIN_DRY_CELLS || !border.has(r)) continue;
-    let to = -1, m = 0;
-    for (const [q, k] of border.get(r)!) if (dry.get(q)! >= MIN_DRY_CELLS && (k > m || (k === m && q < to))) { m = k; to = q; }
-    if (to >= 0) into.set(r, to);
-  }
-  for (let i = 0; i < region.length; i++) { const t = into.get(region[i]); if (t !== undefined) region[i] = t; }
 }
 
 /** Regiões acima de 2.5× a média (planícies cercadas por rios) são divididas com novas sementes internas. */
@@ -380,17 +359,37 @@ function pickSites(map: WorldMap, cells: number[], p: Province): { x: number; y:
   };
   const ranked = cand.map(i => [score(i), i] as const).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(e => e[1]);
   const out: { x: number; y: number }[] = [];
-  for (const minD of [12, 8, 4]) {
+  const rejected = new Map<number, number>(); // célula → raio em que falhou
+  // passadas cada vez mais permissivas: espaçamento menor e, por último, clareira de 2 tiles
+  for (const [minD, clear] of [[12, 3], [8, 3], [4, 3], [4, 2], [3, 2]]) {
     for (const i of ranked) {
       if (out.length >= p.slots) break;
       const x = (i % S) * CELL + CELL / 2, y = Math.floor(i / S) * CELL + CELL / 2;
-      if (out.some(o => Math.hypot(o.x - x, o.y - y) < minD)) continue;
+      if (out.some(o => Math.hypot(o.x - x, o.y - y) < minD) || (rejected.get(i) ?? 99) <= clear) continue;
+      if (!dryAround(map, x, y, clear)) { rejected.set(i, clear); continue; }
       out.push({ x, y });
     }
     if (out.length >= p.slots) break;
   }
-  if (out.length < p.slots) p.slots = Math.max(1, out.length); // ilhota sem espaço: menos vagas
+  if (out.length < p.slots) p.slots = out.length; // ilha rasa em lago sem chão firme: menos vagas (pode ser 0; não colonizável)
   return out;
+}
+
+
+/**
+ * O local e seus vizinhos (raio `clear` tiles) são secos pelas mesmas regras do chunk (água parada pelo canto mais alto, rios
+ * suavizados e com meandro) — a célula global seca não basta: lagos e rios locais passam por células "secas".
+ */
+function dryAround(map: WorldMap, x: number, y: number, clear: number): boolean {
+  const N = 2 * clear + 2, h = new Float64Array(N * N), x0 = x - clear, y0 = y - clear;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) h[j * N + i] = terrainHeight(map, x0 + i, y0 + j);
+  for (let j = 0; j < N - 1; j++) for (let i = 0; i < N - 1; i++) {
+    const tx = x0 + i, ty = y0 + j;
+    const top = Math.max(h[j * N + i], h[j * N + i + 1], h[(j + 1) * N + i], h[(j + 1) * N + i + 1]);
+    if (standingWaterAt(map, tx + 0.5, ty + 0.5, top)) return false;
+    if (coveringRiver(riverSegments(map, Math.floor(tx / CHUNK), Math.floor(ty / CHUNK)), tx + 0.5, ty + 0.5)) return false;
+  }
+  return true;
 }
 
 const ONSET = ['b', 'c', 'd', 'f', 'g', 'l', 'm', 'n', 'p', 'r', 's', 't', 'v', 'br', 'tr', 'gr', 'dr', 'st', 'ch', 'th', 'val', 'mor', 'kar', 'el'];
