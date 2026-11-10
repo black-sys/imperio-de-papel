@@ -19,7 +19,9 @@ interface Loaded { level: Level; full: ChunkData | null; coarse: CoarseChunk | n
  */
 export class ChunkManager {
   private loaded = new Map<string, Loaded>();
-  private inFlight = new Map<string, Level>();
+  // pedido em voo por chunk: nível + id único (um pedido rejeitado como "duplicado" não apaga o mais novo)
+  private inFlight = new Map<string, { level: Level; id: number }>();
+  private nextId = 0;
   private decor: Decor;
   private flora: Flora;
   private generation = 0;
@@ -51,16 +53,17 @@ export class ChunkManager {
       const cur = this.loaded.get(k)?.level;
       // histerese: mantém o nível atual se ele ainda vale a ±1 chunk de distância
       if (cur !== undefined && cur !== level && lodFor(Math.max(0, d - 1), quality) <= cur && cur <= lodFor(d + 1, quality)) level = cur;
-      if (cur === level || this.inFlight.get(k) === level) continue;
+      if (cur === level || this.inFlight.get(k)?.level === level) continue;
       want.push([d, cx, cy, level]);
     }
     want.sort((a, b) => a[0] - b[0] || a[3] - b[3]);
     for (const [, cx, cy, level] of want) {
       if (this.inFlight.size >= MAX_IN_FLIGHT) break;
-      const k = `${cx},${cy}`, gen = this.generation;
-      this.inFlight.set(k, level);
+      const k = `${cx},${cy}`, gen = this.generation, id = ++this.nextId;
+      this.inFlight.set(k, { level, id });
+      const mine = () => gen === this.generation && this.inFlight.get(k)?.id === id;
       const done = (full: ChunkData | null, coarse: CoarseChunk | null) => {
-        if (gen !== this.generation || this.inFlight.get(k) !== level) return;
+        if (!mine()) return;
         this.inFlight.delete(k);
         this.drop(k);
         const terrain = full ? buildTerrain(full) : buildCoarseTerrain(coarse!);
@@ -70,7 +73,7 @@ export class ChunkManager {
         if (full) { this.decor.add(k, full); this.flora.add(k, full, QUALITY[this.quality].flora, (x, y) => chunkHeight(full, x, y)); }
         this.loaded.set(k, { level, full, coarse, terrain, water });
       };
-      const fail = () => { if (gen === this.generation && this.inFlight.get(k) === level) this.inFlight.delete(k); };
+      const fail = () => { if (mine()) this.inFlight.delete(k); };
       if (level === 0) this.client.chunk(cx, cy).then(d => done(d, null), fail);
       else this.client.coarse(cx, cy, level === 1 ? 2 : 4).then(d => done(null, d), fail);
     }

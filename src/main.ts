@@ -38,13 +38,13 @@ async function load(s: number) {
   showError(null);
   map = null;
   pendingTeleport = null;
+  strategic.setImage(null, 0); // o pergaminho do mundo antigo some já, não só quando o novo ficar pronto
   chunks.reset();
   let m: WorldMap;
   try { m = await client.generate(s, setProgress); }
   catch (e) { if ((e as Error).message !== 'substituído') showError((e as Error).message, s); return; }
   map = m;
   setProgress(null, 1);
-  strategic.setImage(null, 0);
   client.parchment(2048).then(px => { if (map === m) strategic.setImage(px, 2048); }, () => {});
   // passa pelo mesmo caminho do teleporte: confirma chão firme quando o chunk carregar
   player.teleport({ x: Math.floor(m.spawn.x), y: Math.floor(m.spawn.y) });
@@ -120,7 +120,8 @@ function frame(now: number) {
     const b = chunks.biomeAt(p.x, p.y);
     setInfo({ x: p.x, y: p.y, biome: b === null ? '…' : BIOME_NAMES[b as Biome], fps, tris: iso.renderer.info.render.triangles });
   }
-  iso.render();
+  // pergaminho opaco cobrindo tudo: não desenha (nem sombreia) o 3D escondido
+  if (!strategic.covering) iso.render();
   strategic.draw(iso.viewWidth(), iso.yaw(), player.position.x, player.position.y);
   frames++;
   if (now - fpsT > 500) { fps = Math.round((frames * 1000) / (now - fpsT)); frames = 0; fpsT = now; }

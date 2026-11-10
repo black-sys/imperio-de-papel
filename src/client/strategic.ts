@@ -33,7 +33,7 @@ export class StrategicMap {
     });
     canvas.addEventListener('pointerup', e => {
       const d = this.drag; this.drag = null;
-      if (!d || d.moved || this.mode !== 'map') return;
+      if (!d || d.moved || this.mode !== 'map' || !this.img) return;
       const k = this.across / canvas.width;
       this.onPick(this.center.x + (e.clientX - canvas.width / 2) * k, this.center.y + (e.clientY - canvas.height / 2) * k);
     });
@@ -60,6 +60,9 @@ export class StrategicMap {
 
   get focus() { return this.center; }
 
+  /** Modo mapa com a transição concluída: o 3D está totalmente escondido. */
+  get covering(): boolean { return this.mode === 'map' && this.t > 0.98 && this.img !== null; }
+
   /** Desenha. Em 3D: `viewWidth` e `yaw` da câmera e o alvo (cx, cy). */
   draw(viewWidth: number, yaw: number, cx: number, cy: number): void {
     const W = this.canvas.width, H = this.canvas.height, ctx = this.ctx;
@@ -67,7 +70,8 @@ export class StrategicMap {
     this.t += ((this.mode === 'map' ? 1 : 0) - this.t) * 0.15;
     this.canvas.style.opacity = String(alpha);
     this.canvas.style.pointerEvents = this.mode === 'map' ? 'auto' : 'none';
-    if (alpha <= 0 || !this.img) return;
+    if (alpha <= 0) return;
+    if (!this.img) { ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.fillStyle = '#b0bcb0'; ctx.fillRect(0, 0, W, H); return; } // pergaminho do novo mundo ainda gerando
     if (this.mode === '3d') { this.center = { x: cx, y: cy }; this.across = viewWidth; }
     // ângulo de norte-acima é 90°; interpola pelo caminho mais curto
     let target = Math.PI / 2, d = target - yaw;

@@ -40,7 +40,8 @@ export function createScene(canvas: HTMLCanvasElement): IsoScene {
     renderer.shadowMap.enabled = p.shadow > 0;
     sun.castShadow = p.shadow > 0;
     if (p.shadow > 0) {
-      const half = (p.l0 + 1) * CHUNK; // cobre a área L0
+      // câmera de sombra fica girada ~31° em relação aos eixos do mundo: margem para cobrir os cantos do L0 (+ histerese)
+      const half = Math.SQRT2 * (p.l0 + 2) * CHUNK;
       Object.assign(sun.shadow.camera, { left: -half, right: half, top: half, bottom: -half, near: 1, far: 2000 });
       sun.shadow.camera.updateProjectionMatrix();
       sun.shadow.mapSize.set(p.shadow, p.shadow);
