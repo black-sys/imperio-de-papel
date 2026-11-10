@@ -1,4 +1,6 @@
+import * as THREE from 'three';
 import { FreeCamera } from './client/camera';
+import { bordersCanvas, makePainter, ownedCanvas, provinceAtTile } from './client/view/borders';
 import { initHud, initTopbar, setInfo, setProgress, setSeedField, setTopbar, showError } from './client/hud';
 import { loadQuality, saveQuality, type Quality } from './client/quality';
 import { FADE_END, StrategicMap } from './client/strategic';
@@ -9,7 +11,7 @@ import { setSpeed } from './sim/commands';
 import { monthlyIncome } from './sim/economy';
 import { newGame, type GameState } from './sim/state';
 import { tick } from './sim/tick';
-import { CHUNK } from './worldgen/constants';
+import { CELL, CHUNK } from './worldgen/constants';
 import type { ProvinceMap } from './worldgen/provinces';
 import { parseSeed, randomSeed } from './worldgen/seed';
 import type { WorldMap } from './worldgen/types';
@@ -20,7 +22,7 @@ const iso = createScene(viewCanvas);
 const camera = new FreeCamera(viewCanvas, () => iso.yaw(), () => iso.viewWidth());
 // clique no pergaminho: centraliza a câmera ali e volta ao 3D
 const strategic = new StrategicMap(document.getElementById('strategic') as HTMLCanvasElement,
-  (x, y) => { camera.center(x, y); strategic.mode = '3d'; iso.setWidth(300); },
+  (x, y) => { camera.center(x, y); if (pm) selected = provinceAtTile(pm, x, y); strategic.mode = '3d'; iso.setWidth(300); },
   () => iso.setWidth(FADE_END - 1));
 const chunks = new ChunkManager(client, iso.scene);
 let seed = parseSeed(new URLSearchParams(location.search).get('seed')) ?? randomSeed();
@@ -28,6 +30,8 @@ let map: WorldMap | null = null;
 let pm: ProvinceMap | null = null;
 let game: GameState | null = null;
 let lastSpeed = 1;
+let selected = -1;
+let paintKey = '', ownerKey = '', bordersLayer: HTMLCanvasElement | null = null;
 let quality = loadQuality();
 iso.setQuality(quality);
 // raio (em chunks) que cobre a vista isométrica: o chão visto é ~1.8× mais alto que largo na tela
@@ -38,7 +42,9 @@ async function load(s: number) {
   setSeedField(s);
   history.replaceState(null, '', `?seed=${s}`);
   showError(null);
-  map = null; pm = null; game = null;
+  map = null; pm = null; game = null; selected = -1; paintKey = ''; ownerKey = ''; bordersLayer = null;
+  chunks.setPainter(null);
+  strategic.setOverlay([], []);
   strategic.setImage(null, 0); // o pergaminho do mundo antigo some já, não só quando o novo ficar pronto
   chunks.reset();
   let w: { map: WorldMap; provinces: ProvinceMap };
@@ -48,6 +54,7 @@ async function load(s: number) {
   setProgress(null, 1);
   const m = map;
   client.parchment(2048).then(px => { if (map === m) strategic.setImage(px, 2048); }, () => {});
+  bordersLayer = bordersCanvas(pm, 2048);
   const first = pm.provinces[pm.suggestedCapitals[0]];
   camera.center(first.center.x, first.center.y);
 }
@@ -87,11 +94,32 @@ window.addEventListener('wheel', e => {
   if (iso.viewWidth() >= FADE_END && e.deltaY > 0) strategic.open(camera.x, camera.y);
 }, { passive: true });
 
+// clique esquerdo (sem arrastar) no terreno: seleciona a província
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2();
+let down: { x: number; y: number } | null = null;
+viewCanvas.addEventListener('pointerdown', e => { if (e.button === 0) down = { x: e.clientX, y: e.clientY }; });
+viewCanvas.addEventListener('pointerup', e => {
+  if (e.button !== 0 || !down || !pm || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;
+  down = null;
+  ndc.set((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  ray.setFromCamera(ndc, iso.camera);
+  const hit = ray.intersectObjects(chunks.terrainMeshes(), false)[0];
+  selected = hit ? provinceAtTile(pm, hit.point.x, hit.point.z) : -1;
+});
+
 let last = performance.now(), frames = 0, fps = 0, fpsT = last;
 function frame(now: number) {
   const dt = (now - last) / 1000;
   last = now;
   if (map && pm && game) {
+    // dono ou seleção mudou: repinta o 3D; dono mudou: refaz a aquarela do pergaminho
+    const ok = game.owner.join(','), key = `${ok}|${selected}`;
+    if (key !== paintKey) { paintKey = key; chunks.setPainter(makePainter(pm, game.owner, selected)); }
+    if (ok !== ownerKey && bordersLayer) {
+      ownerKey = ok;
+      strategic.setOverlay([ownedCanvas(pm, game.owner, 1024), bordersLayer],
+        pm.provinces.map(p => ({ x: p.center.x, y: p.center.y, name: p.name, size: Math.sqrt(p.cells) * CELL * 0.12 })));
+    }
     if (game.capital >= 0) tick(game, pm, Math.min(dt, 1)); // aba em segundo plano: no máximo 1 s por quadro
     camera.update(Math.min(dt, 0.1), keys);
     chunks.update(camera.x, camera.y, viewRadius(), quality);
@@ -109,6 +137,6 @@ function frame(now: number) {
 requestAnimationFrame(frame);
 if (import.meta.env.DEV) { // para testes no console
   Object.assign(window, { chunks, iso, camera });
-  Object.defineProperties(window, { game: { get: () => game }, pm: { get: () => pm } });
+  Object.defineProperties(window, { game: { get: () => game }, pm: { get: () => pm }, selected: { get: () => selected, set: v => (selected = v) } });
 }
 load(seed);

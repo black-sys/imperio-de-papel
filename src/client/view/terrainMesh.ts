@@ -39,7 +39,24 @@ export function buildTerrain(c: ChunkData): THREE.Mesh {
   const m = meshWithSkirt(pos, col, ox, oz, CHUNK, 1, (i, j) => c.heights[j * V + i],
     (i, j) => (c.water[j * CHUNK + i] === 1 || c.water[j * CHUNK + i] === 2 ? BED : BIOME_COLORS[c.biome[j * CHUNK + i] as Biome]));
   m.castShadow = m.receiveShadow = true;
+  m.userData.paint = { base: col.slice(), ox, oz, n: CHUNK, step: 1 } satisfies PaintInfo;
   return m;
+}
+
+/** Cores originais por bloco (6 vértices por bloco, em ordem de linha) para repintar por província sem recriar a malha. */
+export interface PaintInfo { base: Float32Array; ox: number; oz: number; n: number; step: number }
+export type Painter = (tx: number, ty: number, step: number) => readonly [number, number, number] | null;
+
+/** Repinta a malha: cor = cor base × tinta do bloco (null = sem tinta). */
+export function paintTerrain(m: THREE.Mesh, painter: Painter | null): void {
+  const info = m.userData.paint as PaintInfo | undefined;
+  if (!info) return;
+  const attr = m.geometry.getAttribute('color') as THREE.BufferAttribute, arr = attr.array as Float32Array;
+  for (let j = 0; j < info.n; j++) for (let i = 0; i < info.n; i++) {
+    const t = painter ? painter(info.ox + i * info.step, info.oz + j * info.step, info.step) : null, o = (j * info.n + i) * 18;
+    for (let v = 0; v < 18; v++) arr[o + v] = t ? info.base[o + v] * t[v % 3] : info.base[o + v];
+  }
+  attr.needsUpdate = true;
 }
 
 const SKIRT = 3;
@@ -83,8 +100,10 @@ export function buildCoarseTerrain(c: CoarseChunk): THREE.Mesh {
       }
     }
   }
-  return meshWithSkirt(pos, col, ox, oz, B, s, (i, j) => c.heights[j * N + i],
+  const m = meshWithSkirt(pos, col, ox, oz, B, s, (i, j) => c.heights[j * N + i],
     (i, j) => (c.water[j * B + i] ? BED : BIOME_COLORS[c.biome[j * B + i] as Biome]));
+  m.userData.paint = { base: col.slice(), ox, oz, n: B, step: s } satisfies PaintInfo;
+  return m;
 }
 
 /** Água de LOD: um quad por bloco com mar/lago, sem animação. */

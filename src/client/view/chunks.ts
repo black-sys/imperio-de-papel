@@ -6,7 +6,7 @@ import { lodFor, QUALITY, type Quality } from '../quality';
 import type { WorldClient } from '../worldClient';
 import { Decor } from './decor';
 import { Flora } from './flora';
-import { buildCoarseTerrain, buildCoarseWater, buildTerrain, buildWater, chunkHeight, coarseHeight } from './terrainMesh';
+import { buildCoarseTerrain, buildCoarseWater, buildTerrain, buildWater, chunkHeight, coarseHeight, paintTerrain, type Painter } from './terrainMesh';
 
 const MAX_IN_FLIGHT = 6;
 type Level = 0 | 1 | 2;
@@ -26,6 +26,7 @@ export class ChunkManager {
   private flora: Flora;
   private generation = 0;
   private quality: Quality = 'high';
+  private painter: Painter | null = null;
 
   constructor(private client: WorldClient, private scene: THREE.Scene) { this.decor = new Decor(scene); this.flora = new Flora(scene); }
 
@@ -68,6 +69,7 @@ export class ChunkManager {
         this.drop(k);
         const terrain = full ? buildTerrain(full) : buildCoarseTerrain(coarse!);
         const water = full ? buildWater(full) : buildCoarseWater(coarse!);
+        paintTerrain(terrain, this.painter);
         this.scene.add(terrain);
         if (water) this.scene.add(water);
         if (full) { this.decor.add(k, full); this.flora.add(k, full, QUALITY[this.quality].flora, (x, y) => chunkHeight(full, x, y)); }
@@ -108,6 +110,12 @@ export class ChunkManager {
 
   /** Chunks L0 carregados (para sombras/flora). */
   fullChunks(): ChunkData[] { return [...this.loaded.values()].flatMap(l => (l.full ? [l.full] : [])); }
+
+  /** Troca a tinta por província e repinta tudo o que está carregado (dono ou seleção mudou). */
+  setPainter(p: Painter | null): void {
+    this.painter = p;
+    for (const l of this.loaded.values()) paintTerrain(l.terrain, p);
+  }
 
   /** Recria a vegetação decorativa dos chunks L0 com a densidade da qualidade atual. */
   private refreshFlora(): void {

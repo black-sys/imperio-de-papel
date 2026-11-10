@@ -9,6 +9,8 @@ export const FADE_START = 500, FADE_END = 600;
  */
 export class StrategicMap {
   private img: HTMLCanvasElement | null = null;
+  private layers: HTMLCanvasElement[] = [];
+  private labels: { x: number; y: number; name: string; size: number }[] = [];
   private ctx: CanvasRenderingContext2D;
   mode: '3d' | 'map' = '3d';
   private center = { x: 0, y: 0 };
@@ -49,6 +51,11 @@ export class StrategicMap {
 
   setMarker(x: number, y: number): void { this.marker = { x, y }; }
 
+  /** Camadas desenhadas por cima do pergaminho (aquarela dos donos, fronteiras) e nomes das províncias. */
+  setOverlay(layers: HTMLCanvasElement[], labels: { x: number; y: number; name: string; size: number }[]): void {
+    this.layers = layers; this.labels = labels;
+  }
+
   /** Entra no modo mapa centrado em (x,y). */
   open(x: number, y: number): void { this.mode = 'map'; this.center = { x, y }; this.across = FADE_END * 1.5; }
 
@@ -85,6 +92,20 @@ export class StrategicMap {
     ctx.setTransform(k * scale * rx, -k * scale * s * fx, k * scale * rz, -k * scale * s * fz,
       W / 2 - scale * (c.x * rx + c.y * rz), H / 2 + scale * s * (c.x * fx + c.y * fz));
     ctx.drawImage(this.img, 0, 0);
+    for (const l of this.layers) ctx.drawImage(l, 0, 0, l.width, l.height, 0, 0, this.img.width, this.img.height);
+    // nomes à mão, só quando cabem na tela (tamanho ∝ área, em tiles → pixels)
+    if (this.t > 0.5) {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      for (const l of this.labels) {
+        const px = W / 2 + scale * ((l.x - c.x) * rx + (l.y - c.y) * rz), py = H / 2 - scale * s * ((l.x - c.x) * fx + (l.y - c.y) * fz);
+        const fs = l.size * scale;
+        if (fs < 9 || px < -100 || py < -40 || px > W + 100 || py > H + 40) continue;
+        ctx.font = `italic ${Math.min(28, fs).toFixed(0)}px Georgia, 'Times New Roman', serif`;
+        ctx.fillStyle = 'rgba(60, 38, 20, 0.85)';
+        ctx.fillText(l.name, px, py);
+      }
+    }
     if (this.marker) {
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       const px = W / 2 + scale * ((this.marker.x - c.x) * rx + (this.marker.y - c.y) * rz);
