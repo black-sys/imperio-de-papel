@@ -11,6 +11,7 @@ import { WorldClient } from './client/worldClient';
 import { build, chooseCapital, colonize, setSpeed, upgrade, type Result } from './sim/commands';
 import { renderPanel, setTip, toast } from './client/panel';
 import { monthlyIncome } from './sim/economy';
+import { placeFortresses } from './sim/fortress';
 import { makeMoveGrid, type MoveGrid } from './sim/movegrid';
 import { newGame, type GameState } from './sim/state';
 import { tick } from './sim/tick';
@@ -66,6 +67,7 @@ async function load(s: number) {
   catch (e) { if ((e as Error).message !== 'substituído') showError((e as Error).message, s); return; }
   map = w.map; pm = w.provinces; game = newGame(pm);
   moveGrid = makeMoveGrid(map);
+  placeFortresses(game, pm, s);
   chunks.hidden = siteClearings(pm);
   setProgress(null, 1);
   const m = map;

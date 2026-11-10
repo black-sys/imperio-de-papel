@@ -1,6 +1,7 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { CELL } from '../worldgen/constants';
 import { battleStep } from './battle';
+import { fortressStep } from './fortress';
 import { REFILL, TROOPS, TROOP_CAP, type TroopType } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
 import { activeLevel, type GameState, type Troop } from './state';
@@ -26,6 +27,7 @@ export function troopStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: num
   for (const t of s.troops) march(t, grid, dt);
   battleStep(s, pm, grid, dt);
   for (const t of s.troops) refill(s, pm, grid, t, dt);
+  fortressStep(s, pm);
 }
 
 /** Anda de centro em centro de célula; a célula de chegada dita a velocidade do trecho (rio 3×, terreno difícil 2×), como no custo do A*. */

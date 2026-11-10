@@ -41,6 +41,7 @@ export const BATTLE = {
   rout: 0.5, // meses em fuga, sem obedecer
   minSoldiers: 3, // abaixo disso a tropa se dispersa
 };
+export const FORTRESS = { share: 0.25, regenMonths: 3 }; // fração das províncias com fortaleza; meses sem combate para recompor
 export const REFILL = { rate: 1, garrisonRate: 3, gold: 2 }; // soldados/mês parado no reino (com Guarnição na província); ouro por soldado
 export const TROOP_CAP = [0, 2, 3, 4]; // tropas sustentadas por nível de Guarnição
 export const GARRISON_GOAL = [0, 0, 3, 3]; // por nível alvo: guarnições do reino no nível anterior ou maior (contando a própria)
