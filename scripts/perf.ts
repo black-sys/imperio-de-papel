@@ -9,3 +9,7 @@ const t1 = performance.now();
 let water = 0;
 for (let i = 0; i < 50; i++) water += generateChunk(map, 20 + (i % 10), 20 + Math.floor(i / 10)).water.filter(v => v).length;
 console.log(`chunk: ${((performance.now() - t1) / 50).toFixed(2)} ms média (meta 10) — tiles de água em 50 chunks: ${water}`);
+import { generateCoarseChunk } from '../src/worldgen/coarse';
+const t2 = performance.now();
+for (let i = 0; i < 200; i++) generateCoarseChunk(map, 10 + (i % 20), 10 + Math.floor(i / 20), 4);
+console.log(`coarse(4): ${((performance.now() - t2) / 200).toFixed(2)} ms média (meta 1)`);

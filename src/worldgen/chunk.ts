@@ -274,3 +274,17 @@ function coveringRiver(segs: Seg[], x: number, y: number): { width: number; surf
   }
   return width > 0 ? { width, surface } : null;
 }
+
+// ---- usados pelo chunk grosso (LOD): mesmas regras do chunk completo ----
+
+/** Altura de terreno (sem água) num ponto global em tiles, idêntica à do chunk completo. */
+export function terrainHeight(map: WorldMap, gx: number, gy: number): number {
+  return heightAt(map, subSeed(map.seed, 'chunk'), gx, gy);
+}
+
+/** Mar/lago que cobre um tile/bloco com o canto mais alto `top`, ou null. */
+export function standingWaterAt(map: WorldMap, gx: number, gy: number, top: number): { type: 1 | 2; level: number } | null {
+  if (top < 0 && nearOcean(map, gx, gy)) return { type: 1, level: 0 };
+  const l = lakeLevel(map, gx, gy);
+  return l !== null && top < l ? { type: 2, level: l } : null;
+}
