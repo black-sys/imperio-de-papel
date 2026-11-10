@@ -1,10 +1,11 @@
 import type { CoarseChunk } from '../worldgen/coarse';
+import type { ProvinceMap } from '../worldgen/provinces';
 import type { ChunkData, WorldMap } from '../worldgen/types';
 import type { WorkerIn } from './worker';
 
 type Out =
   | { type: 'progress'; stage: string; pct: number; token: number }
-  | { type: 'world'; map: WorldMap; token: number }
+  | { type: 'world'; map: WorldMap; provinces: ProvinceMap; token: number }
   | { type: 'chunk'; data: ChunkData; token: number }
   | { type: 'coarse'; data: CoarseChunk; token: number }
   | { type: 'parchment'; pixels: Uint8ClampedArray; size: number; token: number }
@@ -14,7 +15,7 @@ type Out =
 export class WorldClient {
   private worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   private token = 0;
-  private pendingWorld: { resolve: (m: WorldMap) => void; reject: (e: Error) => void; onProgress: (s: string, p: number) => void } | null = null;
+  private pendingWorld: { resolve: (m: { map: WorldMap; provinces: ProvinceMap }) => void; reject: (e: Error) => void; onProgress: (s: string, p: number) => void } | null = null;
   // chave `cx,cy` (completo) ou `cx,cy,step` (grosso)
   private pendingChunks = new Map<string, { resolve: (c: any) => void; reject: (e: Error) => void }>();
 
@@ -23,7 +24,7 @@ export class WorldClient {
       const m = e.data;
       if (m.token !== this.token) return;
       if (m.type === 'progress') this.pendingWorld?.onProgress(m.stage, m.pct);
-      else if (m.type === 'world') { this.pendingWorld?.resolve(m.map); this.pendingWorld = null; }
+      else if (m.type === 'world') { this.pendingWorld?.resolve({ map: m.map, provinces: m.provinces }); this.pendingWorld = null; }
       else if (m.type === 'chunk') {
         const k = `${m.data.cx},${m.data.cy}`;
         this.pendingChunks.get(k)?.resolve(m.data);
@@ -50,7 +51,7 @@ export class WorldClient {
     };
   }
 
-  generate(seed: number, onProgress: (stage: string, pct: number) => void): Promise<WorldMap> {
+  generate(seed: number, onProgress: (stage: string, pct: number) => void): Promise<{ map: WorldMap; provinces: ProvinceMap }> {
     this.token++;
     this.pendingWorld?.reject(new Error('substituído'));
     for (const p of this.pendingChunks.values()) p.reject(new Error('substituído'));

@@ -2,6 +2,7 @@ import { generateChunk } from '../worldgen/chunk';
 import { generateCoarseChunk } from '../worldgen/coarse';
 import { renderParchment } from './parchment';
 import { generateWorld } from '../worldgen/global/world';
+import { generateProvinces } from '../worldgen/provinces';
 import type { WorldMap } from '../worldgen/types';
 
 export type WorkerIn =
@@ -19,7 +20,9 @@ self.onmessage = (e: MessageEvent<WorkerIn>) => {
     if (msg.type === 'world') {
       current = msg.token;
       map = generateWorld(msg.seed, (stage, pct) => postMessage({ type: 'progress', stage, pct, token: msg.token }));
-      postMessage({ type: 'world', map, token: msg.token }); // cópia; o worker mantém o original para os chunks
+      postMessage({ type: 'progress', stage: 'províncias', pct: 0.95, token: msg.token });
+      const provinces = generateProvinces(map);
+      postMessage({ type: 'world', map, provinces, token: msg.token }); // cópia; o worker mantém o original para os chunks
     } else if (msg.type === 'parchment') {
       if (!map || msg.token !== current) return;
       const pixels = renderParchment(map, msg.size);

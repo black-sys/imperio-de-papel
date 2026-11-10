@@ -18,6 +18,11 @@
     #info { font-variant-numeric: tabular-nums; opacity: .85; }
     #error { color: #ff8a80; display: none; max-width: 280px; }
     #strategic { position: fixed; inset: 0; width: 100%; height: 100%; opacity: 0; pointer-events: none; cursor: crosshair; }
+    #topbar { position: fixed; z-index: 2; top: 12px; right: 12px; white-space: nowrap; display: none; gap: 18px; align-items: center; background: #2b2118e6; color: #f1e6cf; padding: 8px 16px; border-radius: 8px; border: 1px solid #6b5536; font-variant-numeric: tabular-nums; }
+    #topbar small { opacity: .75; }
+    #topbar #date { font-weight: 600; min-width: 140px; text-align: center; }
+    #speeds button { background: #3d2f22; color: #f1e6cf; border: 1px solid #6b5536; padding: 3px 8px; margin-left: 2px; border-radius: 4px; cursor: pointer; }
+    #speeds button.on { background: #b08a4a; color: #1d150e; }
     #help { position: fixed; z-index: 2; bottom: 12px; left: 12px; opacity: .6; font-size: 12px; }
   </style>
 </head>
@@ -37,7 +42,16 @@
     <div id="error"></div>
   </div>
   <canvas id="strategic"></canvas>
-  <div id="help">WASD / clique: andar · Q/E: girar · roda: zoom · M: mapa</div>
+  <div id="topbar">
+    <span class="res" title="Ouro">🪙 <b id="r-gold">0</b> <small id="i-gold"></small></span>
+    <span class="res" title="Madeira">🪵 <b id="r-wood">0</b> <small id="i-wood"></small></span>
+    <span class="res" title="Pedra">🪨 <b id="r-stone">0</b> <small id="i-stone"></small></span>
+    <span id="date"></span>
+    <span id="speeds">
+      <button data-speed="0" title="Pausa (espaço)">⏸</button><button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button>
+    </span>
+  </div>
+  <div id="help">WASD / arrastar (botão direito): mover · Q/E: girar · roda: zoom · M: mapa · espaço: pausa</div>
   <script type="module" src="/src/main.ts"></script>
 </body>
 </html>
