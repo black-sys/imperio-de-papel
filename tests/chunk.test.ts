@@ -15,6 +15,20 @@ describe('generateChunk', { timeout: 30000 }, () => {
     expect(col(a.heights, CHUNK)).toEqual(col(b.heights, 0));
     expect(row(a.heights, CHUNK)).toEqual(row(c.heights, 0));
   });
+  test('costuras idênticas em chunks ao longo de rios', () => {
+    const keys = new Set<string>();
+    for (const p of riverPaths(map).slice(0, 40)) for (const [x, y] of p) keys.add(`${Math.floor(x / CHUNK)},${Math.floor(y / CHUNK)}`);
+    let bad = 0, pairs = 0;
+    for (const k of [...keys].slice(0, 120)) {
+      const [cx, cy] = k.split(',').map(Number);
+      const a = generateChunk(map, cx, cy), r = generateChunk(map, cx + 1, cy), d = generateChunk(map, cx, cy + 1);
+      const ca = col(a.heights, CHUNK), cr = col(r.heights, 0), ra = row(a.heights, CHUNK), rd = row(d.heights, 0);
+      for (let i = 0; i < V; i++) { if (ca[i] !== cr[i]) bad++; if (ra[i] !== rd[i]) bad++; }
+      pairs += 2;
+    }
+    expect(pairs).toBeGreaterThan(50);
+    expect(bad).toBe(0);
+  });
   test('determinístico', () => {
     const h = (cx: number) => { const c = generateChunk(map, cx, 20); return hashArrays(c.heights, c.biome, c.water, c.waterLevel, c.riverWidth); };
     expect(h(20)).toBe(h(20));
@@ -88,6 +102,46 @@ describe('água por altura', { timeout: 60000 }, () => {
       }
     }
     expect(bad).toBe(0);
+  });
+  // tolerância deliberada: exigir zero obrigava lagos a se expandirem sobre a planície (visual pior);
+  // flutuação < 0.25 na linha da margem é imperceptível
+  test('lago e oceano não flutuam visivelmente (amostra ampla, 2 sementes)', () => {
+    let bad = 0, edges = 0, worst = 0;
+    for (const m of [map, generateWorld(4294967295)]) {
+      const keys = new Set<string>();
+      m.water.forEach((w, i) => { if (w === 2 && i % 37 === 0) keys.add(`${Math.floor(((i % m.size) * CELL) / CHUNK)},${Math.floor((Math.floor(i / m.size) * CELL) / CHUNK)}`); });
+      for (const p of riverPaths(m).slice(0, 30)) { const e = p[p.length - 1]; keys.add(`${Math.floor(e[0] / CHUNK)},${Math.floor(e[1] / CHUNK)}`); }
+      for (const k of [...keys].slice(0, 40)) {
+        const [cx, cy] = k.split(',').map(Number), c = generateChunk(m, cx, cy);
+        for (let y = 1; y < CHUNK - 1; y++) for (let x = 1; x < CHUNK - 1; x++) {
+          const t = y * CHUNK + x;
+          if (!c.water[t]) continue;
+          for (const [nx, ny] of [[x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1]]) {
+            if (c.water[ny * CHUNK + nx]) continue;
+            edges++;
+            const f = c.waterLevel[t] - 0.15 - Math.max(...corners(c, nx, ny));
+            worst = Math.max(worst, f);
+            if (f > 0.25) bad++;
+          }
+        }
+      }
+    }
+    expect(worst).toBeLessThan(1);
+    expect(bad / edges).toBeLessThan(0.005);
+  });
+  test('foz dos rios chega à água parada', () => {
+    let gaps = 0, n = 0;
+    for (const p of riverPaths(map)) {
+      const e = p[p.length - 1];
+      const cell = Math.floor(e[1] / CELL) * map.size + Math.floor(e[0] / CELL);
+      if (map.water[cell] === 0) continue; // termina em outro rio
+      n++;
+      const c = chunkAt(Math.floor(e[0] / CHUNK), Math.floor(e[1] / CHUNK));
+      const lx = Math.floor(e[0]) - c.cx * CHUNK, ly = Math.floor(e[1]) - c.cy * CHUNK;
+      if (c.water[ly * CHUNK + lx] !== 1 && c.water[ly * CHUNK + lx] !== 2 && c.water[ly * CHUNK + lx] !== 3) gaps++;
+    }
+    expect(n).toBeGreaterThan(50);
+    expect(gaps).toBe(0);
   });
   test('margem de lago sem paredes (< 4)', () => {
     const c = chunkAt(lakeChunk[0], lakeChunk[1]);
