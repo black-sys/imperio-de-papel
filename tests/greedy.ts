@@ -34,6 +34,14 @@ export function greedy(pm: ProvinceMap, maxMonths = 3000, map?: WorldMap) {
   // joga até medir todos os marcos (ou o limite)
   for (let m = 0; m < maxMonths && (reach20 < 0 || firstSteel < 0 || (grid && firstFortress < 0)); m++) {
     const proj = runMonth(s, pm, false);
+    // rotas (uma tentativa por mês: traçar custa uma busca no mapa todo): cada cidade sua sem ligação nem rota liga à
+    // cidade ligada mais próxima
+    if (grid) for (const id of mine()) {
+      if (s.connected[id] || s.routes.some(r => r.a === id || r.b === id)) continue;
+      const c = pm.provinces[id].city, dist = (q: number) => Math.hypot(pm.provinces[q].city.x - c.x, pm.provinces[q].city.y - c.y);
+      const to = mine().filter(q => q !== id && s.connected[q]).sort((a, b) => dist(a) - dist(b))[0];
+      if (to !== undefined) buildRoute(s, pm, grid, to, id);
+    }
     for (let act = 0; act < 12; act++) {
       let did = false;
       // 1) colonizar
@@ -41,13 +49,6 @@ export function greedy(pm: ProvinceMap, maxMonths = 3000, map?: WorldMap) {
       for (const id of mine()) for (const n of pm.provinces[id].neighbors) if (s.owner[n] === -1) targets.add(n);
       const best = [...targets].filter(t => !s.colonizing.some(c => c.province === t) && !s.fortresses.some(f => f.province === t)).sort((a, b) => score(b) - score(a))[0];
       if (best !== undefined && colonize(s, pm, best).ok) { did = true; if (firstColonize < 0) firstColonize = s.month; }
-      // 1b) rotas: cada cidade sua sem ligação nem rota em obra liga à cidade ligada mais próxima
-      if (grid) for (const id of mine()) {
-        if (s.connected[id] || s.routes.some(r => r.a === id || r.b === id)) continue;
-        const c = pm.provinces[id].city, dist = (q: number) => Math.hypot(pm.provinces[q].city.x - c.x, pm.provinces[q].city.y - c.y);
-        const to = mine().filter(q => q !== id && s.connected[q]).sort((a, b) => dist(a) - dist(b))[0];
-        if (to !== undefined && buildRoute(s, pm, grid, to, id).ok) did = true;
-      }
       // 2) veios: grãos primeiro se faltar comida, depois carvão e ferro, depois madeira
       const order: VeinKind[] = proj.net.grain <= 0.5 ? ['grain', 'coal', 'iron', 'wood'] : ['coal', 'iron', 'wood', 'grain'];
       // antes da 1ª colonização, guarda o dinheiro (só faz fazenda se faltar comida)

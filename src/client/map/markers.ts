@@ -225,11 +225,11 @@ function drawNetwork(ctx: CanvasRenderingContext2D, s: GameState, pm: ProvinceMa
       stroke(ctx, [[x - 6, y - 6], [x + 6, y + 6]]); stroke(ctx, [[x + 6, y - 6], [x - 6, y + 6]]);
     }
   }
-  // linhas de suprimento até as tropas
-  ctx.lineWidth = 2; ctx.setLineDash([1, 5]);
+  // linhas de suprimento até as tropas: contorno escuro e pontos dourados (legível sobre a floresta)
   for (const t of s.troops) if (t.owner === 0 && t.supply) {
-    ctx.strokeStyle = t.supply.cut ? CUT : SUPPLY_INK;
-    stroke(ctx, pathPoints(t.supply.path, grid, v, every, pm.provinces[t.supply.from].city));
+    const pts = pathPoints(t.supply.path, grid, v, every, pm.provinces[t.supply.from].city);
+    ctx.setLineDash([]); ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(43,26,14,0.35)'; stroke(ctx, pts);
+    ctx.setLineDash([3, 6]); ctx.lineWidth = 3; ctx.strokeStyle = t.supply.cut ? CUT : SUPPLY_INK; stroke(ctx, pts);
   }
   // prévia da rota sendo traçada
   if (preview) {

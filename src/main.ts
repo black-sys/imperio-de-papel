@@ -221,7 +221,7 @@ function frame(now: number) {
 }
 requestAnimationFrame(frame);
 if (import.meta.env.DEV) { // para testes no console
-  Object.assign(window, { renderer, tiles, selectedTroops, sim: { recruit, moveTroops, spawnTroop, addFortress, chooseCapital } });
+  Object.assign(window, { renderer, tiles, selectedTroops, sim: { recruit, moveTroops, spawnTroop, addFortress, chooseCapital, planRoute } });
   Object.defineProperties(window, {
     game: { get: () => game }, pm: { get: () => pm }, moveGrid: { get: () => moveGrid },
     selected: { get: () => selected, set: v => (selected = v) }, view: { get: () => view, set: v => (view = clampView(v)) },

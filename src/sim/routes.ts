@@ -8,8 +8,14 @@ import { logEvent, type GameState, type Route } from './state';
 type Result = { ok: true } | { ok: false; reason: string };
 const no = (reason: string) => ({ ok: false as const, reason });
 
+// grade de traçado guardada por estado: só muda quando donos ou tropas de fortaleza mudam
+const gridCache = new WeakMap<GameState, { sig: string; cost: Uint8Array }>();
+
 /** Custo de traçado por célula: água e território de outro reino bloqueiam; perto de fortaleza encarece (desvia sozinho). */
 export function routeGrid(s: GameState, pm: ProvinceMap, grid: MoveGrid, realm = 0): Uint8Array {
+  const sig = `${realm}|${s.owner.join(',')}|${s.troops.filter(t => t.owner === -1).map(t => `${t.x | 0},${t.y | 0}`).join(';')}`;
+  const hit = gridCache.get(s);
+  if (hit && hit.sig === sig) return hit.cost;
   const cost = new Uint8Array(grid.cost);
   for (let i = 0; i < cost.length; i++) { const p = pm.cellProvince[i]; if (p >= 0 && s.owner[p] !== realm && s.owner[p] !== -1) cost[i] = 0; }
   const r = Math.ceil(ROUTE.fortressAvoidTiles / CELL);
@@ -25,6 +31,7 @@ export function routeGrid(s: GameState, pm: ProvinceMap, grid: MoveGrid, realm =
       if (cost[i]) cost[i] = Math.min(255, cost[i] * ROUTE.fortressAvoidCost);
     }
   }
+  gridCache.set(s, { sig, cost });
   return cost;
 }
 
@@ -69,18 +76,6 @@ export function removeRoute(s: GameState, id: number): Result {
   return { ok: true };
 }
 
-// célula → ids das rotas que passam por ela; derivado do estado (fora do save), refeito quando as rotas mudam
-const indexCache = new WeakMap<GameState, { sig: string; index: Map<number, number[]> }>();
-export function routeIndex(s: GameState): Map<number, number[]> {
-  const sig = s.routes.map(r => `${r.id}:${r.path.length}`).join(',');
-  const hit = indexCache.get(s);
-  if (hit && hit.sig === sig) return hit.index;
-  const index = new Map<number, number[]>();
-  for (const r of s.routes) for (const c of r.path) { const l = index.get(c); if (l) l.push(r.id); else index.set(c, [r.id]); }
-  indexCache.set(s, { sig, index });
-  return index;
-}
-
 /** Ligada = alcançável a partir da capital por rotas prontas e não cortadas. */
 export function recomputeConnected(s: GameState): void {
   const on = s.owner.map(() => false);
@@ -115,10 +110,17 @@ export function updateRoutes(s: GameState, pm: ProvinceMap, grid: MoveGrid): voi
   });
 }
 
-/** Rota cortada: tropa hostil (fortaleza ou outro reino) a ≤ cutTiles de alguma célula dela, ou passa por província de outro reino. */
-function markCuts(s: GameState, pm: ProvinceMap, grid: MoveGrid): void {
-  if (!s.routes.length) return;
-  const index = routeIndex(s), cut = new Set<number>(), S = grid.size, r = Math.ceil((ROUTE.cutTiles + CELL) / CELL);
+/**
+ * Células a ≤ cutTiles de alguma tropa hostil ao jogador. Guardado por estado e refeito só quando essas tropas mudam
+ * de lugar (fortalezas ficam paradas): cortes de rotas e de linhas viram consultas diretas.
+ */
+const threatCache = new WeakMap<GameState, { sig: number; mask: Uint8Array }>();
+function threatMask(s: GameState, grid: MoveGrid): Uint8Array {
+  let sig = 0;
+  for (const t of s.troops) if (t.owner !== 0) sig = (Math.imul(sig, 31) + ((t.x * 4) | 0) * 7919 + ((t.y * 4) | 0)) | 0;
+  const hit = threatCache.get(s);
+  if (hit && hit.sig === sig && hit.mask.length === grid.size * grid.size) return hit.mask;
+  const S = grid.size, mask = new Uint8Array(S * S), r = Math.ceil((ROUTE.cutTiles + CELL) / CELL);
   for (const t of s.troops) {
     if (t.owner === 0) continue;
     const c = cellAt(grid, t.x, t.y);
@@ -126,13 +128,19 @@ function markCuts(s: GameState, pm: ProvinceMap, grid: MoveGrid): void {
     const cx = c % S, cy = Math.floor(c / S);
     for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
       const x = cx + dx, y = cy + dy;
-      if (x < 0 || y < 0 || x >= S || y >= S) continue;
-      const ids = index.get(y * S + x);
-      if (ids && Math.hypot(x * CELL + CELL / 2 - t.x, y * CELL + CELL / 2 - t.y) <= ROUTE.cutTiles) for (const id of ids) cut.add(id);
+      if (x >= 0 && y >= 0 && x < S && y < S && Math.hypot(x * CELL + CELL / 2 - t.x, y * CELL + CELL / 2 - t.y) <= ROUTE.cutTiles) mask[y * S + x] = 1;
     }
   }
+  threatCache.set(s, { sig, mask });
+  return mask;
+}
+
+/** Rota cortada: tropa hostil (fortaleza ou outro reino) a ≤ cutTiles de alguma célula dela, ou passa por província de outro reino. */
+function markCuts(s: GameState, pm: ProvinceMap, grid: MoveGrid): void {
+  if (!s.routes.length) return;
+  const threat = threatMask(s, grid), foreign = (c: number) => { const p = pm.cellProvince[c]; return p >= 0 && s.owner[p] !== 0 && s.owner[p] !== -1; };
   for (const route of s.routes) {
-    const now = cut.has(route.id) || route.path.some(c => { const p = pm.cellProvince[c]; return p >= 0 && s.owner[p] !== 0 && s.owner[p] !== -1; });
+    const now = route.path.some(c => threat[c] === 1 || foreign(c));
     if (now === route.cut) continue;
     route.cut = now;
     if (route.remaining <= 0) logEvent(s, `Rota ${pm.provinces[route.a].name}–${pm.provinces[route.b].name} ${now ? 'cortada' : 'religada'}`);
@@ -142,22 +150,6 @@ function markCuts(s: GameState, pm: ProvinceMap, grid: MoveGrid): void {
 // ---- suprimento das tropas ----
 
 const cellCenter = (grid: MoveGrid, c: number) => ({ x: (c % grid.size) * CELL + CELL / 2, y: Math.floor(c / grid.size) * CELL + CELL / 2 });
-
-/** Hostil a ≤ cutTiles de alguma célula de `cells`? */
-function cellsThreatened(s: GameState, grid: MoveGrid, cells: Set<number>, owner: number): boolean {
-  const S = grid.size, r = Math.ceil((ROUTE.cutTiles + CELL) / CELL);
-  for (const t of s.troops) {
-    if (t.owner === owner) continue;
-    const c = cellAt(grid, t.x, t.y);
-    if (c < 0) continue;
-    const cx = c % S, cy = Math.floor(c / S);
-    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
-      const x = cx + dx, y = cy + dy;
-      if (x >= 0 && y >= 0 && x < S && y < S && cells.has(y * S + x) && Math.hypot(x * CELL + CELL / 2 - t.x, y * CELL + CELL / 2 - t.y) <= ROUTE.cutTiles) return true;
-    }
-  }
-  return false;
-}
 
 /** Cidade ligada mais próxima da tropa (em linha reta) e o caminho dela até a tropa. */
 function traceLine(s: GameState, pm: ProvinceMap, grid: MoveGrid, x: number, y: number): { path: number[]; from: number } | null {
@@ -200,9 +192,7 @@ export function dropSupply(s: GameState, troopId: number): Result {
  * perdem homens. Fortalezas e outros reinos (ainda sem rede própria, ciclo 4) contam como abastecidos.
  */
 export function updateSupply(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: number): void {
-  const index = routeIndex(s), S = grid.size, R = Math.ceil((SUPPLY.range + CELL) / CELL);
-  const live = new Set(s.routes.filter(r => r.remaining <= 0 && !r.cut && s.connected[r.a] && s.connected[r.b]).map(r => r.id));
-  const cities = s.connected.map((on, id) => (on && s.owner[id] === 0 && s.city[id] ? pm.provinces[id].city : null)).filter(c => !!c);
+  const cover = coverageMask(s, pm, grid);
   for (const t of s.troops) {
     if (t.owner !== 0) { t.supplied = true; continue; } // fortalezas sempre; outros reinos ainda sem rede própria (ciclo 4)
     if (t.supply) {
@@ -212,24 +202,38 @@ export function updateSupply(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: 
         if (line) t.supply = { ...line, at: s.clock, cut: false };
       }
       // inimigo lutando com a própria tropa não corta a linha: ignora o trecho final, a ≤ join tiles dela
-      const tail = new Set(t.supply.path.filter(c => { const p = cellCenter(grid, c); return Math.hypot(p.x - t.x, p.y - t.y) > BATTLE.join; }));
-      t.supply.cut = !s.connected[t.supply.from] || cellsThreatened(s, grid, tail, 0);
+      const threat = threatMask(s, grid), away = (c: number) => { const p = cellCenter(grid, c); return Math.hypot(p.x - t.x, p.y - t.y) > BATTLE.join; };
+      t.supply.cut = !s.connected[t.supply.from] || t.supply.path.some(c => threat[c] === 1 && away(c));
     }
     let ok = !!t.supply && !t.supply.cut;
     // dentro de província sua ligada à capital (defender a própria fronteira não desgasta)
-    if (!ok) { const c = cellAt(grid, t.x, t.y), p = c < 0 ? -1 : pm.cellProvince[c]; ok = p >= 0 && s.owner[p] === 0 && s.connected[p]; }
-    if (!ok) ok = cities.some(c => Math.hypot(c.x - t.x, c.y - t.y) <= SUPPLY.range);
-    if (!ok) {
-      const c = cellAt(grid, t.x, t.y), cx = c % S, cy = Math.floor(c / S);
-      for (let dy = -R; dy <= R && !ok; dy++) for (let dx = -R; dx <= R && !ok; dx++) {
-        const ids = index.get((cy + dy) * S + cx + dx);
-        if (ids && ids.some(id => live.has(id))) ok = Math.hypot((cx + dx) * CELL + CELL / 2 - t.x, (cy + dy) * CELL + CELL / 2 - t.y) <= SUPPLY.range;
-      }
-    }
+    // (ou perto da rede ligada: cidades e rotas)
+    if (!ok) { const c = cellAt(grid, t.x, t.y), p = c < 0 ? -1 : pm.cellProvince[c]; ok = (p >= 0 && s.owner[p] === 0 && s.connected[p]) || (c >= 0 && cover[c] === 1); }
     t.supplied = ok;
     if (ok) continue;
     t.soldiers -= SUPPLY.attrition * dt;
     const key = `t${t.id}`;
     if (s.clock - (s.stallWarned[key] ?? -Infinity) >= SUPPLY.warnMonths) { s.stallWarned[key] = s.clock; logEvent(s, `${TROOPS[t.type].name} sem suprimento`); }
   }
+}
+
+/** Células a ≤ SUPPLY.range de cidade ligada ou de rota pronta, ligada e não cortada. Refeito só quando a rede muda. */
+const coverCache = new WeakMap<GameState, { sig: string; mask: Uint8Array }>();
+function coverageMask(s: GameState, pm: ProvinceMap, grid: MoveGrid): Uint8Array {
+  const live = s.routes.filter(r => r.remaining <= 0 && !r.cut && s.connected[r.a] && s.connected[r.b]);
+  const sig = `${live.map(r => r.id).join(',')}|${s.connected.map(c => (c ? 1 : 0)).join('')}`;
+  const hit = coverCache.get(s);
+  if (hit && hit.sig === sig && hit.mask.length === grid.size * grid.size) return hit.mask;
+  const S = grid.size, mask = new Uint8Array(S * S), R = Math.ceil(SUPPLY.range / CELL) + 1;
+  const paint = (px: number, py: number) => { // disco de raio SUPPLY.range tiles em volta de (px, py)
+    const cx = Math.floor(px / CELL), cy = Math.floor(py / CELL);
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const x = cx + dx, y = cy + dy;
+      if (x >= 0 && y >= 0 && x < S && y < S && Math.hypot(x * CELL + CELL / 2 - px, y * CELL + CELL / 2 - py) <= SUPPLY.range) mask[y * S + x] = 1;
+    }
+  };
+  s.connected.forEach((on, id) => { if (on && s.owner[id] === 0 && s.city[id]) paint(pm.provinces[id].city.x, pm.provinces[id].city.y); });
+  for (const r of live) for (const c of r.path) { const p = cellCenter(grid, c); paint(p.x, p.y); }
+  coverCache.set(s, { sig, mask });
+  return mask;
 }
