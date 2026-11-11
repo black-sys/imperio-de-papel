@@ -52,6 +52,7 @@ export function checkPropose(s: GameState, pm: ProvinceMap, from: number, to: nu
   if (p.kind === 'peace') {
     if (!atWar(s, from, to)) return no('Só há paz para quem está em guerra');
     for (const id of p.cede) {
+      if (s.nations.some(x => x.alive && x.capital === id)) return no('A capital não se cede'); // a capital só cai na guerra
       const o = s.owner[id], occ = s.occupations.find(e => e.province === id);
       if ((o !== from && o !== to) || !occ || occ.nation !== (o === from ? to : from)) return no('Província não ocupada por quem a recebe');
     }
@@ -241,7 +242,7 @@ export function aiDiplomacy(s: GameState, pm: ProvinceMap, n: number): void {
     if (adv >= AI_DIPLO.peaceLosing && !long) continue;
     const white: Proposal = { kind: 'peace', cede: [], money: 0, payer: n };
     // a IA do outro lado recusaria a branca? oferece o que o inimigo já ocupa
-    const lose = s.occupations.filter(o => o.nation === e && s.owner[o.province] === n).map(o => o.province);
+    const lose = s.occupations.filter(o => o.nation === e && s.owner[o.province] === n && o.province !== me.capital).map(o => o.province);
     const offer = !human(s, e) && !evaluate(s, pm, e, n, white).ok && lose.length ? { ...white, cede: lose } : white;
     if (send(e, offer)) return;
   }

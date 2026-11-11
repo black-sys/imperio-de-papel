@@ -55,7 +55,7 @@ export function fall(s: GameState, pm: ProvinceMap, province: number, n: number,
     const c = s.city[province];
     s.city[province] = { level: Math.max(1, (c?.level ?? 1) - 1), remaining: 0 };
   }
-  if (prev >= 0) relate(s, prev, n, DIPLO.events.province);
+  if (prev >= 0 && damage) relate(s, prev, n, DIPLO.events.province); // cessão num tratado não ofende
   s.recruiting = s.recruiting.filter(r => r.province !== province);
   s.colonizing = s.colonizing.filter(x => x.province !== province);
   s.routes = s.routes.filter(r => r.a !== province && r.b !== province);

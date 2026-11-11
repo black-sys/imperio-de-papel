@@ -91,7 +91,7 @@ describe('conquista e relação', () => {
     const s = trio();
     s.lots[1][0] = { type: 'market', level: 2, remaining: 0 };
     s.owner[2] = 2;
-    fall(s, pm, 2, 0, false); // capital do 2 cedida sem dano (ainda elimina)
+    fall(s, pm, 2, 0); // tomada à força
     expect(relation(s, 0, 2)).toBe(-20);
     const t = trio();
     t.lots[1][0] = { type: 'market', level: 2, remaining: 0 };
@@ -146,6 +146,7 @@ describe('propostas', () => {
     expect(checkPropose(s, pm, 0, 2, { kind: 'trade', give: ['iron', 1000], get: ['money', 9] })).toEqual({ ok: false, reason: 'Quantidade inválida' });
     declareWar(s, 0, 2, pm);
     expect(checkPropose(s, pm, 0, 2, { kind: 'nonaggression' })).toEqual({ ok: false, reason: 'Em guerra: proponha paz primeiro' });
+    s.nations[1].capital = 2; // R1 deixa de ser capital (só para o teste)
     expect(checkPropose(s, pm, 0, 2, { kind: 'peace', cede: [1], money: 0, payer: 0 })).toEqual({ ok: false, reason: 'Província não ocupada por quem a recebe' });
     expect(checkPropose(s, pm, 0, 2, { kind: 'peace', cede: [], money: 1e9, payer: 0 })).toEqual({ ok: false, reason: 'Indenização acima do estoque' });
   });
@@ -353,5 +354,43 @@ describe('a IA propõe', () => {
     expect(s.letters.map(l => l.proposal.kind)).toEqual(['peace']);
     aiDiplomacy(s, pm, 1);
     expect(s.letters.length).toBe(1);
+  });
+});
+
+describe('revisão final', () => {
+  test('capital não se cede (nem a IA oferece): sem exceção', () => {
+    const s = trio();
+    s.nations[1].capital = 1; s.owner[2] = 1; // nação 1 com R1 (capital) e R2
+    declareWar(s, 0, 1, pm);
+    s.occupations.push({ province: 1, nation: 0, progress: 0.3 }, { province: 2, nation: 0, progress: 0.3 });
+    expect(checkPropose(s, pm, 1, 0, { kind: 'peace', cede: [1, 2], money: 0, payer: 1 })).toEqual({ ok: false, reason: 'A capital não se cede' });
+    spawnArmy(s, 0, Array.from({ length: 8 }, () => 'line' as const), 60, 64);
+    s.nations[0].ai = true; // IA ↔ IA: assinaria na hora
+    aiDiplomacy(s, pm, 1);
+    expect(s.nations[1].alive).toBe(true);
+    expect(s.owner[1]).toBe(1);
+  });
+  test('aliado arrastado: pactos com quem declarou acabam; aliado dos dois fica de fora', () => {
+    const s = trio();
+    addPact(s, 'alliance', 1, 2, null);
+    addPact(s, 'nonaggression', 0, 2, 99);
+    declareWar(s, 0, 1, pm);
+    expect(s.nations[2].atWar).toContain(0);
+    expect(pactBetween(s, 0, 2, 'nonaggression')).toBeUndefined();
+    const t = trio();
+    addPact(t, 'alliance', 1, 2, null);
+    addPact(t, 'alliance', 0, 2, null);
+    declareWar(t, 0, 1, pm);
+    expect(t.nations[2].atWar).not.toContain(0);
+    expect(pactBetween(t, 0, 2, 'alliance')).toBeDefined();
+  });
+  test('cessão num tratado não custa relação; a paz soma +10', () => {
+    const s = trio();
+    s.nations[1].capital = 2; s.owner[2] = 1;
+    declareWar(s, 0, 1, pm);
+    s.occupations.push({ province: 1, nation: 0, progress: 0.3 });
+    const before = relation(s, 0, 1);
+    sign(s, pm, 0, 1, { kind: 'peace', cede: [1], money: 0, payer: 1 });
+    expect(relation(s, 0, 1)).toBe(before + 10);
   });
 });

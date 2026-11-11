@@ -39,7 +39,9 @@ export function declareWar(s: GameState, n: number, target: number, pm?: Provinc
   // aliança defensiva: os aliados do alvo entram contra quem declarou (sem arrastar os aliados deles)
   for (const ally of alliesOf(s, target)) {
     const c = s.nations[ally];
-    if (!c?.alive || ally === n || c.atWar.includes(n)) continue;
+    // aliado também de quem declara fica de fora; senão, os acordos dele com quem declara acabam
+    if (!c?.alive || ally === n || c.atWar.includes(n) || pactBetween(s, n, ally, 'alliance')) continue;
+    for (const k of ['nonaggression', 'truce'] as const) { const q = pactBetween(s, n, ally, k); if (q) endPact(s, q); }
     c.atWar.push(n); a.atWar.push(ally);
     s.warSince[warKey(n, ally)] = s.month;
     const t = pactBetween(s, n, ally, 'trade');
