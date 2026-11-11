@@ -1,5 +1,5 @@
 import { ARMY, BUILDINGS, CITY, type BuildingType, type TroopType } from '../../sim/balance';
-import { cityLevel } from '../../sim/state';
+import { cityLevel, playerCapital } from '../../sim/state';
 import { roman } from '../labels';
 import type { MoveGrid } from '../../sim/movegrid';
 import type { GameState } from '../../sim/state';
@@ -20,7 +20,7 @@ const onScreen = (v: View, px: number, py: number, m = 40) => px > -m && py > -m
 
 /** Chave do que os marcadores mostram: igual enquanto nada visível muda (posições ao pixel de tela). */
 export function markersKey(s: GameState, pm: ProvinceMap, v: View, o: MarkerOpts): string {
-  const parts: (string | number)[] = [v.cx, v.cy, v.scale, v.w, v.h, o.selectedProvince, o.pins.length, s.capital];
+  const parts: (string | number)[] = [v.cx, v.cy, v.scale, v.w, v.h, o.selectedProvince, o.pins.length, playerCapital(s)];
   const open = v.scale >= ARMY.openScale;
   if (open) parts.push('open');
   for (const t of s.armies) {
@@ -120,7 +120,7 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     const level = cityLevel(s, id), r = CITY_R - 2 + level;
     ctx.fillStyle = color(s.owner[id]); ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.setLineDash(s.city[id]!.remaining > 0 ? [4, 2] : []);
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
-    if (s.capital === id) { ctx.strokeStyle = PAPER; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r - 3, 0, Math.PI * 2); ctx.stroke(); }
+    if (s.nations.some(n => n.alive && n.capital === id)) { ctx.strokeStyle = PAPER; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r - 3, 0, Math.PI * 2); ctx.stroke(); }
     if (s.owner[id] === 0 && !s.connected[id]) { // desligada da capital: aro tracejado vermelho e ✕
       ctx.strokeStyle = CUT; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
       label(ctx, '✕', x + r + 4, y - r - 2, 10);

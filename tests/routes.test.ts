@@ -19,7 +19,7 @@ const game = (): GameState => {
   const s = newGame(pm);
   chooseCapital(s, pm, 0);
   found(s, 1); found(s, 2);
-  s.res = { ...rich };
+  s.nations[0].res = { ...rich };
   return s;
 };
 const run = (s: GameState, months: number) => { setSpeed(s, 1); for (let i = 0; i < Math.round(months * 100); i++) tick(s, pm, 0.1, grid); };
@@ -39,12 +39,12 @@ describe('planejar rota', () => {
   test('recusas', () => {
     const s = newGame(pm);
     chooseCapital(s, pm, 0);
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     expect(checkRoute(s, pm, grid, 0, 1)).toEqual({ ok: false, reason: 'Escolha duas cidades suas' });
     found(s, 1);
     expect(buildRoute(s, pm, grid, 0, 1)).toEqual({ ok: true });
     expect(checkRoute(s, pm, grid, 1, 0)).toEqual({ ok: false, reason: 'Já existe uma rota entre essas cidades' });
-    s.res.money = 0;
+    s.nations[0].res.money = 0;
     found(s, 2);
     expect(checkRoute(s, pm, grid, 1, 2).ok).toBe(false);
   });
@@ -57,7 +57,7 @@ describe('construir e ligar', () => {
     const s = game(), plan = planRoute(s, pm, grid, 0, 1);
     if (!plan.ok) throw new Error(plan.reason);
     expect(buildRoute(s, pm, grid, 0, 1)).toEqual({ ok: true });
-    expect(s.res.money).toBeCloseTo(9000 - plan.cost.money!, 6);
+    expect(s.nations[0].res.money).toBeCloseTo(9000 - plan.cost.money!, 6);
     expect(s.routes[0].remaining).toBeCloseTo(plan.months, 6);
     run(s, plan.months - 0.1);
     expect(s.connected[1]).toBe(false);
@@ -114,12 +114,12 @@ describe('depósito e entrega', () => {
     const s = game();
     s.veins[1][2] = ready('coal_mine');
     runMonth(s, pm, true); runMonth(s, pm, true);
-    const coal = s.res.coal;
+    const coal = s.nations[0].res.coal;
     buildRoute(s, pm, grid, 0, 1);
     run(s, 4);
     expect(s.connected[1]).toBe(true);
     expect(s.depot[1].coal).toBe(0);
-    expect(s.res.coal).toBeGreaterThan(coal + 3.9 - 1e-9); // os 4 guardados (mais o que os meses de obra renderam no depósito)
+    expect(s.nations[0].res.coal).toBeGreaterThan(coal + 3.9 - 1e-9); // os 4 guardados (mais o que os meses de obra renderam no depósito)
     expect(s.events.some(e => e.text === 'Carga de R1 chegou ao estoque')).toBe(true);
     removeRoute(s, s.routes[0].id, pm);
     expect(s.events.at(-1)!.text).toBe('R1 desligada da capital');
@@ -174,7 +174,7 @@ describe('cortes', () => {
     const map = generateWorld(860), real = generateProvinces(map), g = makeMoveGrid(map), s = newGame(real);
     placeFortresses(s, real, 860);
     chooseCapital(s, real, real.suggestedCapitals[0]);
-    s.res = { ...rich, money: 1e9, wood: 1e9 };
+    s.nations[0].res = { ...rich, money: 1e9, wood: 1e9 };
     const own = [real.suggestedCapitals[0]];
     for (const p of real.provinces) if (own.length < 31 && p.lots.length && !s.fortresses.some(f => f.province === p.id) && p.id !== own[0]) { found(s, p.id); own.push(p.id); }
     for (let i = 1; i < own.length; i++) buildRoute(s, real, g, own[i - 1], own[i]);

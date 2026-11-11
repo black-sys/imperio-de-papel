@@ -31,7 +31,7 @@ describe('início', () => {
     const s = game();
     expect(s.city[0]).toEqual({ level: 2, remaining: 0 });
     expect(s.owner[0]).toBe(0);
-    expect(s.res).toEqual({ ...START_BASE, grain: START_BASE.grain * 1.2, wood: START_BASE.wood * 1.2, coal: START_BASE.coal * 1.2, iron: START_BASE.iron * 1.2 });
+    expect(s.nations[0].res).toEqual({ ...START_BASE, grain: START_BASE.grain * 1.2, wood: START_BASE.wood * 1.2, coal: START_BASE.coal * 1.2, iron: START_BASE.iron * 1.2 });
     expect(chooseCapital(s, pm, 1)).toEqual({ ok: false, reason: 'A capital já foi escolhida' });
   });
   test('estoque proporcional à riqueza média; sem veio do recurso, metade', () => {
@@ -52,16 +52,16 @@ describe('início', () => {
 describe('virada do mês', () => {
   test('impostos: nível 2 = 8 × fertilidade + 10 da capital; mercado +25%; sem grãos, metade', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     expect(runMonth(s, pm, false).net.money).toBeCloseTo(18, 9);
     s.lots[0][0] = ready('market');
     expect(runMonth(s, pm, false).net.money).toBeCloseTo(18 * 1.25, 9);
-    s.grainShort = true;
+    s.nations[0].grainShort = true;
     expect(runMonth(s, pm, false).net.money).toBeCloseTo(18 * 1.25 * 0.5, 9);
   });
   test('veios produzem por riqueza', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     s.veins[0] = [ready('farm'), ready('sawmill'), ready('coal_mine'), ready('iron_mine', 2)];
     const n = runMonth(s, pm, false).net;
     expect(n.grain).toBeCloseTo(4 * 1.2 - 2, 9); // menos o consumo da cidade nível 2
@@ -71,46 +71,46 @@ describe('virada do mês', () => {
   });
   test('siderúrgica produz o que o estoque permite; fábrica de armas usa o aço do mesmo mês', () => {
     const s = game();
-    s.res = { ...rich, iron: 10, coal: 3, steel: 0, wood: 50 };
+    s.nations[0].res = { ...rich, iron: 10, coal: 3, steel: 0, wood: 50 };
     s.lots[0][0] = ready('steelworks'); s.lots[0][1] = ready('arms_factory');
     const r = runMonth(s, pm, true);
-    expect(s.res.coal).toBeCloseTo(1, 9); // 3 − 2
-    expect(s.res.iron).toBeCloseTo(8, 9);
-    expect(s.res.steel).toBeCloseTo(0, 9); // o aço do mês virou arma
-    expect(s.res.arms).toBeCloseTo(501, 9);
+    expect(s.nations[0].res.coal).toBeCloseTo(1, 9); // 3 − 2
+    expect(s.nations[0].res.iron).toBeCloseTo(8, 9);
+    expect(s.nations[0].res.steel).toBeCloseTo(0, 9); // o aço do mês virou arma
+    expect(s.nations[0].res.arms).toBeCloseTo(501, 9);
     expect(r.stalled).toEqual([{ province: 0, lot: 0, missing: 'coal' }, { province: 0, lot: 1, missing: 'steel' }]);
-    for (const k of Object.keys(s.res) as (keyof GameState['res'])[]) expect(s.res[k]).toBeGreaterThanOrEqual(0);
+    for (const k of Object.keys(s.nations[0].res) as (keyof GameState['nations'][0]['res'])[]) expect(s.nations[0].res[k]).toBeGreaterThanOrEqual(0);
   });
   test('sem grãos: aviso e impostos pela metade no mês seguinte; volta quando há grãos', () => {
     const s = game();
-    s.res = { ...rich, grain: 1 };
+    s.nations[0].res = { ...rich, grain: 1 };
     runMonth(s, pm, true);
-    expect(s.grainShort).toBe(true);
-    expect(s.res.grain).toBe(0);
+    expect(s.nations[0].grainShort).toBe(true);
+    expect(s.nations[0].res.grain).toBe(0);
     expect(s.events.at(-1)!.text).toBe('Sem grãos: impostos pela metade');
-    s.res.grain = 100;
+    s.nations[0].res.grain = 100;
     runMonth(s, pm, true);
-    expect(s.grainShort).toBe(false);
+    expect(s.nations[0].grainShort).toBe(false);
   });
   test('sem madeira e sem veio de madeira, a capital ainda junta madeira para colonizar (sem beco sem saída)', () => {
     const noWood: ProvinceMap = { ...pm, provinces: pm.provinces.map(p => ({ ...p, veins: p.veins.filter(v => v.kind !== 'wood') })) };
     const s = newGame(noWood);
     chooseCapital(s, noWood, 0);
-    s.res.wood = 0;
+    s.nations[0].res.wood = 0;
     setSpeed(s, 1);
     for (let i = 0; i < 300; i++) tick(s, noWood, 1, null); // 30 meses
-    expect(s.res.wood).toBeGreaterThanOrEqual(colonizeCost(s, noWood, 1).wood!);
+    expect(s.nations[0].res.wood).toBeGreaterThanOrEqual(colonizeCost(s, noWood, 1).wood!);
   });
   test('cidade em obra de melhoria: impostos e grãos do nível anterior', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     s.city[0] = { level: 3, remaining: 4 };
     expect(cityTax(s, pm, 0)).toBeCloseTo(18, 9);
     expect(runMonth(s, pm, false).net.grain).toBeCloseTo(-CITY.grain[2], 9);
   });
   test('produção por lote vem da conta nacional (duas siderúrgicas, ferro para uma só)', () => {
     const s = game();
-    s.res = { ...rich, iron: 4, coal: 100 };
+    s.nations[0].res = { ...rich, iron: 4, coal: 100 };
     s.owner[1] = 0; s.city[1] = { level: 2, remaining: 0 }; s.connected[1] = true; // com rota até a capital
     s.lots[0][0] = ready('steelworks'); s.lots[1][0] = ready('steelworks');
     const r = runMonth(s, pm, false);
@@ -120,23 +120,23 @@ describe('virada do mês', () => {
   });
   test('manutenção: guarnição custa dinheiro', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     s.lots[0][1] = ready('garrison');
     expect(runMonth(s, pm, false).net.money).toBeCloseTo(18 - 2, 9);
   });
   test('a projeção não muda o estado e bate com a aplicação real', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     s.veins[0][0] = ready('farm'); s.lots[0][0] = ready('steelworks');
     const before = JSON.stringify(s), proj = runMonth(s, pm, false);
     expect(JSON.stringify(s)).toBe(before);
-    const res0 = { ...s.res };
+    const res0 = { ...s.nations[0].res };
     runMonth(s, pm, true);
-    for (const k of Object.keys(res0) as (keyof typeof res0)[]) expect(s.res[k] - res0[k]).toBeCloseTo(proj.net[k], 9);
+    for (const k of Object.keys(res0) as (keyof typeof res0)[]) expect(s.nations[0].res[k] - res0[k]).toBeCloseTo(proj.net[k], 9);
   });
   test('aviso de fábrica parada no máximo a cada 6 meses', () => {
     const s = game();
-    s.res = { ...rich, coal: 0 };
+    s.nations[0].res = { ...rich, coal: 0 };
     s.lots[0][0] = ready('steelworks');
     run(s, 12);
     expect(s.events.filter(e => e.text === 'Siderúrgica parada em P0: falta carvão').length).toBe(2);
@@ -146,7 +146,7 @@ describe('virada do mês', () => {
 describe('construir', () => {
   test('lotes liberados pelo nível da cidade', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     s.veins[0][2] = ready('coal_mine'); s.veins[0][3] = ready('iron_mine'); s.veins[0][1] = null;
     s.owner[4] = 0; s.city[4] = { level: 1, remaining: 0 }; s.veins[4][2] = ready('coal_mine');
     expect(build(s, pm, 0, { lot: 1 }, 'steelworks')).toEqual({ ok: true });
@@ -158,7 +158,7 @@ describe('construir', () => {
   });
   test('veio só aceita o seu prédio; lote só fábrica; lugar ocupado ou inválido', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     expect(checkBuild(s, pm, 0, { vein: 3 }, 'farm')).toEqual({ ok: false, reason: 'Veio só aceita Mina de ferro' });
     expect(checkBuild(s, pm, 0, { lot: 0 }, 'farm')).toEqual({ ok: false, reason: 'Lote só aceita fábrica' });
     expect(checkBuild(s, pm, 0, { vein: 9 }, 'farm')).toEqual({ ok: false, reason: 'Lugar inválido' });
@@ -168,10 +168,10 @@ describe('construir', () => {
   });
   test('custo, obra no tempo e evento', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     build(s, pm, 0, { vein: 3 }, 'iron_mine');
-    expect(s.res.money).toBe(5000 - 40);
-    expect(s.res.wood).toBe(500 - 15);
+    expect(s.nations[0].res.money).toBe(5000 - 40);
+    expect(s.nations[0].res.wood).toBe(500 - 15);
     run(s, 2.9);
     expect(s.veins[0][3]!.remaining).toBeGreaterThan(0);
     run(s, 0.2);
@@ -180,7 +180,7 @@ describe('construir', () => {
   });
   test('siderúrgica exige 3 minas prontas no reino, com carvão e ferro (tecnologia por cota)', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     expect(checkBuild(s, pm, 0, { lot: 0 }, 'steelworks')).toEqual({ ok: false, reason: 'Precisa de 3 minas prontas, com carvão e ferro: 0/3' });
     s.owner[1] = 0; s.city[1] = { level: 1, remaining: 0 };
     s.veins[0][2] = ready('coal_mine'); s.veins[1][2] = ready('coal_mine'); s.veins[0][3] = { type: 'iron_mine', level: 1, remaining: 1 }; // em obra não conta
@@ -192,12 +192,12 @@ describe('construir', () => {
   });
   test('sem madeira ainda dá para erguer serraria (sem beco sem saída)', () => {
     const s = game();
-    s.res = { ...rich, wood: 0 };
+    s.nations[0].res = { ...rich, wood: 0 };
     expect(checkBuild(s, pm, 0, { vein: 1 }, 'sawmill')).toEqual({ ok: true });
   });
   test('falta de recurso com motivo', () => {
     const s = game();
-    s.res = { ...rich, steel: 5 };
+    s.nations[0].res = { ...rich, steel: 5 };
     expect(checkBuild(s, pm, 0, { lot: 0 }, 'arms_factory')).toEqual({ ok: false, reason: 'Falta 5 de aço' });
   });
 });
@@ -205,7 +205,7 @@ describe('construir', () => {
 describe('melhorar e cotas', () => {
   test('N2 exige 3 do mesmo tipo; N3 exige 3 no N2; N3 leva aço', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     s.owner[1] = 0; s.city[1] = { level: 1, remaining: 0 };
     s.veins[0][0] = ready('farm'); s.veins[1][0] = ready('farm');
     expect(checkUpgrade(s, pm, 0, { vein: 0 })).toEqual({ ok: false, reason: 'Fazendas: 2/3' });
@@ -220,13 +220,13 @@ describe('melhorar e cotas', () => {
   });
   test('melhoria rende no nível anterior até terminar', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     s.veins[0][0] = { type: 'farm', level: 2, remaining: 3 };
     expect(runMonth(s, pm, false).net.grain).toBeCloseTo(4 * 1.2 - 2, 9);
   });
   test('cidade: nível 3 exige 3 cidades nível 2', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     s.owner[1] = 0; s.city[1] = { level: 2, remaining: 0 };
     expect(checkUpgradeCity(s, pm, 0)).toEqual({ ok: false, reason: 'Cidades nível 2: 2/3' });
     s.owner[2] = 0; s.city[2] = { level: 2, remaining: 0 };
@@ -242,10 +242,10 @@ describe('melhorar e cotas', () => {
 describe('colonizar', () => {
   test('custo em dinheiro e madeira; ao concluir, cidade nível 1 e lugares vazios', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     const c = colonizeCost(s, pm, 1);
     expect(colonize(s, pm, 1)).toEqual({ ok: true });
-    expect(s.res.money).toBeCloseTo(5000 - c.money!, 9);
+    expect(s.nations[0].res.money).toBeCloseTo(5000 - c.money!, 9);
     run(s, 5.1);
     expect(s.owner[1]).toBe(0);
     expect(s.city[1]).toEqual({ level: 1, remaining: 0 });
@@ -254,18 +254,18 @@ describe('colonizar', () => {
   });
   test('recusas', () => {
     const s = game();
-    s.res = { ...rich };
+    s.nations[0].res = { ...rich };
     expect(checkColonize(s, pm, 2)).toEqual({ ok: false, reason: 'Precisa ser vizinha de uma província sua' });
     s.owner[2] = 0;
     expect(checkColonize(s, pm, 3)).toEqual({ ok: false, reason: 'Não há terra firme para fundar uma cidade' });
-    s.res.money = 0;
+    s.nations[0].res.money = 0;
     expect(checkColonize(s, pm, 1).ok).toBe(false);
   });
 });
 
 test('estado faz ida e volta pelo JSON', () => {
   const s = game();
-  s.res = { ...rich };
+  s.nations[0].res = { ...rich };
   build(s, pm, 0, { vein: 0 }, 'farm');
   colonize(s, pm, 1);
   expect(JSON.parse(JSON.stringify(s))).toEqual(s);

@@ -1,7 +1,7 @@
 import { ARMY, BUILDINGS, CITY, DEPOT_MONTHS, REINFORCE, RES_NAMES, SUPPLY, TROOPS, type BuildingType, type TroopType } from '../sim/balance';
 import { checkBuild, checkColonize, checkRecruit, checkUpgrade, checkUpgradeCity, type Place, type Result } from '../sim/commands';
 import { buildCost, cityTax, colonizeCost, recruitCost, runMonth } from '../sim/economy';
-import { activeLevel, cityLevel, type GameState } from '../sim/state';
+import { activeLevel, cityLevel, playerCapital, type GameState } from '../sim/state';
 import { inBattle, men } from '../sim/armies';
 import { reinforcing } from '../sim/routes';
 import type { ProvinceMap } from '../worldgen/provinces';
@@ -53,9 +53,9 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
   if (picked.length) return show(armiesHtml(s, pm, picked), id, act, '');
   const p = pm.provinces[id], mine = s.owner[id] === 0 && !!s.city[id], fort = s.fortresses.find(f => f.province === id);
   let html = `<button class="x" data-a="close">✕</button><h2>${esc(p.name)}</h2>
-    <div class="sub">${s.capital === id ? 'Sua capital' : mine ? 'Seu reino' : fort ? 'Fortaleza neutra' : 'Neutra'} · ${BIOME_NAMES[p.biome]}${p.coastal ? ' · costeira' : ''}</div>
+    <div class="sub">${playerCapital(s) === id ? 'Sua capital' : mine ? 'Seu reino' : fort ? 'Fortaleza neutra' : 'Neutra'} · ${BIOME_NAMES[p.biome]}${p.coastal ? ' · costeira' : ''}</div>
     ${bar('Fertilidade', p.fertility)}`;
-  if (s.capital < 0) {
+  if (playerCapital(s) < 0) {
     html += pm.suggestedCapitals.includes(id)
       ? `<p>Uma boa terra para começar. Por perto: ${esc(veinsAround(pm, id))}.</p><button class="big" data-a="found">Fundar capital aqui</button>`
       : `<p class="why">Escolha uma das províncias marcadas com o selo no mapa.</p>`;

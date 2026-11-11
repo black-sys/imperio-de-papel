@@ -88,3 +88,7 @@ export const REINFORCE = { rate: 3, money: 2, grain: 0.5, arms: 0.5 };
 // custo cresce exponencialmente com as províncias que você já tem (barato no começo, caro no império grande)
 // calibrado pelo teste de ritmo (jogador guloso): 1ª colonização ~4 meses, 20 províncias ~2 h a 1×
 export const COLONIZE = { money: 70, growth: 1.39, wood: 50, woodGrowth: 1.15, months: 5, hardExtra: 1, max: 2, garrisonDiscount: 0.25 };
+
+// ---- nações (ciclo 4) ----
+export const DIFFICULTY = { easy: 0.7, normal: 1, hard: 1.3 }; // renda dos rivais (o jogador é sempre 1)
+export const MAX_RIVALS = 4;

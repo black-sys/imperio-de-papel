@@ -19,7 +19,7 @@ describe('recrutamento', () => {
     expect(checkRecruit(s, pm, 0, 1, 'artillery')).toEqual({ ok: false, reason: 'Requer Guarnição N2' });
     expect(checkRecruit(s, pm, 0, 1, 'cavalry')).toEqual({ ok: false, reason: 'Requer Guarnição N3' });
     expect(recruit(s, pm, 0, 1, 'line')).toEqual({ ok: true });
-    expect(s.res).toMatchObject({ money: 970, grain: 990, arms: 988, wood: 1000 }); // infantaria: 30 dinheiro, 10 grãos, 12 armas
+    expect(s.nations[0].res).toMatchObject({ money: 970, grain: 990, arms: 988, wood: 1000 }); // infantaria: 30 dinheiro, 10 grãos, 12 armas
     expect(recruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Já está treinando uma tropa' });
   });
   test('guarnição em obra não treina', () => {
@@ -29,13 +29,13 @@ describe('recrutamento', () => {
   });
   test('falta de recurso: infantaria sem armas; artilharia sem aço; cavalaria sem ferro', () => {
     const s = game(3);
-    s.res.money = 10;
+    s.nations[0].res.money = 10;
     expect(checkRecruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Falta 20 de dinheiro' });
-    s.res.money = 1000; s.res.arms = 0;
+    s.nations[0].res.money = 1000; s.nations[0].res.arms = 0;
     expect(checkRecruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Falta 12 de armas' });
-    s.res.arms = 1000; s.res.steel = 0;
+    s.nations[0].res.arms = 1000; s.nations[0].res.steel = 0;
     expect(checkRecruit(s, pm, 0, 1, 'artillery')).toEqual({ ok: false, reason: 'Falta 10 de aço' });
-    s.res.iron = 0;
+    s.nations[0].res.iron = 0;
     expect(checkRecruit(s, pm, 0, 1, 'cavalry')).toEqual({ ok: false, reason: 'Falta 10 de ferro' });
   });
   test('a tropa nasce no local do prédio depois de 2 meses', () => {
@@ -68,8 +68,8 @@ describe('recrutamento', () => {
     spawnArmy(s, 0, ['line'], 80, 80);
     spawnArmy(s, -1, ['line'], 180, 80, 1);
     expect(recruit(s, pm, 0, 1, 'cavalry')).toEqual({ ok: true }); // 2ª tropa: base × growth
-    expect(s.res.money).toBeCloseTo(1000 - 70 * TROOP_GROWTH, 6);
-    expect(s.res.iron).toBeCloseTo(1000 - 10 * TROOP_GROWTH, 6);
+    expect(s.nations[0].res.money).toBeCloseTo(1000 - 70 * TROOP_GROWTH, 6);
+    expect(s.nations[0].res.iron).toBeCloseTo(1000 - 10 * TROOP_GROWTH, 6);
     const c = recruitCost(s, 'line'); // 3ª tropa
     expect(c.money).toBeCloseTo(30 * TROOP_GROWTH ** 2, 6);
     expect(c.arms).toBeCloseTo(12 * TROOP_GROWTH ** 2, 6);
@@ -204,7 +204,7 @@ describe('reposição e manutenção', () => {
     c.t.battalions[0].soldiers = 20; // controle: tropa cheia não gasta
     run(s, 1); run(c.s, 1);
     expect(men(t)).toBeCloseTo(11, 5);
-    expect(c.s.res.money - s.res.money).toBeCloseTo(2, 5);
+    expect(c.s.nations[0].res.money - s.nations[0].res.money).toBeCloseTo(2, 5);
   });
   test('3 por mês com Guarnição; nunca passa do tamanho da tropa', () => {
     const { s, t } = hurt(60, 100, true);
@@ -218,10 +218,10 @@ describe('reposição e manutenção', () => {
     run(a.s, 1);
     expect(men(a.t)).toBeLessThanOrEqual(10); // fora do reino não repõe (e, sem suprimento, ainda desgasta)
     const b = hurt(60, 100, true);
-    b.s.res.money = 0;
+    b.s.nations[0].res.money = 0;
     run(b.s, 0.9); // antes da renda do mês
     expect(men(b.t)).toBe(10);
-    expect(b.s.res.money).toBe(0);
+    expect(b.s.nations[0].res.money).toBe(0);
     const c = hurt(10, 102, true);
     moveArmies(c.s, grid, [c.t.id], 110, 102);
     run(c.s, 0.3);
@@ -230,7 +230,7 @@ describe('reposição e manutenção', () => {
   test('dinheiro negativo na virada do mês dispersa a tropa mais cara', () => {
     const s = game();
     spawnArmy(s, 0, ['line'], 60, 100); spawnArmy(s, 0, ['cavalry'], 60, 100);
-    s.res.money = -500;
+    s.nations[0].res.money = -500;
     run(s, 1);
     expect(s.armies.flatMap(a => a.battalions.map(b => b.type))).toEqual(['line']);
     expect(s.events.at(-1)!.text).toBe('Batalhão de cavalaria disperso por falta de dinheiro');
@@ -285,7 +285,7 @@ describe('exércitos', () => {
     expect(mine[0].name).toBe('1º Exército de P0');
     mine[0].battalions.push(...Array.from({ length: 6 }, () => ({ type: 'line' as const, soldiers: 20 })));
     s.lots[0][2] = { type: 'garrison', level: 3, remaining: 0 }; s.lots[0][3] = { type: 'garrison', level: 3, remaining: 0 }; // teto folgado
-    s.res = { money: 1e6, grain: 1e6, wood: 1e6, coal: 1e6, iron: 1e6, steel: 1e6, arms: 1e6 }; // o 9º batalhão custa caro
+    s.nations[0].res = { money: 1e6, grain: 1e6, wood: 1e6, coal: 1e6, iron: 1e6, steel: 1e6, arms: 1e6 }; // o 9º batalhão custa caro
     expect(recruit(s, pm, 0, 1, 'line')).toEqual({ ok: true });
     run(s, 2.1);
     expect(s.armies.filter(a => a.owner === 0).map(a => a.battalions.length)).toEqual([8, 1]);

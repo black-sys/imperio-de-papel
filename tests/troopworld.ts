@@ -38,11 +38,11 @@ export const game = (level = 1, both = false): GameState => {
     s.owner[1] = 0; s.city[1] = { level: 1, remaining: 0 };
     const plan = planRoute(s, world.pm, world.grid, 0, 1); // rota pronta entre as duas cidades
     if (!plan.ok) throw new Error(plan.reason);
-    s.routes.push({ id: s.nextRouteId++, a: 0, b: 1, path: plan.path, remaining: 0, cut: false });
+    s.routes.push({ id: s.nextRouteId++, owner: 0, a: 0, b: 1, path: plan.path, remaining: 0, cut: false });
     s.connected[1] = true;
   }
   s.lots[0][1] = { type: 'garrison', level, remaining: 0 };
-  s.res = { money: 1000, grain: 1000, wood: 1000, coal: 1000, iron: 1000, steel: 1000, arms: 1000 };
+  s.nations[0].res = { money: 1000, grain: 1000, wood: 1000, coal: 1000, iron: 1000, steel: 1000, arms: 1000 };
   return s;
 };
 /** Avança `months` na velocidade dada, em ticks de 0.1 s. */

@@ -11,7 +11,7 @@ import { runMonth } from './sim/economy';
 import { addFortress, placeFortresses } from './sim/fortress';
 import { buildRoute, dropSupply, planRoute, removeRoute, supplyArmy } from './sim/routes';
 import { makeMoveGrid, type MoveGrid } from './sim/movegrid';
-import { newGame, type GameState } from './sim/state';
+import { newGame, playerCapital, type GameState } from './sim/state';
 import { tick } from './sim/tick';
 import { armyCap, battalionCount, mergeArmies, renameArmy, spawnArmy, splitArmy } from './sim/armies';
 import type { ProvinceMap } from './worldgen/provinces';
@@ -121,7 +121,7 @@ window.addEventListener('keydown', e => {
     if (e.shiftKey) groups.set(e.code, [...selectedArmies]);
     else pickArmies((groups.get(e.code) ?? []).filter(id => game!.armies.some(t => t.id === id)), false);
   }
-  if (k === ' ' && game) { e.preventDefault(); if (game.capital >= 0) speed(game.speed === 0 ? lastSpeed : 0); } // antes da capital o tempo fica parado
+  if (k === ' ' && game) { e.preventDefault(); if (playerCapital(game) >= 0) speed(game.speed === 0 ? lastSpeed : 0); } // antes da capital o tempo fica parado
   keys.add(k);
 });
 window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
@@ -188,7 +188,7 @@ function tip(e: PointerEvent) {
     return setTip(plan.ok ? `Rota até ${pm.provinces[p].name}: ${costText({ ...plan.cost, months: plan.months })}${plan.threatened ? ' · ⚠ passa perto de uma fortaleza: nascerá cortada' : ''}` : plan.reason, e.clientX, e.clientY);
   }
   // selo de capital sugerida: o que há por perto (é assim que se escolhe onde fundar)
-  const pin = game.capital < 0 ? pins.find(q => { const [sx, sy] = [(q.x - view.cx) * view.scale + view.w / 2, (q.y - view.cy) * view.scale + view.h / 2]; return Math.hypot(sx - e.clientX, sy - e.clientY) <= 13; }) : undefined;
+  const pin = playerCapital(game) < 0 ? pins.find(q => { const [sx, sy] = [(q.x - view.cx) * view.scale + view.w / 2, (q.y - view.cy) * view.scale + view.h / 2]; return Math.hypot(sx - e.clientX, sy - e.clientY) <= 13; }) : undefined;
   if (pin) return setTip(`${pm.provinces[pin.province].name}: ${veinsAround(pm, pin.province)}`, e.clientX, e.clientY);
   const p = provinceAtTile(pm, ...toWorld(view, e.clientX, e.clientY));
   setTip(p < 0 ? null : `${pm.provinces[p].name} · ${game.owner[p] === 0 ? 'seu reino' : game.fortresses.some(f => f.province === p) ? 'fortaleza neutra' : 'neutra'}`, e.clientX, e.clientY);
@@ -205,9 +205,9 @@ function frame(now: number) {
   const rt = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
   if (fw || rt) { const step = (900 * Math.min(dt, 0.1)) / view.scale; view = clampView({ ...view, cx: view.cx + rt * step, cy: view.cy - fw * step }); }
   if (pm && game) {
-    if (game.capital >= 0) tick(game, pm, Math.min(dt, 1), moveGrid); // aba em segundo plano: no máximo 1 s por quadro
+    if (playerCapital(game) >= 0) tick(game, pm, Math.min(dt, 1), moveGrid); // aba em segundo plano: no máximo 1 s por quadro
     for (const id of selectedArmies) if (!game.armies.some(t => t.id === id)) selectedArmies.delete(id); // destruídos saem da seleção
-    setTopbar(game.capital >= 0 ? { res: game.res, report: runMonth(game, pm, false), month: game.month, speed: game.speed,
+    setTopbar(playerCapital(game) >= 0 ? { res: game.nations[0].res, report: runMonth(game, pm, false), month: game.month, speed: game.speed,
       troops: `${battalionCount(game) + game.recruiting.length}/${armyCap(game)}`,
       depot: game.depot.reduce((a, d) => { for (const k of Object.keys(a) as (keyof typeof a)[]) a[k] += d[k]; return a; }, { money: 0, grain: 0, wood: 0, coal: 0, iron: 0, steel: 0, arms: 0 }) } : null);
     renderPanel(game, pm, selected, actions, [...selectedArmies], focus);

@@ -10,7 +10,7 @@ import { makeRouteWorld } from './troopworld';
 
 const { pm, grid } = makeRouteWorld();
 const rich = { money: 9000, grain: 900, wood: 900, coal: 900, iron: 900, steel: 900, arms: 900 };
-const game = (): GameState => { const s = newGame(pm); chooseCapital(s, pm, 0); s.res = { ...rich }; return s; };
+const game = (): GameState => { const s = newGame(pm); chooseCapital(s, pm, 0); s.nations[0].res = { ...rich }; return s; };
 const run = (s: GameState, months: number, speed = 1) => { setSpeed(s, speed); for (let i = 0; i < Math.round((months * 100) / speed); i++) tick(s, pm, 0.1, grid); };
 
 describe('alcance', () => {
@@ -94,7 +94,7 @@ describe('linha de suprimento', () => {
       const s = game(), t = spawnArmy(s, 0, ['line'], 300, 100);
       supplyArmy(s, pm, grid, t.id);
       run(s, 2, speed);
-      return [men(t), t.supply!.path.length, s.res.money].map(v => +v.toFixed(6));
+      return [men(t), t.supply!.path.length, s.nations[0].res.money].map(v => +v.toFixed(6));
     };
     expect(go(8)).toEqual(go(1));
     const s = game(), t = spawnArmy(s, 0, ['line'], 300, 100);
@@ -115,22 +115,22 @@ describe('reforço pela linha', () => {
     return { s, a };
   };
   test('repõe 3 homens/mês por batalhão, pagando do estoque', () => {
-    const { s, a } = setup(), before = { ...s.res };
+    const { s, a } = setup(), before = { ...s.nations[0].res };
     expect(reinforcing(s, a)).toBe(0);
     reinforceStep(s, 1);
     expect(a.battalions.map(b => b.soldiers)).toEqual([13, 20]); // o segundo só tinha 1 a repor
-    expect(before.money - s.res.money).toBeCloseTo(4 * REINFORCE.money, 9);
-    expect(before.arms - s.res.arms).toBeCloseTo(4 * REINFORCE.arms, 9);
-    expect(before.grain - s.res.grain).toBeCloseTo(4 * REINFORCE.grain, 9);
+    expect(before.money - s.nations[0].res.money).toBeCloseTo(4 * REINFORCE.money, 9);
+    expect(before.arms - s.nations[0].res.arms).toBeCloseTo(4 * REINFORCE.arms, 9);
+    expect(before.grain - s.nations[0].res.grain).toBeCloseTo(4 * REINFORCE.grain, 9);
   });
   test('sem armas, para com aviso; volta quando há armas', () => {
     const { s, a } = setup();
-    s.res.arms = 0.5; // dá para 1 homem
+    s.nations[0].res.arms = 0.5; // dá para 1 homem
     reinforceStep(s, 1);
     expect(a.battalions[0].soldiers + a.battalions[1].soldiers).toBeCloseTo(30, 9);
-    expect(s.res.arms).toBeGreaterThanOrEqual(0);
+    expect(s.nations[0].res.arms).toBeGreaterThanOrEqual(0);
     expect(s.events.at(-1)!.text).toBe('Reforço de R0 parado: faltam armas');
-    s.res.arms = 100;
+    s.nations[0].res.arms = 100;
     reinforceStep(s, 1);
     expect(a.battalions[0].soldiers).toBeGreaterThan(11);
   });
@@ -146,7 +146,7 @@ describe('reforço pela linha', () => {
   test('batalhão treinado na origem durante a batalha chega pela linha, mesmo passando de 8', () => {
     const { s, a } = setup();
     a.battalions = Array.from({ length: 8 }, () => ({ type: 'line' as const, soldiers: 20 }));
-    s.res = { money: 1e6, grain: 1e6, wood: 1e6, coal: 1e6, iron: 1e6, steel: 1e6, arms: 1e6 };
+    s.nations[0].res = { money: 1e6, grain: 1e6, wood: 1e6, coal: 1e6, iron: 1e6, steel: 1e6, arms: 1e6 };
     s.lots[0][0] = { type: 'garrison', level: 3, remaining: 0 };
     s.lots[0][1] = { type: 'garrison', level: 3, remaining: 0 }; // teto 8 + 4 (a segunda guarnição conta no teto)
     s.recruiting.push({ province: 0, lot: 0, type: 'cavalry', remaining: 0.01 });

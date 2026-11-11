@@ -67,7 +67,7 @@ export function greedy(pm: ProvinceMap, maxMonths = 3000, map?: WorldMap) {
         for (const t of want) if (build(s, pm, id, place, t).ok) { did = true; break; }
       });
       // 4) melhorias: minas primeiro (destravam o aço); cidades com comida sobrando; o resto quando há folga de dinheiro
-      const rich = (id: number) => s.res.money > (colonizeCost(s, pm, id).money ?? 0) * 2;
+      const rich = (id: number) => s.nations[0].res.money > (colonizeCost(s, pm, id).money ?? 0) * 2;
       for (const id of mine()) {
         if (proj.net.grain > 2 && cityLevel(s, id) < 3 && rich(id) && upgradeCity(s, pm, id).ok) did = true;
         for (const [list, key] of [[s.lots[id], 'lot'], [s.veins[id], 'vein']] as const)
@@ -82,7 +82,7 @@ export function greedy(pm: ProvinceMap, maxMonths = 3000, map?: WorldMap) {
         a.battalions.every(b => b.soldiers >= TROOPS[b.type].soldiers * 0.9));
       for (const a of ready()) for (const b of ready()) if (a !== b && s.armies.includes(a) && s.armies.includes(b)) mergeArmies(s, a.id, b.id);
       const armies = ready(), battalions = armies.reduce((n, a) => n + a.battalions.length, 0);
-      const cap = pm.provinces[s.capital].center, d = (id: number) => Math.hypot(pm.provinces[id].center.x - cap.x, pm.provinces[id].center.y - cap.y);
+      const cap = pm.provinces[s.nations[0].capital].center, d = (id: number) => Math.hypot(pm.provinces[id].center.x - cap.x, pm.provinces[id].center.y - cap.y);
       // faltando carvão ou ferro, a fortaleza que guarda esse minério vem primeiro; senão a mais fraca entre as 6 mais próximas
       const missing = (['coal', 'iron'] as VeinKind[]).filter(k => owned(k) === 0);
       const guards = (f: (typeof s.fortresses)[0]) => pm.provinces[f.province].veins.some(v => missing.includes(v.kind));
