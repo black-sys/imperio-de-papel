@@ -1,7 +1,7 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { findCellPath } from './astar';
 import { cellAt, type MoveGrid } from './movegrid';
-import { BATTLE, BUILDINGS, CITY, COLONIZE, MAX_LEVEL, QUOTA, RES_NAMES, SPEEDS, TROOPS, type BuildingType, type Res, type TroopType } from './balance';
+import { BATTLE, BUILDINGS, CITY, COLONIZE, MAX_LEVEL, QUOTA, RES_NAMES, SPEEDS, STEEL_TECH_MINES, TROOPS, type BuildingType, type Res, type TroopType } from './balance';
 import { buildCost, colonizeCost, recruitCost, startingStock } from './economy';
 import { activeLevel, cityLevel, logEvent, ownBuildings, type Building, type GameState } from './state';
 import { troopCap } from './troops';
@@ -82,6 +82,12 @@ export function checkBuild(s: GameState, pm: ProvinceMap, id: number, place: Pla
     if (place.lot >= CITY.lots[cityLevel(s, id)]) return no(`Libera com a cidade nível ${need}`);
     // efeito de mercado/guarnição não acumula na mesma cidade: a segunda só custaria
     if ((type === 'market' || type === 'garrison') && s.lots[id].some(b => b?.type === type)) return no(`Já existe ${type === 'market' ? 'um Mercado' : 'uma Guarnição'} nesta cidade`);
+    // tecnologia por cota (como no documento): o aço só aparece com minas suficientes em funcionamento
+    if (type === 'steelworks') {
+      const mines = [...ownBuildings(s)].filter(([, b]) => activeLevel(b) > 0 && (b.type === 'coal_mine' || b.type === 'iron_mine')).map(([, b]) => b.type);
+      if (mines.length < STEEL_TECH_MINES || !mines.includes('coal_mine') || !mines.includes('iron_mine'))
+        return no(`Precisa de ${STEEL_TECH_MINES} minas prontas, com carvão e ferro: ${mines.length}/${STEEL_TECH_MINES}`);
+    }
   } else {
     const vein = pm.provinces[id].veins[place.vein];
     const right = (Object.keys(BUILDINGS) as BuildingType[]).find(t => BUILDINGS[t].vein === vein.kind)!;

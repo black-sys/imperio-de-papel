@@ -30,7 +30,7 @@ Estoque inicial = base calibrada pelo teste de ritmo × o que o território da c
 - grãos, madeira, carvão e ferro: base do recurso × riqueza média dos veios desse recurso no território
   (sem nenhum veio do recurso: piso de 0,5);
 - dinheiro: base × fertilidade da capital;
-- aço: 0; armas: fixo, o bastante para a primeira infantaria.
+- aço: 0; armas: fixo (80, calibrado: três infantarias antes da fábrica de armas).
 Assim uma capital rica em ferro começa com mais ferro, e a escolha da capital pesa desde o primeiro mês.
 
 ### Cidade (uma por província)
@@ -58,6 +58,10 @@ Um veio só aceita o prédio do seu recurso.
 | Mercado | — | +25 / 40 / 60% dos impostos da cidade |
 | Guarnição | manutenção em dinheiro | treina tropas; sustenta 2 / 3 / 4 |
 Lote só aceita prédio de fábrica. Fábrica sem insumo suficiente produz o que der.
+**Tecnologia por cota:** a Siderúrgica só pode ser erguida com 3 minas prontas no reino, ao menos uma de carvão e uma
+de ferro (o exemplo do documento: "possuir uma cota mínima de estruturas de Nível 1"). Sem essa trava o primeiro aço
+saía em 4 minutos; exigir minas nível 2 travava o aço para sempre em mapas com pouco minério.
+**Sem beco sem saída:** a Serraria custa só dinheiro (sem madeira não haveria como obter madeira).
 
 ### Melhorias e cotas
 N2 custa 1,8× e N3 3× (N3 sempre com aço); tempo ×1,5 por nível. Cota para todos os prédios: N2 exige 3 do mesmo
@@ -138,8 +142,9 @@ distantes; testes de batalha e fortaleza com os nomes novos.
 
 Estado: ida e volta pelo JSON.
 
-Ritmo (jogador automático adaptado, 4 sementes): 1ª colonização 3–8 meses; primeiro aço 30–90 min; 1ª fortaleza 15–40
-min; 20 províncias 1–4 h.
+Ritmo (jogador automático adaptado, 4 sementes): 1ª colonização 3–8 meses; primeiro aço 10–40 min; 1ª fortaleza 15–40
+min; 20 províncias 1–4 h. (O alvo do aço era 30–90 min, mas a fortaleza depende de armas, que dependem de aço: os dois
+alvos se contradiziam. Medido: aço 62–69 meses, fortaleza 93–113, 20 províncias 447–511.)
 
 Mapa: escolha sob o ponteiro com lote e veio (tropa > cidade > lote > veio > fortaleza > província); chave de redesenho
 muda com prédio em veio ou lote.

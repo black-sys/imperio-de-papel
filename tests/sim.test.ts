@@ -120,6 +120,8 @@ describe('construir', () => {
   test('lotes liberados pelo nível da cidade', () => {
     const s = game();
     s.res = { ...rich };
+    s.veins[0][2] = ready('coal_mine'); s.veins[0][3] = ready('iron_mine'); s.veins[0][1] = null;
+    s.owner[4] = 0; s.city[4] = { level: 1, remaining: 0 }; s.veins[4][2] = ready('coal_mine');
     expect(build(s, pm, 0, { lot: 1 }, 'steelworks')).toEqual({ ok: true });
     expect(checkBuild(s, pm, 0, { lot: 2 }, 'steelworks')).toEqual({ ok: false, reason: 'Libera com a cidade nível 3' });
     s.city[0] = { level: 3, remaining: 5 }; // em obra: ainda vale o nível 2
@@ -148,6 +150,23 @@ describe('construir', () => {
     run(s, 0.2);
     expect(s.veins[0][3]!.remaining).toBe(0);
     expect(s.events.some(e => e.text === 'Mina de ferro pronta em P0')).toBe(true);
+  });
+  test('siderúrgica exige 3 minas prontas no reino, com carvão e ferro (tecnologia por cota)', () => {
+    const s = game();
+    s.res = { ...rich };
+    expect(checkBuild(s, pm, 0, { lot: 0 }, 'steelworks')).toEqual({ ok: false, reason: 'Precisa de 3 minas prontas, com carvão e ferro: 0/3' });
+    s.owner[1] = 0; s.city[1] = { level: 1, remaining: 0 };
+    s.veins[0][2] = ready('coal_mine'); s.veins[1][2] = ready('coal_mine'); s.veins[0][3] = { type: 'iron_mine', level: 1, remaining: 1 }; // em obra não conta
+    expect(checkBuild(s, pm, 0, { lot: 0 }, 'steelworks')).toEqual({ ok: false, reason: 'Precisa de 3 minas prontas, com carvão e ferro: 2/3' });
+    s.veins[1][3] = ready('coal_mine'); // 3 minas, mas nenhuma de ferro
+    expect(checkBuild(s, pm, 0, { lot: 0 }, 'steelworks').ok).toBe(false);
+    s.veins[0][3] = ready('iron_mine');
+    expect(checkBuild(s, pm, 0, { lot: 0 }, 'steelworks')).toEqual({ ok: true });
+  });
+  test('sem madeira ainda dá para erguer serraria (sem beco sem saída)', () => {
+    const s = game();
+    s.res = { ...rich, wood: 0 };
+    expect(checkBuild(s, pm, 0, { vein: 1 }, 'sawmill')).toEqual({ ok: true });
   });
   test('falta de recurso com motivo', () => {
     const s = game();

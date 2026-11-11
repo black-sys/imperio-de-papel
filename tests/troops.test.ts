@@ -19,7 +19,7 @@ describe('recrutamento', () => {
     expect(checkRecruit(s, pm, 0, 1, 'artillery')).toEqual({ ok: false, reason: 'Requer Guarnição N2' });
     expect(checkRecruit(s, pm, 0, 1, 'cavalry')).toEqual({ ok: false, reason: 'Requer Guarnição N3' });
     expect(recruit(s, pm, 0, 1, 'line')).toEqual({ ok: true });
-    expect(s.res).toMatchObject({ money: 970, grain: 990, arms: 990, wood: 1000 }); // infantaria: 30 dinheiro, 10 grãos, 10 armas
+    expect(s.res).toMatchObject({ money: 970, grain: 990, arms: 988, wood: 1000 }); // infantaria: 30 dinheiro, 10 grãos, 12 armas
     expect(recruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Já está treinando uma tropa' });
   });
   test('guarnição em obra não treina', () => {
@@ -32,7 +32,7 @@ describe('recrutamento', () => {
     s.res.money = 10;
     expect(checkRecruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Falta 20 de dinheiro' });
     s.res.money = 1000; s.res.arms = 0;
-    expect(checkRecruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Falta 10 de armas' });
+    expect(checkRecruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Falta 12 de armas' });
     s.res.arms = 1000; s.res.steel = 0;
     expect(checkRecruit(s, pm, 0, 1, 'artillery')).toEqual({ ok: false, reason: 'Falta 10 de aço' });
     s.res.iron = 0;
@@ -64,7 +64,7 @@ describe('recrutamento', () => {
   });
   test('custo cresce com o tamanho do exército (tropas + em treino); fortalezas não contam', () => {
     const s = game(3);
-    expect(recruitCost(s, 'line')).toEqual({ money: 30, grain: 10, arms: 10 });
+    expect(recruitCost(s, 'line')).toEqual({ money: 30, grain: 10, arms: 12 });
     spawnTroop(s, 0, 'line', 80, 80);
     spawnTroop(s, -1, 'line', 180, 80, 1);
     expect(recruit(s, pm, 0, 1, 'cavalry')).toEqual({ ok: true }); // 2ª tropa: base × growth
@@ -72,7 +72,7 @@ describe('recrutamento', () => {
     expect(s.res.iron).toBeCloseTo(1000 - 10 * TROOP_GROWTH, 6);
     const c = recruitCost(s, 'line'); // 3ª tropa
     expect(c.money).toBeCloseTo(30 * TROOP_GROWTH ** 2, 6);
-    expect(c.arms).toBeCloseTo(10 * TROOP_GROWTH ** 2, 6);
+    expect(c.arms).toBeCloseTo(12 * TROOP_GROWTH ** 2, 6);
     expect(TROOP_GROWTH).toBeGreaterThan(1);
   });
   test('guarnição em melhoria mantém o teto do nível anterior', () => {
