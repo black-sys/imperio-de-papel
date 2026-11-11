@@ -1,6 +1,7 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { AI_DIPLO, DIPLO, PRICE, RES_KEYS } from './balance';
 import { fall } from './conquest';
+import { headline } from './stability';
 import { runMonth } from './economy';
 import { logEvent, type GameState, type Pact, type PactKind, type Proposal } from './state';
 
@@ -134,6 +135,7 @@ export function sign(s: GameState, pm: ProvinceMap, a: number, b: number, p: Pro
     addPact(s, 'truce', a, b, s.month + DIPLO.months);
     relate(s, a, b, DIPLO.events.peace);
     logEvent(s, `Paz entre a ${A.name} e a ${B.name}`);
+    headline(s, `PAZ ENTRE ${A.name.toUpperCase()} E ${B.name.toUpperCase()}`);
     return OK;
   }
   addPact(s, p.kind, a, b, p.kind === 'alliance' ? null : s.month + DIPLO.months, p.kind === 'trade' ? { aGives: p.give, bGives: p.get } : undefined);

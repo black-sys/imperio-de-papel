@@ -1,5 +1,5 @@
 import type { ProvinceMap } from '../worldgen/provinces';
-import { zeroRes, type BuildingType, type Res, type TroopType } from './balance';
+import { STAB, zeroRes, type BuildingType, type Res, type TroopType } from './balance';
 
 /** Prédio num lote ou veio. `remaining` > 0 = em obra no nível `level` (novo ou melhoria); rende no nível anterior até lá. */
 export interface Building { type: BuildingType; level: number; remaining: number }
@@ -28,6 +28,7 @@ export type Bent = 'militarist' | 'expansionist' | 'industrial';
 export type Proposal = { kind: 'peace'; cede: number[]; money: number; payer: number }
   | { kind: 'nonaggression' } | { kind: 'alliance' }
   | { kind: 'trade'; give: [keyof Res, number]; get: [keyof Res, number] };
+export type LawKind = 'bread' | 'ration' | 'shorter' | 'martial';
 export type PactKind = 'truce' | 'nonaggression' | 'trade' | 'alliance';
 /** Acordo em vigor entre `a` e `b` até o mês `until` (null = sem prazo). Comércio: o que cada lado entrega por mês. */
 export interface Pact {
@@ -38,6 +39,7 @@ export interface Pact {
 export interface Nation {
   id: number; name: string; bent: Bent; incomeMult: number; alive: boolean; ai: boolean;
   res: Res; capital: number; grainShort: boolean; armyNumber: number;
+  laws: LawKind[]; lawCooldown: Partial<Record<LawKind, number>>; // leis em vigor; mês a partir do qual cada uma pode voltar
   atWar: number[]; founded: number; // mês da fundação (carência para declarar guerra)
 }
 export interface Battle { x: number; y: number; start: number; armyIds: number[]; sides: { owner: number; initial: number; morale: number }[] }
@@ -71,6 +73,13 @@ export interface GameState {
   letters: { id: number; from: number; proposal: Proposal; expires: number }[]; // caixa do jogador
   pending: { to: number; proposal: Proposal; answerAt: number }[]; // propostas do jogador aguardando resposta
   nextLetterId: number;
+  stability: number[]; // por província, 0–100 (sem dono: 0)
+  conquered: number[]; // por província: mês da última mudança de dono por guerra ou tratado
+  resentment: number[]; // por província: mês até o qual dura o ressentimento da repressão
+  repressed: number[]; // por província: mês da última repressão
+  strikes: { province: number; until: number }[];
+  revolts: { province: number; since: number; army: number }[];
+  headlines: { month: number; text: string }[]; // últimas manchetes (jornal)
   lastOffer: Record<string, number>; // "de:para:tipo" → mês da última proposta da IA (não repete por 12 meses)
   warSince: Record<string, number>; // "a:b" (a < b) → mês em que a guerra do par começou (cansaço)
   depot: Res[]; // por província: carga guardada enquanto a cidade está desligada da capital
@@ -84,7 +93,8 @@ export function newGame(pm: ProvinceMap, seed = 0): GameState {
     month: 0, speed: 0, seed, nations: [], colonizing: [], events: [], eventCount: 0,
     armies: [], nextArmyId: 1, recruiting: [], fortresses: [], battles: [], clock: 0, stepAcc: 0,
     stallWarned: {}, routes: [], nextRouteId: 1, occupations: [], result: null,
-    relations: [], pacts: [], nextPactId: 1, letters: [], pending: [], nextLetterId: 1, warSince: {}, lastOffer: {},
+    relations: [], pacts: [], nextPactId: 1, letters: [], pending: [], nextLetterId: 1, warSince: {}, lastOffer: {}, strikes: [], revolts: [], headlines: [],
+    stability: pm.provinces.map(() => 0), conquered: pm.provinces.map(() => -1e9), resentment: pm.provinces.map(() => -1e9), repressed: pm.provinces.map(() => -1e9),
     depot: pm.provinces.map(() => zeroRes()), connected: pm.provinces.map(() => false),
     owner: pm.provinces.map(() => -1),
     city: pm.provinces.map(() => null),
@@ -118,6 +128,7 @@ export function logFor(s: GameState, n: number, text: string): void { if (n === 
 /** A província passa à nação `n` com cidade nível 1, lugares vazios e desligada da capital (até ganhar rota). */
 export function found(s: GameState, id: number, n = 0): void {
   s.owner[id] = n;
+  s.stability[id] = STAB.start;
   s.city[id] = { level: 1, remaining: 0 };
   s.lots[id] = s.lots[id].map(() => null);
   s.veins[id] = s.veins[id].map(() => null);

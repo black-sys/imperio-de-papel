@@ -1,7 +1,7 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { findCellPath } from './astar';
 import { cellAt, type MoveGrid } from './movegrid';
-import { BATTLE, BUILDINGS, CITY, COLONIZE, DIFFICULTY, MAX_LEVEL, MAX_RIVALS, QUOTA, RES_NAMES, SPEEDS, STEEL_TECH_MINES, TROOPS, type BuildingType, type Res, type TroopType } from './balance';
+import { BATTLE, BUILDINGS, CITY, COLONIZE, DIFFICULTY, STAB, MAX_LEVEL, MAX_RIVALS, QUOTA, RES_NAMES, SPEEDS, STEEL_TECH_MINES, TROOPS, type BuildingType, type Res, type TroopType } from './balance';
 import { buildCost, colonizeCost, recruitCost, startingStock } from './economy';
 import { activeLevel, cityLevel, logEvent, logFor, ownBuildings, type Bent, type Building, type GameState, type Nation } from './state';
 import { makeRng, subSeed } from '../worldgen/rng';
@@ -38,12 +38,13 @@ function put(s: GameState, id: number, place: Place, b: Building): void {
 function foundNation(s: GameState, pm: ProvinceMap, id: number, bent: Bent, incomeMult: number, ai: boolean): Nation {
   const n: Nation = {
     id: s.nations.length, name: `Nação de ${pm.provinces[id].name}`, bent, incomeMult, alive: true, ai,
-    res: startingStock(pm, id), capital: id, grainShort: false, armyNumber: 0, atWar: [], founded: s.month,
+    res: startingStock(pm, id), capital: id, grainShort: false, armyNumber: 0, atWar: [], founded: s.month, laws: [], lawCooldown: {},
   };
   s.nations.push(n);
   for (const row of s.relations) row.push(0); // relação começa neutra com todos
   s.relations.push(s.nations.map(() => 0));
   s.owner[id] = n.id;
+  s.stability[id] = STAB.start;
   s.city[id] = { level: 2, remaining: 0 };
   s.connected[id] = true; // a capital é sempre ligada
   return n;

@@ -114,3 +114,14 @@ export const AI_DIPLO = {
   peaceLosing: -0.2, peaceMonths: 48, peaceWinning: 0.2, exhaustionPer12: 0.1, provinceWeight: 0.1, indemnityShare: 0.3,
   napBent: { industrial: 25, expansionist: 0, militarist: -20 }, napInterest: 20, expansionistEvery: 12,
 };
+
+// ---- estabilidade (ciclo 6) ----
+export const STAB = {
+  start: 70, conquered: 30, base: 60, approach: 0.1,
+  mod: { famine: -25, war: -5, longWarPer12: -1, longWarMax: -15, factory: -5, city2: -5, city3: -10, disconnected: -15, conquered: -20, conqueredMonths: 60,
+    garrison: 10, garrisonPerLevel: 5, market: 5, capital: 10, peace: 5, bread: 10, ration: -5, martial: 15, resentment: -5 },
+};
+export const UNREST = { strike: { below: 40, chance: 0.1, months: 2 }, fire: { below: 30, chance: 0.05 }, revolt: { below: 15, chance: 0.1, months: 3, relief: 10 } };
+export const LAWS = { cooldown: 12, bread: { cost: 50, perCity: 2 }, ration: { grain: 0.5 }, shorter: { output: 0.75 }, martial: { cost: 30, tax: 0.8 } };
+export const REPRESS = { below: 40, gain: 20, resentMonths: 60, men: 2, every: 12 };
+export const HEADLINES = 30;

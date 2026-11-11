@@ -1,5 +1,6 @@
 import type { ProvinceMap } from '../worldgen/provinces';
-import { DIPLO, OCCUPY, zeroRes } from './balance';
+import { DIPLO, OCCUPY, STAB, zeroRes } from './balance';
+import { headline } from './stability';
 import { relate } from './diplomacy';
 import type { MoveGrid } from './movegrid';
 import { men, provinceAt } from './armies';
@@ -63,6 +64,8 @@ export function fall(s: GameState, pm: ProvinceMap, province: number, n: number,
   s.occupations = s.occupations.filter(e => e.province !== province);
   s.connected[province] = false;
   s.owner[province] = n;
+  s.stability[province] = STAB.conquered; s.conquered[province] = s.month;
+  s.strikes = s.strikes.filter(x => x.province !== province); s.revolts = s.revolts.filter(x => x.province !== province);
   if (n === 0 && s.nations[prev]) logEvent(s, damage ? `${name} tomada da ${s.nations[prev].name}` : `${name} cedida pela ${s.nations[prev].name}`);
   if (prev === 0) logEvent(s, damage ? `${name} perdida para a ${s.nations[n].name}` : `${name} cedida à ${s.nations[n].name}`);
   if (s.nations[prev]?.alive && s.nations[prev].capital === province) eliminate(s, pm, prev, n);
@@ -81,7 +84,7 @@ export function eliminate(s: GameState, pm: ProvinceMap, loser: number, by: numb
   s.routes = s.routes.filter(r => r.owner !== loser);
   s.owner.forEach((o, id) => {
     if (o !== loser) return;
-    s.owner[id] = -1; s.city[id] = null; s.connected[id] = false; s.depot[id] = zeroRes();
+    s.owner[id] = -1; s.city[id] = null; s.connected[id] = false; s.depot[id] = zeroRes(); s.stability[id] = 0;
     s.lots[id] = s.lots[id].map(() => null); s.veins[id] = s.veins[id].map(() => null);
   });
   s.occupations = s.occupations.filter(e => e.nation !== loser && s.owner[e.province] >= 0);
@@ -89,7 +92,9 @@ export function eliminate(s: GameState, pm: ProvinceMap, loser: number, by: numb
   s.pacts = s.pacts.filter(p => p.a !== loser && p.b !== loser);
   s.letters = s.letters.filter(l => l.from !== loser);
   s.pending = s.pending.filter(q => q.to !== loser);
+  s.strikes = s.strikes.filter(x => s.owner[x.province] >= 0); s.revolts = s.revolts.filter(x => s.owner[x.province] >= 0);
   logEvent(s, `A ${L.name} foi eliminada pela ${s.nations[by]?.name ?? 'guerra'}`);
+  headline(s, `${L.name.toUpperCase()} DEIXA DE EXISTIR`);
   if (s.result) return;
   if (loser === 0) s.result = 'defeat';
   else if (s.nations[0].alive && s.nations.slice(1).every(n => !n.alive)) s.result = 'victory';
