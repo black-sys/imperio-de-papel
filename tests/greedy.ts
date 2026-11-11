@@ -1,12 +1,12 @@
 import { BUILDINGS, TROOPS, type BuildingType } from '../src/sim/balance';
-import { build, chooseCapital, colonize, moveTroops, recruit, setSpeed, upgrade, upgradeCity, type Place } from '../src/sim/commands';
+import { build, chooseCapital, colonize, moveArmies, recruit, setSpeed, upgrade, upgradeCity, type Place } from '../src/sim/commands';
 import { colonizeCost, runMonth } from '../src/sim/economy';
 import { placeFortresses } from '../src/sim/fortress';
-import { buildRoute, supplyTroop } from '../src/sim/routes';
+import { buildRoute, supplyArmy } from '../src/sim/routes';
 import { makeMoveGrid } from '../src/sim/movegrid';
 import { cityLevel, newGame } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
-import { inBattle } from '../src/sim/troops';
+import { inBattle, mergeArmies } from '../src/sim/armies';
 import type { ProvinceMap, VeinKind } from '../src/worldgen/provinces';
 import type { WorldMap } from '../src/worldgen/types';
 
@@ -77,18 +77,22 @@ export function greedy(pm: ProvinceMap, maxMonths = 3000, map?: WorldMap) {
     }
     if (grid) {
       for (const id of mine()) s.lots[id].forEach((b, k) => { if (b?.type === 'garrison') recruit(s, pm, id, k, 'line'); });
-      // com o dobro da guarnição inimiga em tropas prontas, ataca a fortaleza mais fraca entre as 6 mais próximas
-      const ready = s.troops.filter(t => t.owner === 0 && !t.path.length && s.clock >= t.routedUntil && !inBattle(s, t.id) && t.soldiers >= TROOPS[t.type].soldiers * 0.9);
+      // exércitos prontos (parados, inteiros, fora de batalha); os que estão juntos viram um só antes de atacar
+      const ready = () => s.armies.filter(a => a.owner === 0 && !a.path.length && s.clock >= a.routedUntil && !inBattle(s, a.id) &&
+        a.battalions.every(b => b.soldiers >= TROOPS[b.type].soldiers * 0.9));
+      for (const a of ready()) for (const b of ready()) if (a !== b && s.armies.includes(a) && s.armies.includes(b)) mergeArmies(s, a.id, b.id);
+      const armies = ready(), battalions = armies.reduce((n, a) => n + a.battalions.length, 0);
       const cap = pm.provinces[s.capital].center, d = (id: number) => Math.hypot(pm.provinces[id].center.x - cap.x, pm.provinces[id].center.y - cap.y);
       // faltando carvão ou ferro, a fortaleza que guarda esse minério vem primeiro; senão a mais fraca entre as 6 mais próximas
       const missing = (['coal', 'iron'] as VeinKind[]).filter(k => owned(k) === 0);
       const guards = (f: (typeof s.fortresses)[0]) => pm.provinces[f.province].veins.some(v => missing.includes(v.kind));
       const near = [...s.fortresses].sort((a, b) => d(a.province) - d(b.province)).slice(0, 6);
       const target = near.find(guards) ?? near.sort((a, b) => a.garrison.length - b.garrison.length || d(a.province) - d(b.province))[0];
-      if (target && ready.length >= 2 * target.garrison.length) {
+      // com o dobro de batalhões da guarnição inimiga, ataca (e abastece o exército atacante)
+      if (target && battalions >= 2 * target.garrison.length) {
         const site = pm.provinces[target.province].city;
-        moveTroops(s, grid, ready.map(t => t.id), site.x, site.y);
-        for (const t of ready) if (!t.supply) supplyTroop(s, pm, grid, t.id); // abastece quem vai atacar
+        moveArmies(s, grid, armies.map(a => a.id), site.x, site.y);
+        for (const a of armies) if (!a.supply) supplyArmy(s, pm, grid, a.id);
       }
     }
     // a virada deste mês produz aço? (siderúrgica pronta com carvão e ferro no estoque)
