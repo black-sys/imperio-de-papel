@@ -1,6 +1,6 @@
 import { WORLD_TILES } from '../../worldgen/constants';
 
-export const TILE_PX = 192, LEVELS = 5, MAX_SCALE = 3, MIN_SCALE = MAX_SCALE / 2 ** (LEVELS - 1);
+export const TILE_PX = 192, LEVELS = 7, MAX_SCALE = 12, MIN_SCALE = MAX_SCALE / 2 ** (LEVELS - 1); // 12 → 0,1875 px/tile
 
 /** Vista do mapa: centro em tiles, escala em px por tile, tamanho da tela em px. */
 export interface View { cx: number; cy: number; scale: number; w: number; h: number }
@@ -36,7 +36,7 @@ export function levelFor(scale: number): number {
   return L;
 }
 
-export const tileSpan = (L: number) => 64 * 2 ** L; // tiles do mundo por ladrilho
+export const tileSpan = (L: number) => (TILE_PX / MAX_SCALE) * 2 ** L; // tiles do mundo por ladrilho (16 no nível 0, um chunk a 3 px/tile)
 
 export function visibleTiles(v: View, L: number): TileId[] {
   const span = tileSpan(L), n = WORLD_TILES / span, [x0, y0] = toWorld(v, 0, 0), [x1, y1] = toWorld(v, v.w, v.h), out: TileId[] = [];

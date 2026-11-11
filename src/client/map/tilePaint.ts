@@ -5,6 +5,7 @@ import { Biome, type ChunkData, type WorldMap } from '../../worldgen/types';
 import { MAX_SCALE, TILE_PX, tileSpan } from './view';
 
 type RGB = [number, number, number];
+const CHUNK_SCALE = 1.5; // px/tile a partir do qual os ladrilhos usam os dados de chunk (por tile)
 const PAPER: RGB = [240, 228, 198], FRESH: RGB = [110, 145, 160], INK: RGB = [62, 42, 24], TREE: RGB = [70, 95, 55];
 const TINT: Record<number, RGB> = {
   [Biome.Ocean]: [150, 178, 180], [Biome.Beach]: [226, 208, 160], [Biome.Snow]: [236, 234, 226], [Biome.Taiga]: [150, 165, 128],
@@ -57,10 +58,10 @@ function seaDistance(map: WorldMap): Float32Array {
  * Grade local da região do ladrilho na resolução da fonte (1 nó por tile nos níveis 0–1, por célula nos demais),
  * com 2 nós de folga. Por pixel só se interpola: rápido e igual dos dois lados de uma emenda.
  */
-interface Grid { res: number; ox: number; oy: number; n: number; wet: Float32Array; river: Float32Array; shade: Float32Array; biome: Uint8Array }
+interface Grid { res: number; ox: number; oy: number; n: number; wet: Float32Array; river: Float32Array; shade: Float32Array; tr: Float32Array; tg: Float32Array; tb: Float32Array }
 
 function buildGrid(map: WorldMap, L: number, x0: number, y0: number, span: number, chunk: (cx: number, cy: number) => ChunkData): Grid {
-  const res = L <= 1 ? 1 : CELL, PAD = 2, n = Math.ceil(span / res) + 2 * PAD;
+  const res = MAX_SCALE / 2 ** L >= CHUNK_SCALE ? 1 : CELL, PAD = 2, n = Math.ceil(span / res) + 2 * PAD;
   const gx0 = Math.floor(x0 / res) - PAD, gy0 = Math.floor(y0 / res) - PAD, N = n * n;
   const wet = new Float32Array(N), river = new Float32Array(N), height = new Float32Array(N), biome = new Uint8Array(N), shade = new Float32Array(N);
   if (res === 1) {
@@ -87,12 +88,24 @@ function buildGrid(map: WorldMap, L: number, x0: number, y0: number, span: numbe
     const gx = (at(i + 1, j) - at(i - 1, j)) / (2 * res), gy = (at(i, j + 1) - at(i, j - 1)) / (2 * res);
     shade[j * n + i] = Math.max(0.62, Math.min(1.12, 1 - (gx + gy) * hk));
   }
-  return { res, ox: gx0 * res + res / 2, oy: gy0 * res + res / 2, n, wet, river, shade, biome };
+  // cor do bioma por nó, interpolada depois por pixel: de perto a troca de bioma vira uma passagem suave, não quadrados
+  const tr = new Float32Array(N), tg = new Float32Array(N), tb = new Float32Array(N);
+  for (let k = 0; k < N; k++) { const t = TINT[biome[k]] ?? TINT[Biome.Grassland]; tr[k] = t[0]; tg[k] = t[1]; tb[k] = t[2]; }
+  // na resolução de tile, água e rio passam por um borrão 3×3: o contorno sai arredondado em vez de em degraus
+  if (res === 1) for (const a of [wet, river]) {
+    const src = a.slice();
+    for (let j = 1; j < n - 1; j++) for (let i = 1; i < n - 1; i++) {
+      let sum = 0;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) sum += src[(j + dj) * n + i + di] * (di || dj ? (di && dj ? 1 : 2) : 4);
+      a[j * n + i] = sum / 16;
+    }
+  }
+  return { res, ox: gx0 * res + res / 2, oy: gy0 * res + res / 2, n, wet, river, shade, tr, tg, tb };
 }
 
 /**
  * Ladrilho TILE_PX² do nível L (escala 3/2^L px/tile) na posição (tx, ty) da grade do nível.
- * Níveis 0–1 usam chunks (costa, rios e árvores no detalhe do tile); 2–4 usam o mapa global.
+ * De 1,5 px/tile para perto usa chunks (costa, rios e árvores no detalhe do tile); mais longe, o mapa global.
  */
 export function paintTile(map: WorldMap, L: number, tx: number, ty: number, chunk: (cx: number, cy: number) => ChunkData): Uint8ClampedArray {
   const scale = MAX_SCALE / 2 ** L, span = tileSpan(L), x0 = tx * span, y0 = ty * span, k = 1 / scale;
@@ -109,7 +122,7 @@ export function paintTile(map: WorldMap, L: number, tx: number, ty: number, chun
   const water = new Uint8Array(P * P);
   for (let py = 0; py < P; py++) for (let px = 0; px < P; px++) {
     locate(x0 + (px - 0.5) * k, y0 + (py - 0.5) * k);
-    water[py * P + px] = bil(G.wet) > 0.5 ? 1 : bil(G.river) > 0.45 ? 2 : 0;
+    water[py * P + px] = bil(G.wet) > 0.5 ? 1 : bil(G.river) > (G.res === 1 ? 0.3 : 0.45) ? 2 : 0; // rio borrado: limiar menor para não afinar
   }
   for (let py = 0; py < TILE_PX; py++) for (let px = 0; px < TILE_PX; px++) {
     const x = x0 + (px + 0.5) * k, y = y0 + (py + 0.5) * k, wx = Math.floor(x * scale), wy = Math.floor(y * scale);
@@ -123,9 +136,8 @@ export function paintTile(map: WorldMap, L: number, tx: number, ty: number, chun
     } else if (m === 2) { t0 = FRESH[0]; t1 = FRESH[1]; t2 = FRESH[2]; }
     else {
       locate(x, y);
-      const sh = bil(G.shade), bi = G.biome[Math.round((y - G.oy) / G.res) * n + Math.round((x - G.ox) / G.res)];
-      const tint = TINT[bi] ?? TINT[Biome.Grassland];
-      t0 = tint[0] * sh; t1 = tint[1] * sh; t2 = tint[2] * sh;
+      const sh = bil(G.shade);
+      t0 = bil(G.tr) * sh; t1 = bil(G.tg) * sh; t2 = bil(G.tb) * sh;
     }
     const w = (m ? 0.8 : 0.55) + 0.1 * hash(wx >> 3, wy >> 3); // água pede mais tinta: o papel quente apagaria o azul
     let r = PAPER[0] * g * (1 - w) + t0 * w, gg = PAPER[1] * g * (1 - w) + t1 * w, b = PAPER[2] * g * (1 - w) + t2 * w;
@@ -134,13 +146,13 @@ export function paintTile(map: WorldMap, L: number, tx: number, ty: number, chun
     if (m === 0 && (water[q + 1] === 1 || water[q - 1] === 1 || water[q + P] === 1 || water[q - P] === 1)) { r = r * 0.15 + INK[0] * 0.85; gg = gg * 0.15 + INK[1] * 0.85; b = b * 0.15 + INK[2] * 0.85; }
     out[o] = r; out[o + 1] = gg; out[o + 2] = b; out[o + 3] = 255;
   }
-  if (L <= 1) trees(out, chunk, x0, y0, span, scale, L === 1 ? 2 : 1, water, P);
+  if (scale >= CHUNK_SCALE) trees(out, chunk, x0, y0, span, scale, scale < 3 ? 2 : 1, water, P);
   return out;
 }
 
 /** Pontinhos verdes nas posições reais das árvores (1 a cada `every`). */
 function trees(out: Uint8ClampedArray, chunk: (cx: number, cy: number) => ChunkData, x0: number, y0: number, span: number, scale: number, every: number, water: Uint8Array, P: number): void {
-  const r = 1.5 * scale, rr = r * r;
+  const r = Math.min(1.5 * scale, 5), rr = r * r; // de muito perto a copa não cresce sem fim
   // chunks que tocam o ladrilho, com folga de 1 tile (árvores na borda aparecem dos dois lados)
   for (let cy = Math.floor((y0 - 1) / CHUNK); cy <= Math.floor((y0 + span) / CHUNK); cy++)
     for (let cx = Math.floor((x0 - 1) / CHUNK); cx <= Math.floor((x0 + span) / CHUNK); cx++) {

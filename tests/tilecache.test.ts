@@ -1,5 +1,8 @@
 import { expect, test } from 'vitest';
 import { drawableFor, TileCache } from '../src/client/map/tileCache';
+import { LEVELS } from '../src/client/map/view';
+
+const TOP = LEVELS - 1;
 
 /** fetch falso: cada pedido fica pendente até `finish(key)`. */
 function fake() {
@@ -14,11 +17,11 @@ const T = (L: number, x: number, y: number) => ({ L, x, y });
 test('não pede duplicado, respeita o limite em voo e troca a fila pela lista nova', async () => {
   const f = fake(), c = new TileCache(f.fetch, 10, 2, toImage);
   c.request([T(0, 1, 1), T(0, 1, 1), T(0, 2, 1), T(0, 3, 1)]);
-  expect(f.asked).toEqual(['4,0,0', '0,1,1']); // primeiro o ancestral do continente
+  expect(f.asked).toEqual([`${TOP},0,0`, '0,1,1']); // primeiro o ancestral do continente
   c.request([T(0, 1, 1), T(0, 2, 1), T(0, 3, 1)]); // o renderizador repete a lista visível a cada quadro
   expect(f.asked.length).toBe(2);
   await f.finish('0,1,1');
-  expect(f.asked).toEqual(['4,0,0', '0,1,1', '0,2,1']);
+  expect(f.asked).toEqual([`${TOP},0,0`, '0,1,1', '0,2,1']);
 });
 
 test('ao chegar: version sobe e get devolve', async () => {
@@ -74,14 +77,14 @@ test('ladrilho que saiu da tela deixa de ser pedido', async () => {
   const f = fake(), c = new TileCache(f.fetch, 10, 1, toImage);
   c.request([T(0, 0, 0), T(0, 9, 9)]);
   c.request([T(0, 0, 0), T(0, 1, 0)]); // a vista mudou: 9,9 não interessa mais
-  await f.finish('4,0,0'); await f.finish('0,0,0');
-  expect(f.asked).toEqual(['4,0,0', '0,0,0', '0,1,0']);
+  await f.finish(`${TOP},0,0`); await f.finish('0,0,0');
+  expect(f.asked).toEqual([`${TOP},0,0`, '0,0,0', '0,1,0']);
 });
 
 test('nunca descarta um ladrilho da lista visível atual (telas grandes passam do limite)', async () => {
   const f = fake(), c = new TileCache(f.fetch, 3, 10, toImage), vis = [0, 1, 2, 3, 4].map(x => T(0, x, 0));
   c.request(vis);
-  await f.finish('4,0,0');
+  await f.finish(`${TOP},0,0`);
   for (const t of vis) await f.finish(`0,${t.x},0`);
   for (const t of vis) expect(c.get(t)).not.toBeNull();
   const v = c.version;
@@ -90,11 +93,11 @@ test('nunca descarta um ladrilho da lista visível atual (telas grandes passam d
   expect(c.version).toBe(v);
 });
 
-test('pede junto o ladrilho do continente (nível 4) e nunca o descarta', async () => {
+test('pede junto o ladrilho do continente (nível mais afastado) e nunca o descarta', async () => {
   const f = fake(), c = new TileCache(f.fetch, 2, 10, toImage);
   c.request([T(0, 5, 9)]);
-  expect(f.asked).toContain('4,0,0'); // 5 >> 4 = 0, 9 >> 4 = 0
-  await f.finish('4,0,0'); await f.finish('0,5,9');
-  for (let x = 20; x < 30; x++) { c.request([T(0, x, 40)]); await f.finish(`0,${x},40`); await f.finish('4,1,2'); }
-  expect(c.get(T(4, 0, 0))).not.toBeNull();
+  expect(f.asked).toContain(`${TOP},0,0`); // 5 >> 4 = 0, 9 >> 4 = 0
+  await f.finish(`${TOP},0,0`); await f.finish('0,5,9');
+  for (let x = 20; x < 30; x++) { c.request([T(0, x, 40)]); await f.finish(`0,${x},40`); await f.finish(`${TOP},1,2`); }
+  expect(c.get(T(TOP, 0, 0))).not.toBeNull();
 });

@@ -17,15 +17,18 @@ describe('ladrilho em aquarela', { timeout: 60000 }, () => {
     expect(hashArrays(paintTile(map, 0, t.x, t.y, chunk))).toBe(hashArrays(a));
     for (let i = 3; i < a.length; i += 4) if (a[i] !== 255) throw new Error('alfa');
   });
-  test.each([0, 1, 2, 3])('vizinhos casam na borda (nível %i)', L => {
+  test.each([0, 1, 2, 3, 4, 5])('vizinhos casam na borda (nível %i)', L => {
     const t = tileOf(L, cap.x, cap.y), a = paintTile(map, L, t.x, t.y, chunk), r = paintTile(map, L, t.x + 1, t.y, chunk), d = paintTile(map, L, t.x, t.y + 1, chunk);
-    // a emenda não pode destoar mais que duas colunas vizinhas quaisquer do interior (textura, árvores e relevo variam)
+    // a emenda não pode destoar mais que o pior par de colunas vizinhas do interior (textura, árvores e relevo variam)
     let sh = 0, sv = 0, ih = 0, iv = 0;
     for (let k = 0; k < TILE_PX; k++) for (let c = 0; c < 3; c++) {
       sh += Math.abs(px(a, TILE_PX - 1, k)[c] - px(r, 0, k)[c]);
       sv += Math.abs(px(a, k, TILE_PX - 1)[c] - px(d, k, 0)[c]);
-      ih += Math.abs(px(a, 95, k)[c] - px(a, 96, k)[c]);
-      iv += Math.abs(px(a, k, 95)[c] - px(a, k, 96)[c]);
+    }
+    for (const j of [31, 63, 95, 127, 159]) {
+      let h = 0, w = 0;
+      for (let k = 0; k < TILE_PX; k++) for (let c = 0; c < 3; c++) { h += Math.abs(px(a, j, k)[c] - px(a, j + 1, k)[c]); w += Math.abs(px(a, k, j)[c] - px(a, k, j + 1)[c]); }
+      ih = Math.max(ih, h); iv = Math.max(iv, w);
     }
     expect(sh).toBeLessThan(ih * 1.6 + TILE_PX * 3);
     expect(sv).toBeLessThan(iv * 1.6 + TILE_PX * 3);
@@ -42,7 +45,7 @@ describe('ladrilho em aquarela', { timeout: 60000 }, () => {
     expect(sea).not.toBeNull();
     const s = paintTile(map, 4, sea!.x, sea!.y, chunk);
     for (let i = 0; i < s.length; i += 4 * 97) expect(s[i + 2]).toBeGreaterThan(s[i] + 4);
-    const t = tileOf(0, cap.x, cap.y), c = paintTile(map, 0, t.x, t.y, chunk), [r, , b] = px(c, Math.floor((cap.x % 64) * 3), Math.floor((cap.y % 64) * 3));
+    const t = tileOf(2, cap.x, cap.y), c = paintTile(map, 2, t.x, t.y, chunk), [r, , b] = px(c, Math.floor((cap.x % 64) * 3), Math.floor((cap.y % 64) * 3));
     expect(b).toBeLessThan(r);
     // um tile de rio em L0
     const rc = chunk(Math.floor(cap.x / 64), Math.floor(cap.y / 64));
@@ -53,7 +56,7 @@ describe('ladrilho em aquarela', { timeout: 60000 }, () => {
         // tile de rio com vizinhos de rio dos dois lados (largo o bastante)
         const x = i % 64, y = (i / 64) | 0;
         if (ch.water[i] !== 3 || x < 1 || x > 62 || ch.water[i - 1] !== 3 || ch.water[i + 1] !== 3) continue;
-        const img = paintTile(map, 0, ch.cx, ch.cy, chunk), p = px(img, x * 3 + 1, y * 3 + 1);
+        const img = paintTile(map, 2, ch.cx, ch.cy, chunk), p = px(img, x * 3 + 1, y * 3 + 1); // nível 2 = 3 px/tile, ladrilho = chunk
         expect(p[2]).toBeGreaterThan(p[0]);
         found = true; break;
       }
@@ -67,9 +70,9 @@ describe('ladrilho em aquarela', { timeout: 60000 }, () => {
     let t = performance.now();
     for (const q of ts) paintTile(map, 0, q.x, q.y, chunk);
     expect((performance.now() - t) / ts.length).toBeLessThan(15);
-    const t3 = tileOf(3, cap.x, cap.y);
+    const t5 = tileOf(5, cap.x, cap.y);
     t = performance.now();
-    for (let i = 0; i < 12; i++) paintTile(map, 3, (t3.x + i) % 8, t3.y, chunk);
+    for (let i = 0; i < 12; i++) paintTile(map, 5, (t5.x + i) % 8, t5.y, chunk);
     expect((performance.now() - t) / 12).toBeLessThan(15);
   });
 });

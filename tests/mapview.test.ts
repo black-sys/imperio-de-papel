@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { clampView, fallbackFor, levelFor, MAX_SCALE, MIN_SCALE, minScale, tileSpan, toScreen, toWorld, visibleTiles, zoomAt, type View } from '../src/client/map/view';
+import { clampView, fallbackFor, LEVELS, levelFor, MAX_SCALE, MIN_SCALE, minScale, tileSpan, toScreen, toWorld, visibleTiles, zoomAt, type View } from '../src/client/map/view';
 
 const rng = (() => { let a = 7; return () => ((a = (Math.imul(a, 1103515245) + 12345) >>> 0) / 4294967296); })();
 const v = (o: Partial<View> = {}): View => ({ cx: 2048, cy: 2048, scale: 1, w: 1280, h: 800, ...o });
@@ -53,12 +53,15 @@ describe('limites', () => {
 });
 
 test('levelFor: o ladrilho nunca é ampliado', () => {
-  expect([3, 2, 1.5, 1, 0.75, 0.2, 0.1875, 0.05].map(levelFor)).toEqual([0, 0, 1, 1, 2, 3, 4, 4]);
+  expect(MAX_SCALE).toBe(12); // zoom de perto até 12 px por tile
+  expect([12, 8, 6, 3, 2, 1.5, 1, 0.75, 0.2, 0.1875, 0.05].map(levelFor)).toEqual([0, 0, 1, 2, 2, 3, 3, 4, 5, 6, 6]);
+  expect(tileSpan(0)).toBe(16); // 16 tiles × 12 px = 192 px
+  expect(tileSpan(2)).toBe(64); // a 3 px/tile o ladrilho continua sendo um chunk
 });
 
 test('ladrilhos visíveis cobrem a tela', () => {
   for (let i = 0; i < 20; i++) {
-    const view = clampView(v({ cx: rng() * 4096, cy: rng() * 4096, scale: MIN_SCALE + rng() * 2.8 })), L = levelFor(view.scale), span = tileSpan(L);
+    const view = clampView(v({ cx: rng() * 4096, cy: rng() * 4096, scale: MIN_SCALE + rng() * 11.8 })), L = levelFor(view.scale), span = tileSpan(L);
     const ts = visibleTiles(view, L);
     for (const t of ts) { expect(t.L).toBe(L); expect(t.x).toBeGreaterThanOrEqual(0); expect(t.x).toBeLessThan(4096 / span); }
     for (let k = 0; k < 200; k++) {
@@ -73,7 +76,7 @@ test('substituto: o ladrilho do nível acima que contém este', () => {
   const f = fallbackFor({ L: 0, x: 5, y: 9 })!;
   expect(f).toEqual({ L: 1, x: 2, y: 4 });
   expect(f.x * tileSpan(1) <= 5 * tileSpan(0) && (5 + 1) * tileSpan(0) <= (f.x + 1) * tileSpan(1)).toBe(true);
-  expect(fallbackFor({ L: 4, x: 1, y: 1 })).toBeNull();
+  expect(fallbackFor({ L: LEVELS - 1, x: 1, y: 1 })).toBeNull();
 });
 
 test('tela baixa: o zoom mínimo diminui para caber o continente inteiro', () => {
@@ -84,5 +87,5 @@ test('tela baixa: o zoom mínimo diminui para caber o continente inteiro', () =>
   expect(toScreen(a, 0, 0)[1]).toBeGreaterThanOrEqual(-1e-9);
   expect(toScreen(a, 4096, 4096)[1]).toBeLessThanOrEqual(650 + 1e-9);
   expect(minScale({ ...small, h: 1080, w: 1920 })).toBe(MIN_SCALE); // tela comum: o mínimo de sempre
-  expect(levelFor(650 / 4096)).toBe(4);
+  expect(levelFor(650 / 4096)).toBe(6);
 });
