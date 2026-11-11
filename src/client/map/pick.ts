@@ -3,7 +3,8 @@ import type { ProvinceMap } from '../../worldgen/provinces';
 import type { GameState } from '../../sim/state';
 import { toScreen, toWorld, type View } from './view';
 
-export const REALM_COLORS = ['#a8342a'], NEUTRAL = '#7a7468', INK = '#3e2a18', PAPER = '#f3e7c9', GOLD = '#f7d774';
+// carmim (jogador), azul-prússia, verde-garrafa, ocre, violeta: tintas de carta antiga
+export const REALM_COLORS = ['#a8342a', '#2f4f7f', '#2f5d3a', '#b0802a', '#6a3f7a'], NEUTRAL = '#7a7468', INK = '#3e2a18', PAPER = '#f3e7c9', GOLD = '#f7d774';
 /** Tamanhos dos marcadores na tela (px), compartilhados com o desenho. */
 export const TROOP_W = 30, TROOP_H = 20, CITY_R = 14, FORT_R = 15;
 export const FORT_DETAIL = 0.35; // abaixo desta escala (px/tile) as fortalezas não aparecem

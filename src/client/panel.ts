@@ -1,7 +1,9 @@
 import { ARMY, BUILDINGS, CITY, DEPOT_MONTHS, REINFORCE, RES_NAMES, SUPPLY, TROOPS, type BuildingType, type TroopType } from '../sim/balance';
 import { checkBuild, checkColonize, checkRecruit, checkUpgrade, checkUpgradeCity, type Place, type Result } from '../sim/commands';
 import { buildCost, cityTax, colonizeCost, recruitCost, runMonth } from '../sim/economy';
-import { activeLevel, cityLevel, playerCapital, type GameState } from '../sim/state';
+import { activeLevel, cityLevel, playerCapital, type Bent, type GameState } from '../sim/state';
+import { occupyMonths } from '../sim/conquest';
+import { REALM_COLORS } from './map/pick';
 import { inBattle, men } from '../sim/armies';
 import { reinforcing } from '../sim/routes';
 import type { ProvinceMap } from '../worldgen/provinces';
@@ -24,7 +26,11 @@ export interface PanelActions {
   split(armyId: number, indices: number[]): void;
   merge(intoId: number, fromId: number): void;
   rename(armyId: number): void;
+  declareWar(nation: number): void;
+  centerOn(province: number): void;
 }
+/** O que mais o painel pode mostrar: a lista de nações ou um exército alheio (só leitura). */
+export interface PanelExtra { nations?: boolean; inspect?: number }
 /** Lugar para onde o painel rola ao abrir (clique num lote ou veio no mapa). */
 export type PanelFocus = { lot: number } | { vein: number } | null;
 
@@ -47,19 +53,25 @@ export function veinsAround(pm: ProvinceMap, id: number): string {
 }
 
 /** Painel lateral da província selecionada. Re-renderiza só quando o conteúdo muda (cliques não se perdem). */
-export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: number, act: PanelActions, armies: number[] = [], focus: PanelFocus = null): void {
+export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: number, act: PanelActions, armies: number[] = [], focus: PanelFocus = null, extra: PanelExtra = {}): void {
   const picked = s ? s.armies.filter(t => armies.includes(t.id)) : [];
-  if (!s || !pm || (id < 0 && picked.length === 0)) { el.style.display = 'none'; lastHtml = ''; lastFocus = ''; return; }
+  const other = s?.armies.find(a => a.id === extra.inspect && a.owner !== 0);
+  if (!s || !pm || (id < 0 && picked.length === 0 && !other && !extra.nations)) { el.style.display = 'none'; lastHtml = ''; lastFocus = ''; return; }
   if (picked.length) return show(armiesHtml(s, pm, picked), id, act, '');
-  const p = pm.provinces[id], mine = s.owner[id] === 0 && !!s.city[id], fort = s.fortresses.find(f => f.province === id);
+  if (other) return show(foreignArmyHtml(s, other), id, act, '');
+  if (id < 0) return show(nationsHtml(s, pm), id, act, '');
+  const p = pm.provinces[id], mine = s.owner[id] === 0 && !!s.city[id], fort = s.fortresses.find(f => f.province === id), rival = s.owner[id] > 0 ? s.nations[s.owner[id]] : null;
+  const owner = playerCapital(s) === id ? 'Sua capital' : mine ? 'Sua nação' : rival ? `${swatch(rival.id)}${esc(rival.name)}${rival.capital === id ? ' · capital' : ''}` : fort ? 'Fortaleza neutra' : 'Neutra';
   let html = `<button class="x" data-a="close">✕</button><h2>${esc(p.name)}</h2>
-    <div class="sub">${playerCapital(s) === id ? 'Sua capital' : mine ? 'Seu reino' : fort ? 'Fortaleza neutra' : 'Neutra'} · ${BIOME_NAMES[p.biome]}${p.coastal ? ' · costeira' : ''}</div>
-    ${bar('Fertilidade', p.fertility)}`;
+    <div class="sub">${owner} · ${BIOME_NAMES[p.biome]}${p.coastal ? ' · costeira' : ''}</div>
+    ${bar('Fertilidade', p.fertility)}${occupationHtml(s, pm, id)}`;
   if (playerCapital(s) < 0) {
     html += pm.suggestedCapitals.includes(id)
       ? `<p>Uma boa terra para começar. Por perto: ${esc(veinsAround(pm, id))}.</p><button class="big" data-a="found">Fundar capital aqui</button>`
       : `<p class="why">Escolha uma das províncias marcadas com o selo no mapa.</p>`;
     html += veinsHtml(s, pm, id, false);
+  } else if (rival) {
+    html += rivalHtml(s, pm, id, rival.id);
   } else if (!mine) {
     const col = s.colonizing.find(c => c.province === id);
     if (fort) {
@@ -141,6 +153,60 @@ function veinsHtml(s: GameState, pm: ProvinceMap, id: number, build: boolean): s
   return html;
 }
 
+const BENT: Record<Bent, string> = { militarist: 'Militarista', expansionist: 'Expansionista', industrial: 'Industrial' };
+const swatch = (n: number) => `<span class="swatch" style="background:${REALM_COLORS[n] ?? REALM_COLORS[0]}"></span>`;
+/** Situação de uma nação vista pelo jogador. */
+function situation(s: GameState, n: number): string {
+  const x = s.nations[n];
+  if (!x.alive) return 'eliminada';
+  if (n !== 0 && x.atWar.includes(0)) return '<span class="why" style="display:inline">em guerra com você</span>';
+  const foes = x.atWar.filter(k => k !== 0).map(k => esc(s.nations[k].name));
+  return foes.length ? `em guerra com ${foes.join(', ')}` : n === 0 ? 'em paz' : 'em paz com você';
+}
+const warButton = (s: GameState, n: number) => (n !== 0 && s.nations[n].alive && !s.nations[n].atWar.includes(0) && s.nations[0].alive ? `<button data-a="dw:${n}">Declarar guerra</button>` : '');
+
+/** Lista das nações: cor, nome (clique centraliza na capital), inclinação, províncias, batalhões e situação. */
+function nationsHtml(s: GameState, pm: ProvinceMap): string {
+  const rows = s.nations.map(n => {
+    const prov = s.owner.filter(o => o === n.id).length, bats = s.armies.reduce((k, a) => k + (a.owner === n.id ? a.battalions.length : 0), 0);
+    const name = n.alive ? `<a class="go" data-a="cn:${n.capital}">${esc(n.name)}</a>` : esc(n.name);
+    return `<div class="slot">${swatch(n.id)}<b>${name}</b>${n.id === 0 ? ' (você)' : ` · ${BENT[n.bent]}`}
+      <div class="sub">${prov} províncias · ${bats} batalhões · ${situation(s, n.id)}</div><div class="act">${warButton(s, n.id)}</div></div>`;
+  }).join('');
+  void pm;
+  return `<button class="x" data-a="close">✕</button><h2>Nações</h2>${rows}`;
+}
+
+/** Província de uma nação rival: só informação, e a declaração de guerra. */
+function rivalHtml(s: GameState, pm: ProvinceMap, id: number, n: number): string {
+  const lvl = cityLevel(s, id), names = [...s.lots[id], ...s.veins[id]].filter(b => b).map(b => `${BUILDINGS[b!.type].name} ${stars(b!.level)}`);
+  const here = s.armies.filter(a => a.owner >= 0 && a.owner !== 0 && Math.hypot(a.x - pm.provinces[id].city.x, a.y - pm.provinces[id].city.y) <= 40);
+  return `<p>${BENT[s.nations[n].bent]} · ${situation(s, n)}</p>
+    <h3>Cidade</h3><div class="slot">${['', 'Vila', 'Cidade', 'Metrópole'][lvl]} ${stars(lvl)}</div>
+    <h3>Prédios</h3><div class="slot">${names.join(', ') || 'nenhum'}</div>
+    <h3>Exércitos perto da cidade</h3><div class="slot">${here.map(a => `${esc(a.name)}: ${Math.ceil(men(a))} homens, ${a.battalions.length} batalhões`).join('<br>') || 'nenhum'}</div>
+    <div class="act">${warButton(s, n)}</div>`;
+}
+
+/** Ocupação em andamento na província: quem ocupa e quanto falta. */
+function occupationHtml(s: GameState, pm: ProvinceMap, id: number): string {
+  const e = s.occupations.find(x => x.province === id);
+  if (!e) return '';
+  const left = Math.max(0, occupyMonths(s, id) - e.progress).toFixed(1);
+  const g = Math.max(0, ...s.lots[id].map(b => (b?.type === 'garrison' ? activeLevel(b) : 0)));
+  if (e.nation === 0) return `<p>⚑ Você ocupa — cai em ${left} meses${g ? ` (Guarnição N${g} alonga)` : ''}</p>`;
+  return `<p class="why">⚑ Ocupada pela ${esc(s.nations[e.nation].name)} — cai em ${left} meses</p>`;
+}
+
+/** Exército de outra nação ou de fortaleza: só leitura. */
+function foreignArmyHtml(s: GameState, a: GameState['armies'][0]): string {
+  const who = a.owner === -1 ? 'Fortaleza neutra' : `${swatch(a.owner)}${esc(s.nations[a.owner].name)}`;
+  const rows = a.battalions.map(b => `<div class="slot">${TROOP_ICON[b.type]} ${TROOPS[b.type].name} · ${Math.ceil(b.soldiers)}/${TROOPS[b.type].soldiers}</div>`).join('');
+  return `<button class="x" data-a="close">✕</button><h2>${esc(a.name)}</h2>
+    <div class="sub">${who} · ${Math.ceil(men(a))} homens · moral ${Math.round(a.morale * 100)}%${inBattle(s, a.id) ? ' · em batalha' : ''}</div>
+    <h3>Batalhões (${a.battalions.length})</h3>${rows}`;
+}
+
 // batalhões marcados para dividir ("exército:índice"); sobrevivem às re-renderizações do painel
 const checked = new Set<string>();
 
@@ -185,7 +251,7 @@ function show(html: string, id: number, act: PanelActions, focus: string): void 
   // que começa num botão e termina no botão novo se perderia
   el.onpointerdown = e => {
     if (e.button !== 0) return;
-    const a = ((e.target as HTMLElement).closest('button, input') as HTMLElement | null)?.dataset.a;
+    const a = ((e.target as HTMLElement).closest('button, input, a') as HTMLElement | null)?.dataset.a;
     if (!a) return;
     const parsePlace = (kind: string, i: string): Place => (kind === 'lot' ? { lot: Number(i) } : { vein: Number(i) });
     if (a === 'close') act.close();
@@ -194,6 +260,8 @@ function show(html: string, id: number, act: PanelActions, focus: string): void 
     else if (a === 'upc') act.upgradeCity(id);
     else if (a === 'route') act.startRoute(id);
     else if (a.startsWith('rr:')) act.removeRoute(Number(a.slice(3)));
+    else if (a.startsWith('dw:')) act.declareWar(Number(a.slice(3)));
+    else if (a.startsWith('cn:')) act.centerOn(Number(a.slice(3)));
     else if (a.startsWith('ck:')) { const k = a.slice(3); if (checked.has(k)) checked.delete(k); else checked.add(k); }
     else if (a.startsWith('sl:')) { const [, armyId, list] = a.split(':'); act.split(Number(armyId), list ? list.split(',').map(Number) : []); for (const k of [...checked]) if (k.startsWith(`${armyId}:`)) checked.delete(k); }
     else if (a.startsWith('mg:')) { const [, into, from] = a.split(':'); act.merge(Number(into), Number(from)); }

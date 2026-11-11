@@ -1,4 +1,4 @@
-import { initHud, initTopbar, setInfo, setProgress, setSeedField, setTopbar, showError } from './client/hud';
+import { formatDate, initHud, initTopbar, setInfo, setProgress, setSeedField, setTopbar, showError } from './client/hud';
 import { MapRenderer } from './client/map/renderer';
 import { armiesInRect, pickAt, provinceAtTile, routeTargetAt } from './client/map/pick';
 import { TileCache } from './client/map/tileCache';
@@ -6,7 +6,8 @@ import { clampView, minScale, toWorld, zoomAt, type View } from './client/map/vi
 import { costText } from './client/labels';
 import { renderPanel, setTip, toast, veinsAround, type PanelFocus } from './client/panel';
 import { WorldClient } from './client/worldClient';
-import { build, chooseCapital, colonize, moveArmies, recruit, setSpeed, upgrade, upgradeCity, type Place, type Result } from './sim/commands';
+import { build, chooseCapital, colonize, moveArmies, recruit, setSpeed, startGame, training, upgrade, upgradeCity, type Place, type Result } from './sim/commands';
+import { declareWar } from './sim/war';
 import { runMonth } from './sim/economy';
 import { addFortress, placeFortresses } from './sim/fortress';
 import { buildRoute, dropSupply, planRoute, removeRoute, supplyArmy } from './sim/routes';
@@ -31,6 +32,7 @@ let game: GameState | null = null;
 let moveGrid: MoveGrid | null = null;
 let pins: { x: number; y: number; province: number }[] = [];
 let lastSpeed = 1, seenEvents = 0, selected = -1, focus: PanelFocus = null;
+let nationsOpen = false, inspect = -1, endShown = false; // lista de nações; exército alheio em leitura; tela de fim já mostrada
 // modo traçar rota: cidade de origem e a prévia sob o mouse
 let routeFrom: number | null = null, preview: { path: number[]; ok: boolean } | null = null, previewAt = 0;
 
@@ -40,12 +42,13 @@ async function load(s: number) {
   history.replaceState(null, '', `?seed=${s}`);
   showError(null);
   pm = null; game = null; moveGrid = null; pins = []; selected = -1; seenEvents = 0; lastSpeed = 1; lastClose = null;
-  groups.clear(); selectedArmies.clear(); routeFrom = null; preview = null;
+  groups.clear(); selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; inspect = -1; endShown = false;
+  (document.getElementById('end') as HTMLDivElement).style.display = 'none';
   tiles.clear(); renderer.setWorld(null, null);
   let w: { provinces: ProvinceMap; map: Parameters<typeof makeMoveGrid>[0] };
   try { w = await client.generate(s, setProgress); }
   catch (e) { if ((e as Error).message !== 'substituído') showError((e as Error).message, s); return; }
-  pm = w.provinces; game = newGame(pm);
+  pm = w.provinces; game = newGame(pm, s);
   moveGrid = makeMoveGrid(w.map);
   placeFortresses(game, pm, s);
   setProgress(null, 1);
@@ -53,7 +56,7 @@ async function load(s: number) {
   // tela inicial: continente inteiro com selos nas capitais sugeridas
   pins = pm.suggestedCapitals.map(i => ({ ...pm!.provinces[i].center, province: i }));
   view = clampView({ ...view, scale: 0 }); // 0 = zoom mínimo desta tela
-  toast('Escolha onde fundar sua capital: clique num selo ♜');
+  toast('Escolha onde fundar sua capital: clique num selo ♜ (nos outros nascerão nações rivais)');
 }
 
 const report = (r: Result) => { if (!r.ok) toast(r.reason); };
@@ -74,7 +77,8 @@ const actions = {
   recruit: (id: number, slot: number, t: Parameters<typeof recruit>[4]) => game && pm && report(recruit(game, pm, id, slot, t)),
   foundCapital: (id: number) => {
     if (!game || !pm) return;
-    const r = chooseCapital(game, pm, id);
+    const difficulty = (document.getElementById('difficulty') as HTMLSelectElement).value as 'easy' | 'normal' | 'hard';
+    const r = startGame(game, pm, id, difficulty);
     report(r);
     if (!r.ok) return;
     pins = [];
@@ -82,7 +86,12 @@ const actions = {
     view = clampView({ ...view, cx: c.x, cy: c.y, scale: 1.5 });
     toast('Capital fundada. O tempo está pausado: espaço ou 1× para começar.');
   },
-  close: () => { selected = -1; focus = null; selectedArmies.clear(); routeFrom = null; preview = null; },
+  close: () => { selected = -1; focus = null; selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; inspect = -1; },
+  declareWar: (n: number) => {
+    const target = game?.nations[n];
+    if (game && pm && target && confirm(`Declarar guerra à ${target.name}? A guerra não tem volta.`)) report(declareWar(game, 0, n, pm));
+  },
+  centerOn: (province: number) => { if (pm) { const c = pm.provinces[province].city; view = clampView({ ...view, cx: c.x, cy: c.y, scale: Math.max(view.scale, 1) }); } },
   startRoute: (id: number) => { routeFrom = id; preview = null; toast('Clique noutra cidade sua · Esc cancela'); },
   removeRoute: (routeId: number) => game && pm && report(removeRoute(game, routeId, pm)),
   supply: (armyId: number) => game && pm && moveGrid && report(supplyArmy(game, pm, moveGrid, armyId)),
@@ -104,6 +113,12 @@ initHud({
   getLink: () => `${location.origin}${location.pathname}?seed=${seed}`,
 });
 initTopbar(speed);
+(document.getElementById('nations') as HTMLButtonElement).onclick = e => {
+  nationsOpen = !nationsOpen; (e.currentTarget as HTMLButtonElement).blur();
+  if (nationsOpen) { selected = -1; selectedArmies.clear(); inspect = -1; }
+};
+(document.getElementById('end-stay') as HTMLButtonElement).onclick = () => { (document.getElementById('end') as HTMLDivElement).style.display = 'none'; };
+(document.getElementById('end-new') as HTMLButtonElement).onclick = () => load(randomSeed());
 
 // ---- teclado ----
 const keys = new Set<string>();
@@ -158,14 +173,16 @@ canvas.addEventListener('pointerup', e => {
   const b = box;
   down = null; box = null;
   if (b) return pickArmies(armiesInRect(game, view, b[0], b[1], b[2], b[3]), e.shiftKey);
-  const hit = pickAt(game, pm, view, e.clientX, e.clientY, true, pins);
+  const hit = pickAt(game, pm, view, e.clientX, e.clientY, false, pins); // alheios também: abrem só para leitura
+  inspect = -1; nationsOpen = false;
   if (routeFrom !== null) { // modo traçar rota: o clique numa cidade sua confirma; fora dela, sai do modo
     const target = routeTargetAt(pm, view, e.clientX, e.clientY); // a mesma consulta da prévia: tropa ao lado da cidade não engole o clique
     if (target >= 0 && game.owner[target] === 0 && target !== routeFrom && moveGrid) report(buildRoute(game, pm, moveGrid, routeFrom, target));
     routeFrom = null; preview = null;
     return;
   }
-  if (hit?.kind === 'army') return pickArmies([hit.id], e.shiftKey);
+  if (hit?.kind === 'army' && game.armies.find(a => a.id === hit.id)?.owner === 0) return pickArmies([hit.id], e.shiftKey);
+  if (hit?.kind === 'army') { selectedArmies.clear(); selected = -1; inspect = hit.id; return; }
   if (e.shiftKey) return;
   selectedArmies.clear();
   selected = hit ? hit.province : -1;
@@ -189,9 +206,10 @@ function tip(e: PointerEvent) {
   }
   // selo de capital sugerida: o que há por perto (é assim que se escolhe onde fundar)
   const pin = playerCapital(game) < 0 ? pins.find(q => { const [sx, sy] = [(q.x - view.cx) * view.scale + view.w / 2, (q.y - view.cy) * view.scale + view.h / 2]; return Math.hypot(sx - e.clientX, sy - e.clientY) <= 13; }) : undefined;
-  if (pin) return setTip(`${pm.provinces[pin.province].name}: ${veinsAround(pm, pin.province)}`, e.clientX, e.clientY);
+  if (pin) return setTip(`${pm.provinces[pin.province].name}: ${veinsAround(pm, pin.province)} · se não for a sua, aqui nascerá uma nação rival`, e.clientX, e.clientY);
   const p = provinceAtTile(pm, ...toWorld(view, e.clientX, e.clientY));
-  setTip(p < 0 ? null : `${pm.provinces[p].name} · ${game.owner[p] === 0 ? 'seu reino' : game.fortresses.some(f => f.province === p) ? 'fortaleza neutra' : 'neutra'}`, e.clientX, e.clientY);
+  const o = game.owner[p];
+  setTip(p < 0 ? null : `${pm.provinces[p].name} · ${o === 0 ? 'sua nação' : o > 0 ? game.nations[o].name : game.fortresses.some(f => f.province === p) ? 'fortaleza neutra' : 'neutra'}`, e.clientX, e.clientY);
 }
 canvas.addEventListener('pointerleave', () => setTip(null));
 
@@ -208,9 +226,16 @@ function frame(now: number) {
     if (playerCapital(game) >= 0) tick(game, pm, Math.min(dt, 1), moveGrid); // aba em segundo plano: no máximo 1 s por quadro
     for (const id of selectedArmies) if (!game.armies.some(t => t.id === id)) selectedArmies.delete(id); // destruídos saem da seleção
     setTopbar(playerCapital(game) >= 0 ? { res: game.nations[0].res, report: runMonth(game, pm, false), month: game.month, speed: game.speed,
-      troops: `${battalionCount(game) + game.recruiting.length}/${armyCap(game)}`,
-      depot: game.depot.reduce((a, d) => { for (const k of Object.keys(a) as (keyof typeof a)[]) a[k] += d[k]; return a; }, { money: 0, grain: 0, wood: 0, coal: 0, iron: 0, steel: 0, arms: 0 }) } : null);
-    renderPanel(game, pm, selected, actions, [...selectedArmies], focus);
+      troops: `${battalionCount(game) + training(game)}/${armyCap(game)}`,
+      depot: game.depot.filter((_, id) => game!.owner[id] === 0).reduce((a, d) => { for (const k of Object.keys(a) as (keyof typeof a)[]) a[k] += d[k]; return a; }, { money: 0, grain: 0, wood: 0, coal: 0, iron: 0, steel: 0, arms: 0 }) } : null);
+    if (inspect >= 0 && !game.armies.some(a => a.id === inspect)) inspect = -1;
+    renderPanel(game, pm, selected, actions, [...selectedArmies], focus, { nations: nationsOpen, inspect });
+    if (game.result && !endShown) { // fim de partida: pausa e mostra o resultado
+      endShown = true; speed(0);
+      (document.getElementById('end-title') as HTMLElement).textContent = game.result === 'victory' ? 'Vitória' : 'Derrota';
+      (document.getElementById('end-text') as HTMLElement).textContent = `${formatDate(game.month)} · ${game.owner.filter(o => o === 0).length} províncias`;
+      (document.getElementById('end') as HTMLDivElement).style.display = 'flex';
+    }
     // eventos novos viram mensagens: compara com o total (o log só guarda os últimos 50)
     const fresh = game.eventCount - seenEvents;
     for (const ev of game.events.slice(Math.max(0, game.events.length - fresh))) toast(ev.text);
@@ -225,7 +250,7 @@ function frame(now: number) {
 }
 requestAnimationFrame(frame);
 if (import.meta.env.DEV) { // para testes no console
-  Object.assign(window, { renderer, tiles, selectedArmies, sim: { recruit, moveArmies, spawnArmy, addFortress, chooseCapital, planRoute } });
+  Object.assign(window, { renderer, tiles, selectedArmies, sim: { recruit, moveArmies, spawnArmy, addFortress, chooseCapital, startGame, planRoute, declareWar } });
   Object.defineProperties(window, {
     game: { get: () => game }, pm: { get: () => pm }, moveGrid: { get: () => moveGrid },
     selected: { get: () => selected, set: v => (selected = v) }, view: { get: () => view, set: v => (view = clampView(v)) },

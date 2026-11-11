@@ -1,5 +1,6 @@
 import { ARMY, BUILDINGS, CITY, type BuildingType, type TroopType } from '../../sim/balance';
 import { cityLevel, playerCapital } from '../../sim/state';
+import { occupyMonths } from '../../sim/conquest';
 import { roman } from '../labels';
 import type { MoveGrid } from '../../sim/movegrid';
 import type { GameState } from '../../sim/state';
@@ -26,13 +27,15 @@ export function markersKey(s: GameState, pm: ProvinceMap, v: View, o: MarkerOpts
   for (const t of s.armies) {
     const [px, py] = toScreen(v, t.x, t.y);
     if (!onScreen(v, px, py)) continue;
-    parts.push(`t${t.id}:${Math.round(px)},${Math.round(py)},${t.battalions.map(b => `${b.type[0]}${Math.ceil(b.soldiers)}`).join('')},${o.selectedArmies.has(t.id) ? 1 : 0},${t.path.length ? 1 : 0}`);
+    parts.push(`t${t.id}:${t.owner}:${Math.round(px)},${Math.round(py)},${t.battalions.map(b => `${b.type[0]}${Math.ceil(b.soldiers)}`).join('')},${o.selectedArmies.has(t.id) ? 1 : 0},${t.path.length ? 1 : 0}`);
   }
   const code = (b: { type: string; level: number; remaining: number } | null) => (b ? `${b.type.slice(0, 3)}${b.level}${b.remaining > 0 ? 'o' : ''}` : '-');
   s.city.forEach((c, id) => { if (c) parts.push(`c${id}:${c.level}${c.remaining > 0 ? 'o' : ''}${s.owner[id]}`); });
   s.lots.forEach((l, id) => { if (l.some(b => b)) parts.push(`l${id}:${l.map(code).join('')}`); });
   s.veins.forEach((l, id) => { if (l.some(b => b)) parts.push(`v${id}:${l.map(code).join('')}`); });
-  for (const c of s.colonizing) parts.push(`c${c.province}:${Math.ceil(c.remaining)}`);
+  for (const c of s.colonizing) parts.push(`c${c.province}:${c.nation}:${Math.ceil(c.remaining)}`);
+  for (const e of s.occupations) parts.push(`q${e.province}:${e.nation}:${Math.floor(e.progress * 10 + 1e-9)}`);
+  parts.push(`o${s.owner.join(',')}`);
   if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) parts.push(`f${f.province}:${s.armies.find(t => t.home === f.province)?.battalions.length ?? 0}`);
   for (const b of s.battles) parts.push(`w${Math.round(b.x)},${Math.round(b.y)}:${b.sides.map(x => Math.round(x.morale * 20)).join('/')}`);
   for (const r of s.routes) parts.push(`r${r.id}:${r.remaining > 0 ? 'o' : ''}${r.cut ? 'x' : ''}`);
@@ -134,8 +137,16 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     const [x, y] = P(site.x, site.y);
     if (!onScreen(v, x, y)) continue;
     ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.lineTo(x, y - 12); ctx.stroke();
-    ctx.fillStyle = REALM_COLORS[0]; ctx.beginPath(); ctx.moveTo(x, y - 12); ctx.lineTo(x + 12, y - 8); ctx.lineTo(x, y - 4); ctx.fill();
+    ctx.fillStyle = color(col.nation); ctx.beginPath(); ctx.moveTo(x, y - 12); ctx.lineTo(x + 12, y - 8); ctx.lineTo(x, y - 4); ctx.fill();
     label(ctx, `${Math.ceil(col.remaining)} m`, x, y + 16, 10);
+  }
+  // ocupações: barra sob a cidade na cor do ocupante
+  for (const e of s.occupations) {
+    const site = pm.provinces[e.province].city, [x, y] = P(site.x, site.y);
+    if (!onScreen(v, x, y)) continue;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x - 18, y + CITY_R + 4, 36, 5);
+    ctx.fillStyle = color(e.nation); ctx.fillRect(x - 18, y + CITY_R + 4, 36 * Math.min(1, e.progress / occupyMonths(s, e.province)), 5);
+    ctx.strokeStyle = INK; ctx.lineWidth = 1; ctx.strokeRect(x - 18, y + CITY_R + 4, 36, 5);
   }
   // fortalezas (somem no continente inteiro, como os prédios: poluiriam o mapa)
   if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) {
@@ -219,7 +230,7 @@ function drawNetwork(ctx: CanvasRenderingContext2D, s: GameState, pm: ProvinceMa
   for (const r of s.routes) {
     const pts = pathPoints(r.path, grid, v, every, pm.provinces[r.a].city);
     ctx.lineWidth = v.scale >= 0.5 ? 2.5 : 1.5;
-    ctx.strokeStyle = r.cut ? CUT : color(s.owner[r.a]);
+    ctx.strokeStyle = r.cut ? CUT : color(r.owner);
     ctx.globalAlpha = r.remaining > 0 ? 0.45 : 0.9;
     ctx.setLineDash(r.remaining > 0 ? [2, 5] : [8, 5]);
     stroke(ctx, pts);

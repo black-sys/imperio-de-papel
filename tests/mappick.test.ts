@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { markersKey } from '../src/client/map/markers';
-import { cityAt, pickAt, provinceAtTile, routeTargetAt, armiesInRect } from '../src/client/map/pick';
+import { REALM_COLORS, cityAt, pickAt, provinceAtTile, routeTargetAt, armiesInRect } from '../src/client/map/pick';
 import { toScreen, type View } from '../src/client/map/view';
 import { addFortress } from '../src/sim/fortress';
 import { spawnArmy } from '../src/sim/armies';
@@ -134,4 +134,28 @@ test('markersKey muda quando entra ou sai batalhão e quando a peça se abre com
   const near = { ...view, scale: 5 }, far = { ...view, scale: 3.9 };
   expect(markersKey(s, pm, near, o).includes('open')).toBe(true);
   expect(markersKey(s, pm, far, o).includes('open')).toBe(false);
+});
+
+test('nações: exército de rival se acha no clique (só leitura) mas não entra na caixa', () => {
+  const s = game(), r = spawnArmy(s, 1, ['line'], 100, 100), [x, y] = toScreen(view, 100, 100);
+  expect(pickAt(s, pm, view, x, y, false)).toEqual({ kind: 'army', id: r.id });
+  expect(pickAt(s, pm, view, x, y)).not.toEqual({ kind: 'army', id: r.id });
+  expect(armiesInRect(s, view, x - 30, y - 30, x + 30, y + 30)).toEqual([]);
+});
+
+test('markersKey muda quando a ocupação avança 0.1 mês e quando a província muda de dono', () => {
+  const s = game(), o = opts();
+  s.occupations.push({ province: 1, nation: 1, progress: 0.2 });
+  const k0 = markersKey(s, pm, view, o);
+  s.occupations[0].progress = 0.21;
+  expect(markersKey(s, pm, view, o)).toBe(k0);
+  s.occupations[0].progress = 0.31;
+  expect(markersKey(s, pm, view, o)).not.toBe(k0);
+  const k1 = markersKey(s, pm, view, o);
+  s.owner[1] = 1;
+  expect(markersKey(s, pm, view, o)).not.toBe(k1);
+});
+
+test('cores das nações: uma por nação na paleta da carta', () => {
+  expect(REALM_COLORS).toEqual(['#a8342a', '#2f4f7f', '#2f5d3a', '#b0802a', '#6a3f7a']);
 });
