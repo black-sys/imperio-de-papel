@@ -81,9 +81,10 @@ GameState: nations: Nation[]                  // 0 = jogador; substitui res, cap
 `connected`, `depot`, `recruiting`, `lots`, `veins`, `city` seguem por província (dono = `owner`). Tudo serializável.
 
 ### Comandos
-- Todos recebem a nação depois do estado: `colonize(s, pm, n, id)`, `build`, `upgrade`, `upgradeCity`, `recruit`,
-  `moveArmies(s, grid, n, ids, x, y)`, `buildRoute`, `supplyArmy`, `mergeArmies`, `splitArmy`, `renameArmy`, com os
-  `checkX` e as mesmas recusas. O cliente passa 0. Nação não age em província/exército alheio.
+- Todos recebem a nação como último parâmetro, opcional, padrão 0 (o jogador): `colonize(s, pm, id, n = 0)`,
+  `build`, `upgrade`, `upgradeCity`, `recruit`, `moveArmies(s, grid, ids, x, y, n = 0)`, `buildRoute`, `supplyArmy`,
+  `mergeArmies`, `splitArmy`, `renameArmy`, com os `checkX` e as mesmas recusas. O cliente não muda as chamadas.
+  Nação não age em província/exército alheio.
 - `declareWar(s, n, target): Result` — recusas: nação inválida/eliminada, a si mesma, já em guerra.
 - `startGame(s, pm, capital, difficulty, seed)` substitui `chooseCapital`.
 - Economia (`runMonth`, custos, `armyCap`, `battalionCount`, conectividade a partir da capital) por nação.
