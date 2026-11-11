@@ -3,7 +3,7 @@ import { checkBuild, checkColonize, checkRecruit, checkUpgrade, type Result } fr
 import { buildCost, colonizeCost, provinceIncome, recruitCost } from '../sim/economy';
 import { activeLevel, type GameState } from '../sim/state';
 import { inBattle } from '../sim/troops';
-import { TROOP_ICON } from './view/troops';
+import { TROOP_ICON } from './map/markers';
 import type { ProvinceMap } from '../worldgen/provinces';
 import { BIOME_NAMES } from './map2d';
 

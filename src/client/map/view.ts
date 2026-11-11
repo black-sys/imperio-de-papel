@@ -9,14 +9,15 @@ export interface TileId { L: number; x: number; y: number }
 export const toScreen = (v: View, x: number, y: number): [number, number] => [(x - v.cx) * v.scale + v.w / 2, (y - v.cy) * v.scale + v.h / 2];
 export const toWorld = (v: View, sx: number, sy: number): [number, number] => [(sx - v.w / 2) / v.scale + v.cx, (sy - v.h / 2) / v.scale + v.cy];
 
-/** Em cada eixo: mundo menor que a tela → centrado; senão a borda do mundo não entra na tela. */
+/**
+ * Zoom mínimo: continente centrado. Acima dele, o centro da vista só precisa ficar dentro do mundo (a borda chega no
+ * máximo ao meio da tela). Prender mais que isso faria o zoom arrastar o ponto sob o mouse perto da costa — e as
+ * capitais sugeridas ficam quase todas na costa.
+ */
 export function clampView(v: View): View {
   const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale));
-  const axis = (c: number, screen: number) => {
-    const half = screen / 2 / scale;
-    return WORLD_TILES * scale <= screen ? WORLD_TILES / 2 : Math.min(WORLD_TILES - half, Math.max(half, c));
-  };
-  return { ...v, scale, cx: axis(v.cx, v.w), cy: axis(v.cy, v.h) };
+  const axis = (c: number) => (scale <= MIN_SCALE ? WORLD_TILES / 2 : Math.min(WORLD_TILES, Math.max(0, c)));
+  return { ...v, scale, cx: axis(v.cx), cy: axis(v.cy) };
 }
 
 /** Zoom mantendo fixo o ponto do mundo sob (sx, sy). */

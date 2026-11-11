@@ -1,100 +1,58 @@
-import * as THREE from 'three';
-import { FreeCamera } from './client/camera';
-import { bordersCanvas, makePainter, ownedCanvas, provinceAtTile } from './client/view/borders';
-import { BuildingsView, siteClearings } from './client/view/buildings';
 import { initHud, initTopbar, setInfo, setProgress, setSeedField, setTopbar, showError } from './client/hud';
-import { loadQuality, saveQuality, type Quality } from './client/quality';
-import { FADE_END, FADE_START, StrategicMap, type MapUnit } from './client/strategic';
-import { ChunkManager } from './client/view/chunks';
-import { TROOP_ICON, TroopsView } from './client/view/troops';
-import { createScene } from './client/view/scene';
+import { MapRenderer } from './client/map/renderer';
+import { pickAt, provinceAtTile, troopsInRect } from './client/map/pick';
+import { TileCache } from './client/map/tileCache';
+import { clampView, MIN_SCALE, toWorld, zoomAt, type View } from './client/map/view';
+import { renderPanel, setTip, toast } from './client/panel';
 import { WorldClient } from './client/worldClient';
 import { build, chooseCapital, colonize, moveTroops, recruit, setSpeed, upgrade, type Result } from './sim/commands';
-import { spawnTroop, troopCap } from './sim/troops';
-import { renderPanel, setTip, toast } from './client/panel';
 import { monthlyIncome } from './sim/economy';
 import { addFortress, placeFortresses } from './sim/fortress';
 import { makeMoveGrid, type MoveGrid } from './sim/movegrid';
 import { newGame, type GameState } from './sim/state';
 import { tick } from './sim/tick';
-import { CELL, CHUNK } from './worldgen/constants';
+import { spawnTroop, troopCap } from './sim/troops';
 import type { ProvinceMap } from './worldgen/provinces';
 import { parseSeed, randomSeed } from './worldgen/seed';
-import type { WorldMap } from './worldgen/types';
 
 const client = new WorldClient();
-const viewCanvas = document.getElementById('view') as HTMLCanvasElement;
-const iso = createScene(viewCanvas);
-const camera = new FreeCamera(viewCanvas, () => iso.yaw(), () => iso.viewWidth());
-// clique no pergaminho: centraliza a câmera ali e volta ao 3D
-const strategic = new StrategicMap(document.getElementById('strategic') as HTMLCanvasElement,
-  (x, y, shift) => {
-    if (!pm || !game) return;
-    // ficha de tropa sob o clique: seleciona sem sair do mapa
-    const r = 14 * strategic.tilesPerPixel, hit = game.troops.filter(t => t.owner === 0 && Math.hypot(t.x - x, t.y - y) < r).sort((a, b) => Math.hypot(a.x - x, a.y - y) - Math.hypot(b.x - x, b.y - y))[0];
-    if (hit) return pickTroops([hit.id], shift);
-    if (selectedTroops.size) { selectedTroops.clear(); return; }
-    selected = provinceAtTile(pm, x, y);
-    if (game.capital < 0) return; // escolhendo a capital: fica no mapa
-    camera.center(x, y); strategic.mode = '3d'; iso.setWidth(300);
-  },
-  () => iso.setWidth(FADE_END - 1));
-strategic.onOrder = (x, y) => order(x, y);
-const chunks = new ChunkManager(client, iso.scene);
-const buildingsView = new BuildingsView(iso.scene);
-const troopsView = new TroopsView(iso.scene, document.getElementById('labels'));
+const canvas = document.getElementById('map') as HTMLCanvasElement;
+const renderer = new MapRenderer(canvas);
+const tiles = new TileCache((L, x, y) => client.tile(L, x, y));
 const selectedTroops = new Set<number>();
+const groups = new Map<string, number[]>(); // Shift+1–9 salva, 1–9 chama
+let view: View = clampView({ cx: 2048, cy: 2048, scale: MIN_SCALE, w: innerWidth, h: innerHeight });
+let lastClose: View | null = null; // última vista de perto (tecla M)
 let seed = parseSeed(new URLSearchParams(location.search).get('seed')) ?? randomSeed();
-let map: WorldMap | null = null;
 let pm: ProvinceMap | null = null;
 let game: GameState | null = null;
 let moveGrid: MoveGrid | null = null;
-let lastSpeed = 1;
-let seenEvents = 0;
-let selected = -1;
-let paintKey = '', ownerKey = '', bordersLayer: HTMLCanvasElement | null = null;
-let quality = loadQuality();
-iso.setQuality(quality);
-// raio (em chunks) que cobre a vista isométrica: o chão visto é ~1.8× mais alto que largo na tela
-const viewRadius = () => Math.ceil((iso.viewWidth() * 0.9) / CHUNK) + 1;
+let pins: { x: number; y: number }[] = [];
+let lastSpeed = 1, seenEvents = 0, selected = -1;
 
 async function load(s: number) {
   seed = s;
   setSeedField(s);
   history.replaceState(null, '', `?seed=${s}`);
   showError(null);
-  map = null; pm = null; game = null; moveGrid = null; groups.clear(); selected = -1; seenEvents = 0; lastSpeed = 1;
-  strategic.setPins([]); paintKey = ''; ownerKey = ''; bordersLayer = null;
-  chunks.setPainter(null);
-  buildingsView.clear();
-  troopsView.clear(); selectedTroops.clear();
-  strategic.setOverlay([], []);
-  strategic.setUnits([], '');
-  strategic.setImage(null, 0); // o pergaminho do mundo antigo some já, não só quando o novo ficar pronto
-  chunks.reset();
-  chunks.hidden = undefined;
-  let w: { map: WorldMap; provinces: ProvinceMap };
+  pm = null; game = null; moveGrid = null; pins = []; selected = -1; seenEvents = 0; lastSpeed = 1; lastClose = null;
+  groups.clear(); selectedTroops.clear();
+  tiles.clear(); renderer.setWorld(null, null);
+  let w: { provinces: ProvinceMap; map: Parameters<typeof makeMoveGrid>[0] };
   try { w = await client.generate(s, setProgress); }
   catch (e) { if ((e as Error).message !== 'substituído') showError((e as Error).message, s); return; }
-  map = w.map; pm = w.provinces; game = newGame(pm);
-  moveGrid = makeMoveGrid(map);
+  pm = w.provinces; game = newGame(pm);
+  moveGrid = makeMoveGrid(w.map);
   placeFortresses(game, pm, s);
-  chunks.hidden = siteClearings(pm);
   setProgress(null, 1);
-  const m = map;
-  client.parchment(2048).then(px => { if (map === m) strategic.setImage(px, 2048); }, () => {});
-  bordersLayer = bordersCanvas(pm, 2048);
-  const first = pm.provinces[pm.suggestedCapitals[0]] ?? pm.provinces[0];
-  if (first) camera.center(first.center.x, first.center.y);
-  // tela inicial: pergaminho com selos nas capitais sugeridas
-  strategic.setPins(pm.suggestedCapitals.map(i => pm!.provinces[i].center));
-  strategic.open(2048, 2048);
-  strategic.zoomTo(4096 * 1.1);
+  renderer.setWorld(pm, tiles);
+  // tela inicial: continente inteiro com selos nas capitais sugeridas
+  pins = pm.suggestedCapitals.map(i => pm!.provinces[i].center);
+  view = clampView({ ...view, scale: MIN_SCALE });
   toast('Escolha onde fundar sua capital: clique num selo ♜');
 }
 
 const report = (r: Result) => { if (!r.ok) toast(r.reason); };
-const groups = new Map<string, number[]>(); // Shift+1–9 salva, 1–9 chama
 /** Seleciona tropas; com Shift soma (ou tira, se já estavam todas). */
 function pickTroops(ids: number[], add: boolean): void {
   if (!add) selectedTroops.clear();
@@ -114,10 +72,9 @@ const actions = {
     const r = chooseCapital(game, pm, id);
     report(r);
     if (!r.ok) return;
-    strategic.setPins([]);
-    strategic.mode = '3d';
-    camera.center(pm.provinces[id].center.x, pm.provinces[id].center.y);
-    iso.setWidth(140);
+    pins = [];
+    const c = pm.provinces[id].center;
+    view = clampView({ ...view, cx: c.x, cy: c.y, scale: 1.5 });
     toast('Capital fundada. O tempo está pausado: espaço ou 1× para começar.');
   },
   close: () => { selected = -1; selectedTroops.clear(); },
@@ -131,156 +88,115 @@ function speed(v: number) {
 
 initHud({
   seed,
-  quality,
-  onQuality: q => { quality = q as Quality; saveQuality(quality); iso.setQuality(quality); },
   onGenerate: raw => load(parseSeed(raw) ?? randomSeed()),
   getLink: () => `${location.origin}${location.pathname}?seed=${seed}`,
 });
 initTopbar(speed);
 
+// ---- teclado ----
 const keys = new Set<string>();
 window.addEventListener('keydown', e => {
+  if (e.target instanceof HTMLInputElement) return;
   const k = e.key.toLowerCase();
   if (k === 'm') {
-    if (strategic.mode === 'map') { strategic.mode = '3d'; iso.setWidth(Math.min(400, FADE_END - 1)); }
-    else strategic.open(camera.x, camera.y);
+    // alterna entre o continente e a última vista de perto
+    if (view.scale > MIN_SCALE * 1.01) { lastClose = view; view = clampView({ ...view, scale: MIN_SCALE }); }
+    else if (lastClose) view = clampView({ ...lastClose, w: view.w, h: view.h });
   }
   if (k === 'escape') selectedTroops.clear();
-  if (/^Digit[1-9]$/.test(e.code) && game && !(e.target instanceof HTMLInputElement)) {
+  if (/^Digit[1-9]$/.test(e.code) && game) {
     if (e.shiftKey) groups.set(e.code, [...selectedTroops]);
     else pickTroops((groups.get(e.code) ?? []).filter(id => game!.troops.some(t => t.id === id)), false);
   }
-  if (k === 'q') iso.rotate(-1);
-  if (k === 'e') iso.rotate(1);
   if (k === ' ' && game) { e.preventDefault(); if (game.capital >= 0) speed(game.speed === 0 ? lastSpeed : 0); } // antes da capital o tempo fica parado
-  if (strategic.mode !== 'map') keys.add(k); // com o mapa aberto, o teclado não move a câmera escondida
+  keys.add(k);
 });
 window.addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 window.addEventListener('blur', () => keys.clear());
-window.addEventListener('wheel', e => {
-  if (strategic.mode === 'map') return strategic.wheel(e.deltaY);
-  iso.zoom(e.deltaY);
-  if (iso.viewWidth() >= FADE_END && e.deltaY > 0) strategic.open(camera.x, camera.y);
-}, { passive: true });
+window.addEventListener('resize', () => { view = clampView({ ...view, w: innerWidth, h: innerHeight }); });
 
-// botão esquerdo: clique seleciona tropa (prioridade) ou província; arrastar desenha a caixa de seleção de tropas
-// botão direito sem arrastar: manda as tropas selecionadas (arrastar continua movendo a câmera)
-const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(), proj = new THREE.Vector3();
-const boxEl = document.getElementById('box') as HTMLDivElement;
-let down: { x: number; y: number } | null = null, rdown: { x: number; y: number } | null = null;
-const groundAt = (cx: number, cy: number) => {
-  ndc.set((cx / innerWidth) * 2 - 1, -(cy / innerHeight) * 2 + 1);
-  ray.setFromCamera(ndc, iso.camera);
-  return ray.intersectObjects(chunks.terrainMeshes(), false)[0]?.point ?? null;
-};
-/** Tropas do jogador com a posição na tela (px). */
-const troopsOnScreen = () => (game?.troops ?? []).filter(t => t.owner === 0).map(t => {
-  proj.set(t.x, chunks.heightAt(t.x, t.y) + 0.5, t.y).project(iso.camera);
-  return { id: t.id, x: ((proj.x + 1) / 2) * innerWidth, y: ((1 - proj.y) / 2) * innerHeight };
+// ---- mouse ----
+// esquerdo: clique seleciona tropa (prioridade) ou província; arrastar desenha a caixa de seleção
+// meio/direito: arrastar move o mapa; direito sem arrastar manda as tropas selecionadas
+let down: { x: number; y: number } | null = null, box: [number, number, number, number] | null = null;
+let drag: { x: number; y: number; sx: number; sy: number; button: number } | null = null;
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+canvas.addEventListener('pointerdown', e => {
+  canvas.setPointerCapture(e.pointerId);
+  if (e.button === 0) down = { x: e.clientX, y: e.clientY };
+  if (e.button === 1 || e.button === 2) drag = { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, button: e.button };
 });
-viewCanvas.addEventListener('pointerdown', e => {
-  if (e.button === 0) { down = { x: e.clientX, y: e.clientY }; viewCanvas.setPointerCapture(e.pointerId); }
-  if (e.button === 2) rdown = { x: e.clientX, y: e.clientY };
+canvas.addEventListener('pointermove', e => {
+  if (drag) {
+    view = clampView({ ...view, cx: view.cx - (e.clientX - drag.x) / view.scale, cy: view.cy - (e.clientY - drag.y) / view.scale });
+    drag.x = e.clientX; drag.y = e.clientY;
+  }
+  if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) box = [Math.min(down.x, e.clientX), Math.min(down.y, e.clientY), Math.max(down.x, e.clientX), Math.max(down.y, e.clientY)];
+  tip(e);
 });
-viewCanvas.addEventListener('pointermove', e => {
-  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) <= 5) return;
-  Object.assign(boxEl.style, { display: 'block', left: `${Math.min(down.x, e.clientX)}px`, top: `${Math.min(down.y, e.clientY)}px`, width: `${Math.abs(e.clientX - down.x)}px`, height: `${Math.abs(e.clientY - down.y)}px` });
-});
-viewCanvas.addEventListener('pointerup', e => {
-  if (e.button === 2 && rdown) {
-    const still = Math.hypot(e.clientX - rdown.x, e.clientY - rdown.y) <= 5, hit = still && selectedTroops.size ? groundAt(e.clientX, e.clientY) : null;
-    rdown = null;
-    if (hit) order(hit.x, hit.z);
+canvas.addEventListener('pointerup', e => {
+  if (drag && e.button === drag.button) {
+    const still = Math.hypot(e.clientX - drag.sx, e.clientY - drag.sy) <= 5;
+    drag = null;
+    if (still && e.button === 2) order(...toWorld(view, e.clientX, e.clientY));
     return;
   }
-  if (e.button !== 0 || !down || !pm) return;
-  const d = down, dragged = Math.hypot(e.clientX - d.x, e.clientY - d.y) > 5;
-  down = null; boxEl.style.display = 'none';
-  const pts = troopsOnScreen();
-  if (dragged) {
-    const x0 = Math.min(d.x, e.clientX), x1 = Math.max(d.x, e.clientX), y0 = Math.min(d.y, e.clientY), y1 = Math.max(d.y, e.clientY);
-    return pickTroops(pts.filter(p => p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1).map(p => p.id), e.shiftKey);
-  }
-  const near = pts.map(p => ({ id: p.id, d: Math.hypot(p.x - e.clientX, p.y - e.clientY) })).filter(p => p.d <= 20).sort((a, b) => a.d - b.d)[0];
-  if (near) return pickTroops([near.id], e.shiftKey);
+  if (e.button !== 0 || !down || !pm || !game) return;
+  const b = box;
+  down = null; box = null;
+  if (b) return pickTroops(troopsInRect(game, view, b[0], b[1], b[2], b[3]), e.shiftKey);
+  const hit = pickAt(game, pm, view, e.clientX, e.clientY);
+  if (hit?.kind === 'troop') return pickTroops([hit.id], e.shiftKey);
   if (e.shiftKey) return;
   selectedTroops.clear();
-  const hit = groundAt(e.clientX, e.clientY);
-  selected = hit ? provinceAtTile(pm, hit.x, hit.z) : -1;
+  selected = hit ? hit.province : -1;
 });
+canvas.addEventListener('pointercancel', () => { down = null; box = null; drag = null; });
+canvas.addEventListener('wheel', e => { e.preventDefault(); view = zoomAt(view, e.clientX, e.clientY, e.deltaY > 0 ? 1 / 1.15 : 1.15); }, { passive: false });
 
-// dica ao passar o mouse: nome e dono da província (raycast limitado a ~10/s)
+// dica ao passar o mouse: nome e dono da província (no máximo ~10/s)
 let tipAt = 0;
-viewCanvas.addEventListener('pointermove', e => {
+function tip(e: PointerEvent) {
   const now = performance.now();
   if (!pm || !game || now - tipAt < 100) return;
   tipAt = now;
-  const hit = groundAt(e.clientX, e.clientY);
-  const p = hit ? provinceAtTile(pm, hit.x, hit.z) : -1;
+  const p = provinceAtTile(pm, ...toWorld(view, e.clientX, e.clientY));
   setTip(p < 0 ? null : `${pm.provinces[p].name} · ${game.owner[p] === 0 ? 'seu reino' : game.fortresses.some(f => f.province === p) ? 'fortaleza neutra' : 'neutra'}`, e.clientX, e.clientY);
-});
-viewCanvas.addEventListener('pointerleave', () => setTip(null));
-
-/** Fichas do pergaminho: tropas do jogador, fortalezas (com o nº de tropas vivas) e batalhas. */
-function mapUnits(s: GameState, pm: ProvinceMap): { units: MapUnit[]; key: string } {
-  const units: MapUnit[] = [], S = moveGrid?.size ?? 1;
-  // posição arredondada ao pixel do mapa: tropa andando menos de 1 px não redesenha o pergaminho
-  const q = Math.max(1, strategic.tilesPerPixel), snap = (v: number) => Math.round(v / q) * q;
-  for (const t of s.troops) {
-    if (t.owner !== 0) continue;
-    const sel = selectedTroops.has(t.id);
-    // rota: 1 ponto a cada 6 células (basta para o tracejado)
-    const path = sel ? t.path.filter((_, i) => i % 6 === 5 || i === t.path.length - 1).map(c => ({ x: (c % S) * CELL + CELL / 2, y: Math.floor(c / S) * CELL + CELL / 2 })) : undefined;
-    units.push({ x: snap(t.x), y: snap(t.y), text: `${TROOP_ICON[t.type]} ${Math.ceil(t.soldiers)}`, color: '#8a2a20', selected: sel, path });
-  }
-  const alive = new Map<number, number>();
-  for (const t of s.troops) if (t.owner === -1) alive.set(t.home, (alive.get(t.home) ?? 0) + 1);
-  for (const f of s.fortresses) { const c = pm.provinces[f.province].sites[0]; units.push({ x: c.x, y: c.y, text: `♜ ${alive.get(f.province) ?? 0}`, color: '#5a5a55', selected: false }); }
-  for (const b of s.battles) units.push({ x: snap(b.x), y: snap(b.y), text: '⚔', color: '#c08a20', selected: false });
-  return { units, key: units.map(u => `${u.x},${u.y},${u.text},${u.selected ? 1 : 0},${u.path?.length ?? 0}`).join(';') };
 }
+canvas.addEventListener('pointerleave', () => setTip(null));
 
+// ---- quadro ----
 let last = performance.now(), frames = 0, fps = 0, fpsT = last;
 function frame(now: number) {
   const dt = (now - last) / 1000;
   last = now;
-  if (map && pm && game) {
-    // dono ou seleção mudou: repinta o 3D; dono mudou: refaz a aquarela do pergaminho
-    const ok = game.owner.join(','), key = `${ok}|${selected}`;
-    if (key !== paintKey) { paintKey = key; chunks.setPainter(makePainter(pm, game.owner, selected)); }
-    if (ok !== ownerKey && bordersLayer) {
-      ownerKey = ok;
-      strategic.setOverlay([ownedCanvas(pm, game.owner, 1024), bordersLayer],
-        pm.provinces.map(p => ({ x: p.center.x, y: p.center.y, name: p.name, size: Math.sqrt(p.cells) * CELL * 0.12 })));
-    }
+  // WASD/setas: velocidade constante em px de tela
+  const fw = (keys.has('w') || keys.has('arrowup') ? 1 : 0) - (keys.has('s') || keys.has('arrowdown') ? 1 : 0);
+  const rt = (keys.has('d') || keys.has('arrowright') ? 1 : 0) - (keys.has('a') || keys.has('arrowleft') ? 1 : 0);
+  if (fw || rt) { const step = (900 * Math.min(dt, 0.1)) / view.scale; view = clampView({ ...view, cx: view.cx + rt * step, cy: view.cy - fw * step }); }
+  if (pm && game) {
     if (game.capital >= 0) tick(game, pm, Math.min(dt, 1), moveGrid); // aba em segundo plano: no máximo 1 s por quadro
-    camera.update(Math.min(dt, 0.1), keys);
-    chunks.update(camera.x, camera.y, viewRadius(), quality);
-    iso.setTarget(camera.x, camera.y, chunks.heightAt(camera.x, camera.y));
     for (const id of selectedTroops) if (!game.troops.some(t => t.id === id)) selectedTroops.delete(id); // mortas saem da seleção
     setTopbar(game.capital >= 0 ? { res: game.res, income: monthlyIncome(game, pm), month: game.month, speed: game.speed,
       troops: `${game.troops.filter(t => t.owner === 0).length + game.recruiting.length}/${troopCap(game)}` } : null);
-    setInfo({ fps, tris: iso.renderer.info.render.triangles });
     renderPanel(game, pm, selected, actions, [...selectedTroops]);
-    buildingsView.sync(game, pm, (x, y) => chunks.heightAt(x, y));
-    if (!strategic.covering) troopsView.sync(game, pm, (x, y) => chunks.heightAt(x, y), { x: camera.x, y: camera.y, width: iso.viewWidth(), camera: iso.camera }, selectedTroops, now / 1000);
-    if (strategic.mode === 'map' || iso.viewWidth() > FADE_START) { const u = mapUnits(game, pm); strategic.setUnits(u.units, u.key); }
     // eventos novos viram mensagens: compara com o total (o log só guarda os últimos 50)
     const fresh = game.eventCount - seenEvents;
     for (const ev of game.events.slice(Math.max(0, game.events.length - fresh))) toast(ev.text);
     seenEvents = game.eventCount;
   }
-  // pergaminho opaco cobrindo tudo: não desenha (nem sombreia) o 3D escondido
-  if (!strategic.covering) iso.render();
-  strategic.draw(iso.viewWidth(), iso.yaw(), camera.x, camera.y);
+  renderer.draw(game, view, { selectedTroops, selectedProvince: selected, pins, grid: moveGrid }, box);
+  setInfo({ fps });
   frames++;
   if (now - fpsT > 500) { fps = Math.round((frames * 1000) / (now - fpsT)); frames = 0; fpsT = now; }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 if (import.meta.env.DEV) { // para testes no console
-  Object.assign(window, { chunks, iso, camera, strategic, sim: { recruit, moveTroops, spawnTroop, addFortress, chooseCapital }, selectedTroops });
-  Object.defineProperty(window, 'moveGrid', { get: () => moveGrid });
-  Object.defineProperties(window, { game: { get: () => game }, pm: { get: () => pm }, selected: { get: () => selected, set: v => (selected = v) } });
+  Object.assign(window, { renderer, tiles, selectedTroops, sim: { recruit, moveTroops, spawnTroop, addFortress, chooseCapital } });
+  Object.defineProperties(window, {
+    game: { get: () => game }, pm: { get: () => pm }, moveGrid: { get: () => moveGrid },
+    selected: { get: () => selected, set: v => (selected = v) }, view: { get: () => view, set: v => (view = clampView(v)) },
+  });
 }
 load(seed);

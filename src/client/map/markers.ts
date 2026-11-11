@@ -3,7 +3,7 @@ import type { MoveGrid } from '../../sim/movegrid';
 import type { GameState } from '../../sim/state';
 import { CELL } from '../../worldgen/constants';
 import type { ProvinceMap } from '../../worldgen/provinces';
-import { CITY_R, FORT_R, GOLD, INK, NEUTRAL, PAPER, REALM_COLORS, TROOP_H, TROOP_W, cityAt } from './pick';
+import { CITY_R, FORT_DETAIL, FORT_R, GOLD, INK, NEUTRAL, PAPER, REALM_COLORS, TROOP_H, TROOP_W, cityAt } from './pick';
 import { toScreen, type View } from './view';
 
 export const TROOP_ICON: Record<TroopType, string> = { spear: '🔱', archer: '🏹', cavalry: '🐎' };
@@ -23,7 +23,7 @@ export function markersKey(s: GameState, pm: ProvinceMap, v: View, o: MarkerOpts
   }
   s.buildings.forEach((slots, id) => { if (slots.some(b => b)) parts.push(`b${id}:${slots.map(b => (b ? `${b.type[0]}${b.level}${b.remaining > 0 ? 'o' : ''}` : '-')).join('')}`); });
   for (const c of s.colonizing) parts.push(`c${c.province}:${Math.ceil(c.remaining)}`);
-  for (const f of s.fortresses) parts.push(`f${f.province}:${s.troops.filter(t => t.home === f.province).length}`);
+  if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) parts.push(`f${f.province}:${s.troops.filter(t => t.home === f.province).length}`);
   for (const b of s.battles) parts.push(`w${Math.round(b.x)},${Math.round(b.y)}:${b.sides.map(x => Math.round(x.morale * 20)).join('/')}`);
   return parts.join('|');
 }
@@ -95,8 +95,8 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     ctx.fillStyle = REALM_COLORS[0]; ctx.beginPath(); ctx.moveTo(x, y - 12); ctx.lineTo(x + 12, y - 8); ctx.lineTo(x, y - 4); ctx.fill();
     label(ctx, `${Math.ceil(col.remaining)} m`, x, y + 16, 10);
   }
-  // fortalezas
-  for (const f of s.fortresses) {
+  // fortalezas (somem no continente inteiro, como os prédios: poluiriam o mapa)
+  if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) {
     const site = pm.provinces[f.province].sites[0];
     if (!site) continue;
     const [x, y] = P(site.x, site.y);

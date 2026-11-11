@@ -6,6 +6,7 @@ import { toScreen, toWorld, type View } from './view';
 export const REALM_COLORS = ['#a8342a'], NEUTRAL = '#7a7468', INK = '#3e2a18', PAPER = '#f3e7c9', GOLD = '#f7d774';
 /** Tamanhos dos marcadores na tela (px), compartilhados com o desenho. */
 export const TROOP_W = 30, TROOP_H = 20, CITY_R = 14, FORT_R = 15;
+export const FORT_DETAIL = 0.35; // abaixo desta escala (px/tile) as fortalezas não aparecem
 
 export function provinceAtTile(pm: ProvinceMap, x: number, y: number): number {
   const S = Math.round(Math.sqrt(pm.cellProvince.length));
@@ -36,7 +37,7 @@ export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: n
   if (best) return { kind: 'troop', id: best.id };
   const near = (x: number, y: number, r: number) => { const [px, py] = toScreen(v, x, y); return Math.hypot(px - sx, py - sy) <= r; };
   for (let id = 0; id < s.owner.length; id++) { const c = s.owner[id] >= 0 ? cityAt(s, pm, id) : null; if (c && near(c.x, c.y, CITY_R)) return { kind: 'city', province: id }; }
-  for (const f of s.fortresses) { const c = pm.provinces[f.province].sites[0]; if (c && near(c.x, c.y, FORT_R)) return { kind: 'fortress', province: f.province }; }
+  if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) { const c = pm.provinces[f.province].sites[0]; if (c && near(c.x, c.y, FORT_R)) return { kind: 'fortress', province: f.province }; }
   const [x, y] = toWorld(v, sx, sy), p = provinceAtTile(pm, x, y);
   return p >= 0 ? { kind: 'province', province: p } : null;
 }

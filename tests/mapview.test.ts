@@ -28,20 +28,27 @@ describe('limites', () => {
     expect(a.scale).toBe(MAX_SCALE);
     for (let i = 0; i < 60; i++) a = zoomAt(a, 640, 400, 1 / 1.3);
     expect(a.scale).toBe(MIN_SCALE);
-    expect([a.cx, a.cy]).toEqual([2048, 2048]); // mundo menor que a tela: centrado
+    expect([a.cx, a.cy]).toEqual([2048, 2048]); // zoom mínimo: continente centrado
   });
-  test('perto, a borda do mundo encosta na borda da tela', () => {
-    const a = clampView(v({ cx: 0, cy: 0, scale: 3 }));
-    expect(toScreen(a, 0, 0)).toEqual([0, 0]);
-    const b = clampView(v({ cx: 4096, cy: 4096, scale: 3 }));
-    const [sx, sy] = toScreen(b, 4096, 4096);
-    expect(sx).toBeCloseTo(1280, 9); expect(sy).toBeCloseTo(800, 9);
+  test('perto, o centro da vista não sai do mundo (a borda chega no máximo ao meio da tela)', () => {
+    const a = clampView(v({ cx: -500, cy: -500, scale: 3 }));
+    expect([a.cx, a.cy]).toEqual([0, 0]);
+    expect(toScreen(a, 0, 0)).toEqual([640, 400]);
+    const b = clampView(v({ cx: 9000, cy: 9000, scale: 3 }));
+    expect([b.cx, b.cy]).toEqual([4096, 4096]);
+  });
+  test('zoom perto da costa mantém o ponto sob o mouse', () => {
+    let a = clampView(v({ scale: MIN_SCALE }));
+    const [wx, wy] = toWorld(a, 980, 420); // dentro do continente, perto da borda leste do mundo
+    for (let i = 0; i < 20; i++) a = zoomAt(a, 980, 420, 1.15);
+    const [x, y] = toWorld(a, 980, 420);
+    expect(x).toBeCloseTo(wx, 6); expect(y).toBeCloseTo(wy, 6);
   });
   test('redimensionar mantém as invariantes', () => {
-    const a = clampView({ ...clampView(v({ cx: 10, cy: 10, scale: 2 })), w: 1920, h: 1080 });
-    expect(toScreen(a, 0, 0)).toEqual([0, 0]);
-    const tiny = clampView({ ...v({ scale: 0.25 }), w: 400, h: 300 });
-    expect(toScreen(tiny, 0, 0)[0]).toBeLessThanOrEqual(0);
+    const a = clampView({ ...clampView(v({ cx: -10, cy: 10, scale: 2 })), w: 1920, h: 1080 });
+    expect(a.cx).toBe(0);
+    const tiny = clampView({ ...v({ cx: 9999, scale: 0.25 }), w: 400, h: 300 });
+    expect(tiny.cx).toBe(4096);
   });
 });
 

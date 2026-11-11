@@ -1,14 +1,10 @@
-import type { CoarseChunk } from '../worldgen/coarse';
 import type { ProvinceMap } from '../worldgen/provinces';
-import type { ChunkData, WorldMap } from '../worldgen/types';
+import type { WorldMap } from '../worldgen/types';
 import type { WorkerIn } from './worker';
 
 type Out =
   | { type: 'progress'; stage: string; pct: number; token: number }
   | { type: 'world'; map: WorldMap; provinces: ProvinceMap; token: number }
-  | { type: 'chunk'; data: ChunkData; token: number }
-  | { type: 'coarse'; data: CoarseChunk; token: number }
-  | { type: 'parchment'; pixels: Uint8ClampedArray; size: number; token: number }
   | { type: 'tile'; L: number; x: number; y: number; pixels: Uint8ClampedArray; token: number }
   | { type: 'error'; message: string; seed: number; token: number };
 
@@ -17,7 +13,7 @@ export class WorldClient {
   private worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
   private token = 0;
   private pendingWorld: { resolve: (m: { map: WorldMap; provinces: ProvinceMap }) => void; reject: (e: Error) => void; onProgress: (s: string, p: number) => void } | null = null;
-  // chave `cx,cy` (completo) ou `cx,cy,step` (grosso)
+  // chave `tL,x,y` por ladrilho
   private pendingChunks = new Map<string, { resolve: (c: any) => void; reject: (e: Error) => void }>();
 
   constructor() {
@@ -26,20 +22,9 @@ export class WorldClient {
       if (m.token !== this.token) return;
       if (m.type === 'progress') this.pendingWorld?.onProgress(m.stage, m.pct);
       else if (m.type === 'world') { this.pendingWorld?.resolve({ map: m.map, provinces: m.provinces }); this.pendingWorld = null; }
-      else if (m.type === 'chunk') {
-        const k = `${m.data.cx},${m.data.cy}`;
-        this.pendingChunks.get(k)?.resolve(m.data);
-        this.pendingChunks.delete(k);
-      } else if (m.type === 'tile') {
+      else if (m.type === 'tile') {
         const k = `t${m.L},${m.x},${m.y}`;
         this.pendingChunks.get(k)?.resolve(m.pixels);
-        this.pendingChunks.delete(k);
-      } else if (m.type === 'parchment') {
-        this.pendingChunks.get('parchment')?.resolve(m.pixels);
-        this.pendingChunks.delete('parchment');
-      } else if (m.type === 'coarse') {
-        const k = `${m.data.cx},${m.data.cy},${m.data.step}`;
-        this.pendingChunks.get(k)?.resolve(m.data);
         this.pendingChunks.delete(k);
       } else {
         const err = new Error(m.message);
@@ -67,15 +52,6 @@ export class WorldClient {
     });
   }
 
-  chunk(cx: number, cy: number): Promise<ChunkData> {
-    const k = `${cx},${cy}`;
-    return new Promise((resolve, reject) => {
-      this.pendingChunks.get(k)?.reject(new Error('duplicado'));
-      this.pendingChunks.set(k, { resolve, reject });
-      this.post({ type: 'chunk', cx, cy, token: this.token });
-    });
-  }
-
   /** Ladrilho do mapa (nível L, posição x, y na grade do nível), desenhado no worker. */
   tile(L: number, x: number, y: number): Promise<Uint8ClampedArray> {
     const k = `t${L},${x},${y}`;
@@ -83,23 +59,6 @@ export class WorldClient {
       this.pendingChunks.get(k)?.reject(new Error('duplicado'));
       this.pendingChunks.set(k, { resolve, reject });
       this.post({ type: 'tile', L, x, y, token: this.token });
-    });
-  }
-
-  parchment(size: number): Promise<Uint8ClampedArray> {
-    return new Promise((resolve, reject) => {
-      this.pendingChunks.get('parchment')?.reject(new Error('duplicado'));
-      this.pendingChunks.set('parchment', { resolve, reject });
-      this.post({ type: 'parchment', size, token: this.token });
-    });
-  }
-
-  coarse(cx: number, cy: number, step: 2 | 4): Promise<CoarseChunk> {
-    const k = `${cx},${cy},${step}`;
-    return new Promise((resolve, reject) => {
-      this.pendingChunks.get(k)?.reject(new Error('duplicado'));
-      this.pendingChunks.set(k, { resolve, reject });
-      this.post({ type: 'coarse', cx, cy, step, token: this.token });
     });
   }
 
