@@ -43,20 +43,20 @@ export const STALL_WARN_MONTHS = 6; // no máximo um aviso de fábrica parada po
 export const START_BASE: Res = { money: 60, grain: 40, wood: 80, coal: 20, iron: 40, steel: 0, arms: 20 };
 export const START_NO_VEIN = 0.5;
 
-export type TroopType = 'spear' | 'archer' | 'cavalry';
+export type TroopType = 'line' | 'artillery' | 'cavalry';
 /** `level` = nível de Guarnição que libera o tipo; `speed` em tiles por mês. */
 export const TROOPS: Record<TroopType, { name: string; level: number; soldiers: number; attack: number; defense: number; speed: number; cost: Partial<Res>; upkeep: Partial<Res>; months: number }> = {
-  spear: { name: 'Lanceiros', level: 1, soldiers: 20, attack: 1.0, defense: 1.2, speed: 150, cost: { money: 40, wood: 20 }, upkeep: { money: 1 }, months: 2 },
-  archer: { name: 'Arqueiros', level: 2, soldiers: 15, attack: 1.0, defense: 0.6, speed: 150, cost: { money: 50, wood: 40 }, upkeep: { money: 1.5 }, months: 2 },
-  cavalry: { name: 'Cavaleiros', level: 3, soldiers: 12, attack: 1.6, defense: 1.0, speed: 240, cost: { money: 90, wood: 20, iron: 20 }, upkeep: { money: 3 }, months: 3 },
+  line: { name: 'Infantaria de linha', level: 1, soldiers: 20, attack: 1.0, defense: 1.2, speed: 150, cost: { money: 30, grain: 10, arms: 10 }, upkeep: { money: 1, grain: 1 }, months: 2 },
+  artillery: { name: 'Artilharia', level: 2, soldiers: 12, attack: 1.4, defense: 0.6, speed: 100, cost: { money: 50, arms: 15, steel: 10 }, upkeep: { money: 1.5 }, months: 3 },
+  cavalry: { name: 'Cavalaria', level: 3, soldiers: 12, attack: 1.6, defense: 1.0, speed: 240, cost: { money: 70, grain: 10, arms: 10, iron: 10 }, upkeep: { money: 2, grain: 1.5 }, months: 3 },
 };
 export const BATTLE = {
   step: 0.02, // passo fixo da simulação de tropas (meses)
   formation: 10, // tiles entre tropas em formação
   contact: 6, join: 20, // tiles: distância que começa a batalha; raio em que as tropas entram nela
   rate: 1.3, // dano por soldado por mês (calibra a duração: lanceiros iguais ≈ 0.5 mês, com a abertura)
-  archerOpening: 0.1, // meses iniciais em que só arqueiros causam dano
-  counter: 1.5, // lanceiros → cavaleiros, cavaleiros → arqueiros
+  openingFire: 0.1, // meses iniciais em que só a artilharia causa dano
+  counter: 1.5, // infantaria → cavalaria, cavalaria → artilharia, artilharia → infantaria
   cover: 1.25, river: 0.75, fortress: 1.5, // defesa em floresta/colina; dano de quem está no rio; defesa de fortaleza
   moraleLoss: 2, breakAt: 0.3, // moral = 1 − moraleLoss × fração perdida; abaixo de breakAt o lado foge (35% de baixas)
   rout: 0.5, // meses em fuga, sem obedecer

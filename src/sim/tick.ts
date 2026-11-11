@@ -28,7 +28,7 @@ export function tick(s: GameState, pm: ProvinceMap, dtSeconds: number, grid: Mov
         // sem dinheiro para pagar: a tropa mais cara debanda (empate: a mais nova)
         const cost = (t: (typeof s.troops)[0]) => TROOPS[t.type].upkeep.money ?? 0;
         const t = s.troops.filter(t => t.owner === 0).sort((a, b) => cost(b) - cost(a) || b.id - a.id)[0];
-        if (t) { s.troops.splice(s.troops.indexOf(t), 1); logEvent(s, `${TROOPS[t.type].name} dispersos por falta de dinheiro`); }
+        if (t) { s.troops.splice(s.troops.indexOf(t), 1); logEvent(s, `${TROOPS[t.type].name} dispersa por falta de dinheiro`); }
       }
     }
   }
@@ -57,7 +57,7 @@ function advance(s: GameState, pm: ProvinceMap, step: number): void {
     s.recruiting.splice(s.recruiting.indexOf(r), 1);
     const p = pm.provinces[r.province], site = p.lots[r.lot] ?? p.city;
     spawnTroop(s, 0, r.type, site.x, site.y + 4); // ao lado do prédio, não em cima
-    logEvent(s, `${TROOPS[r.type].name} treinados em ${p.name}`);
+    logEvent(s, `${TROOPS[r.type].name} treinada em ${p.name}`);
   }
   for (const c of [...s.colonizing]) {
     c.remaining -= step;

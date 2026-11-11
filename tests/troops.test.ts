@@ -14,59 +14,65 @@ const garrison = (level = 1) => ({ type: 'garrison' as const, level, remaining: 
 describe('recrutamento', () => {
   test('recusas: sem guarnição, nível, fila ocupada', () => {
     const s = game();
-    expect(checkRecruit(s, pm, 0, 0, 'spear')).toEqual({ ok: false, reason: 'Precisa de uma Guarnição' });
-    expect(checkRecruit(s, pm, 1, 0, 'spear')).toEqual({ ok: false, reason: 'Esta província não é sua' });
-    expect(checkRecruit(s, pm, 0, 1, 'archer')).toEqual({ ok: false, reason: 'Requer Guarnição N2' });
+    expect(checkRecruit(s, pm, 0, 0, 'line')).toEqual({ ok: false, reason: 'Precisa de uma Guarnição' });
+    expect(checkRecruit(s, pm, 1, 0, 'line')).toEqual({ ok: false, reason: 'Esta província não é sua' });
+    expect(checkRecruit(s, pm, 0, 1, 'artillery')).toEqual({ ok: false, reason: 'Requer Guarnição N2' });
     expect(checkRecruit(s, pm, 0, 1, 'cavalry')).toEqual({ ok: false, reason: 'Requer Guarnição N3' });
-    expect(recruit(s, pm, 0, 1, 'spear')).toEqual({ ok: true });
-    expect(s.res).toMatchObject({ money: 960, wood: 980, iron: 1000 });
-    expect(recruit(s, pm, 0, 1, 'spear')).toEqual({ ok: false, reason: 'Já está treinando uma tropa' });
+    expect(recruit(s, pm, 0, 1, 'line')).toEqual({ ok: true });
+    expect(s.res).toMatchObject({ money: 970, grain: 990, arms: 990, wood: 1000 }); // infantaria: 30 dinheiro, 10 grãos, 10 armas
+    expect(recruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Já está treinando uma tropa' });
   });
   test('guarnição em obra não treina', () => {
     const s = game();
     s.lots[0][1] = { type: 'garrison', level: 1, remaining: 2 };
-    expect(checkRecruit(s, pm, 0, 1, 'spear')).toEqual({ ok: false, reason: 'Precisa de uma Guarnição' });
+    expect(checkRecruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Precisa de uma Guarnição' });
   });
-  test('falta de recurso', () => {
-    const s = game();
+  test('falta de recurso: infantaria sem armas; artilharia sem aço; cavalaria sem ferro', () => {
+    const s = game(3);
     s.res.money = 10;
-    expect(checkRecruit(s, pm, 0, 1, 'spear')).toEqual({ ok: false, reason: 'Falta 30 de dinheiro' });
+    expect(checkRecruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Falta 20 de dinheiro' });
+    s.res.money = 1000; s.res.arms = 0;
+    expect(checkRecruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Falta 10 de armas' });
+    s.res.arms = 1000; s.res.steel = 0;
+    expect(checkRecruit(s, pm, 0, 1, 'artillery')).toEqual({ ok: false, reason: 'Falta 10 de aço' });
+    s.res.iron = 0;
+    expect(checkRecruit(s, pm, 0, 1, 'cavalry')).toEqual({ ok: false, reason: 'Falta 10 de ferro' });
   });
   test('a tropa nasce no local do prédio depois de 2 meses', () => {
     const s = game();
-    recruit(s, pm, 0, 1, 'spear');
+    recruit(s, pm, 0, 1, 'line');
     run(s, 1.9);
     expect(s.troops.length).toBe(0);
     run(s, 0.2);
-    expect(s.troops).toMatchObject([{ owner: 0, type: 'spear', soldiers: 20, x: 80, y: 84, morale: 1 }]);
+    expect(s.troops).toMatchObject([{ owner: 0, type: 'line', soldiers: 20, x: 80, y: 84, morale: 1 }]);
     expect(s.recruiting).toEqual([]);
-    expect(s.events.at(-1)!.text).toBe('Lanceiros treinados em P0');
+    expect(s.events.at(-1)!.text).toBe('Infantaria de linha treinada em P0');
   });
   test('teto: guarnição N1 sustenta 2, N2 3, N3 4; tropa em treino conta', () => {
     const s = game();
     expect(troopCap(s)).toBe(2);
-    spawnTroop(s, 0, 'spear', 80, 80);
-    recruit(s, pm, 0, 1, 'spear');
+    spawnTroop(s, 0, 'line', 80, 80);
+    recruit(s, pm, 0, 1, 'line');
     s.lots[0][2] = garrison(); // o teto é do reino: soma das guarnições
     expect(troopCap(s)).toBe(4);
     s.lots[0][2] = null;
-    expect(checkRecruit({ ...s, recruiting: [] }, pm, 0, 1, 'spear')).toEqual({ ok: true });
-    spawnTroop(s, 0, 'spear', 80, 80);
-    expect(checkRecruit({ ...s, recruiting: [] }, pm, 0, 1, 'spear')).toEqual({ ok: false, reason: 'Teto de tropas atingido' });
+    expect(checkRecruit({ ...s, recruiting: [] }, pm, 0, 1, 'line')).toEqual({ ok: true });
+    spawnTroop(s, 0, 'line', 80, 80);
+    expect(checkRecruit({ ...s, recruiting: [] }, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Teto de tropas atingido' });
     expect(troopCap(game(2))).toBe(3);
     expect(troopCap(game(3))).toBe(4);
   });
   test('custo cresce com o tamanho do exército (tropas + em treino); fortalezas não contam', () => {
     const s = game(3);
-    expect(recruitCost(s, 'spear')).toEqual({ money: 40, wood: 20 });
-    spawnTroop(s, 0, 'spear', 80, 80);
-    spawnTroop(s, -1, 'spear', 180, 80, 1);
+    expect(recruitCost(s, 'line')).toEqual({ money: 30, grain: 10, arms: 10 });
+    spawnTroop(s, 0, 'line', 80, 80);
+    spawnTroop(s, -1, 'line', 180, 80, 1);
     expect(recruit(s, pm, 0, 1, 'cavalry')).toEqual({ ok: true }); // 2ª tropa: base × growth
-    expect(s.res.money).toBeCloseTo(1000 - 90 * TROOP_GROWTH, 6);
-    expect(s.res.iron).toBeCloseTo(1000 - 20 * TROOP_GROWTH, 6);
-    const c = recruitCost(s, 'spear'); // 3ª tropa
-    expect(c.money).toBeCloseTo(40 * TROOP_GROWTH ** 2, 6);
-    expect(c.wood).toBeCloseTo(20 * TROOP_GROWTH ** 2, 6);
+    expect(s.res.money).toBeCloseTo(1000 - 70 * TROOP_GROWTH, 6);
+    expect(s.res.iron).toBeCloseTo(1000 - 10 * TROOP_GROWTH, 6);
+    const c = recruitCost(s, 'line'); // 3ª tropa
+    expect(c.money).toBeCloseTo(30 * TROOP_GROWTH ** 2, 6);
+    expect(c.arms).toBeCloseTo(10 * TROOP_GROWTH ** 2, 6);
     expect(TROOP_GROWTH).toBeGreaterThan(1);
   });
   test('guarnição em melhoria mantém o teto do nível anterior', () => {
@@ -101,22 +107,24 @@ describe('metas de nível da guarnição', () => {
 test('fortaleza não pode ser colonizada', () => {
   const s = game();
   expect(checkColonize(s, pm, 1)).toEqual({ ok: true });
-  s.fortresses.push({ province: 1, garrison: ['spear'], lastCombat: 0 });
+  s.fortresses.push({ province: 1, garrison: ['line'], lastCombat: 0 });
   expect(checkColonize(s, pm, 1)).toEqual({ ok: false, reason: 'Fortaleza: só cai com tropas' });
 });
 
-test('manutenção das tropas sai da renda', () => {
-  const s = game(), before = monthlyIncome(s, pm).money;
-  spawnTroop(s, 0, 'spear', 80, 80);
+test('manutenção das tropas sai da renda: dinheiro e grãos', () => {
+  const s = game(), before = monthlyIncome(s, pm);
+  spawnTroop(s, 0, 'line', 80, 80);
   spawnTroop(s, 0, 'cavalry', 80, 80);
-  spawnTroop(s, -1, 'spear', 80, 80, 1); // fortaleza não custa
-  expect(monthlyIncome(s, pm).money).toBe(before - 4);
+  spawnTroop(s, -1, 'line', 80, 80, 1); // fortaleza não custa
+  const after = monthlyIncome(s, pm);
+  expect(after.money).toBeCloseTo(before.money - 3, 9); // infantaria 1 + cavalaria 2
+  expect(after.grain).toBeCloseTo(before.grain - 2.5, 9); // 1 + 1.5
 });
 
 test('estado com tropas faz ida e volta pelo JSON', () => {
   const s = game();
-  recruit(s, pm, 0, 1, 'spear');
-  spawnTroop(s, 0, 'spear', 80, 80);
+  recruit(s, pm, 0, 1, 'line');
+  spawnTroop(s, 0, 'line', 80, 80);
   expect(JSON.parse(JSON.stringify(s))).toEqual(s);
 });
 
@@ -130,7 +138,7 @@ const timeToStop = (s: GameState, id: number) => {
 
 describe('ordens e movimento', () => {
   test('lanceiros andam 40 tiles em campo aberto em 40/150 mês', () => {
-    const s = game(), t = spawnTroop(s, 0, 'spear', 10, 102);
+    const s = game(), t = spawnTroop(s, 0, 'line', 10, 102);
     expect(moveTroops(s, grid, [t.id], 50, 102)).toEqual({ ok: true });
     expect(Math.abs(timeToStop(s, t.id) - 40 / 150)).toBeLessThan(0.03);
     expect([t.x, t.y]).toEqual([50, 102]);
@@ -141,16 +149,16 @@ describe('ordens e movimento', () => {
     expect(Math.abs(timeToStop(s, t.id) - 40 / 240)).toBeLessThan(0.03);
   });
   test('cruzar o rio é mais lento que a mesma distância em campo aberto', () => {
-    const s = game(), a = spawnTroop(s, 0, 'spear', 118, 162);
+    const s = game(), a = spawnTroop(s, 0, 'line', 118, 162);
     moveTroops(s, grid, [a.id], 138, 162);
     const river = timeToStop(s, a.id);
     expect(a.x).toBe(138);
-    const s2 = game(), b2 = spawnTroop(s2, 0, 'spear', 18, 162);
+    const s2 = game(), b2 = spawnTroop(s2, 0, 'line', 18, 162);
     moveTroops(s2, grid, [b2.id], 38, 162);
     expect(river).toBeGreaterThan(timeToStop(s2, b2.id) + 0.03);
   });
   test('recusas: sem tropas, água, fora do mapa, tropa alheia', () => {
-    const s = game(), t = spawnTroop(s, 0, 'spear', 10, 102), f = spawnTroop(s, -1, 'spear', 180, 80, 1);
+    const s = game(), t = spawnTroop(s, 0, 'line', 10, 102), f = spawnTroop(s, -1, 'line', 180, 80, 1);
     expect(moveTroops(s, grid, [], 50, 102)).toEqual({ ok: false, reason: 'Nenhuma tropa selecionada' });
     expect(moveTroops(s, grid, [f.id, 999], 50, 102)).toEqual({ ok: false, reason: 'Nenhuma tropa selecionada' });
     expect(moveTroops(s, grid, [t.id], 180, 180)).toEqual({ ok: false, reason: 'Destino na água' });
@@ -159,13 +167,13 @@ describe('ordens e movimento', () => {
     expect(t.path).toEqual([]);
   });
   test('destino inalcançável não trava a tropa', () => {
-    const { grid: g } = makeTestWorld(), s = game(), t = spawnTroop(s, 0, 'spear', 10, 102);
+    const { grid: g } = makeTestWorld(), s = game(), t = spawnTroop(s, 0, 'line', 10, 102);
     for (let d = -1; d <= 1; d++) for (let e = -1; e <= 1; e++) if (d || e) g.cost[(20 + e) * 64 + 20 + d] = 0;
     expect(moveTroops(s, g, [t.id], 82, 82)).toEqual({ ok: false, reason: 'Caminho impossível' });
     expect(t.path).toEqual([]);
   });
   test('grupo chega em formação, sem empilhar', () => {
-    const s = game(), ts = [0, 1, 2, 3].map(i => spawnTroop(s, 0, 'spear', 10 + i * 4, 102));
+    const s = game(), ts = [0, 1, 2, 3].map(i => spawnTroop(s, 0, 'line', 10 + i * 4, 102));
     expect(moveTroops(s, grid, ts.map(t => t.id), 60, 160)).toEqual({ ok: true });
     for (const t of ts) timeToStop(s, t.id);
     for (const a of ts) for (const b of ts) if (a !== b) expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThanOrEqual(8);
@@ -173,7 +181,7 @@ describe('ordens e movimento', () => {
   });
   test('mesmo resultado a 1× e a 8×', () => {
     const go = (speed: number) => {
-      const s = game(), t = spawnTroop(s, 0, 'spear', 10, 102);
+      const s = game(), t = spawnTroop(s, 0, 'line', 10, 102);
       moveTroops(s, grid, [t.id], 138, 162);
       run(s, 0.4, speed);
       return [t.x, t.y, s.clock].map(v => +v.toFixed(6));
@@ -187,7 +195,7 @@ describe('reposição e manutenção', () => {
   const hurt = (x: number, y: number, withGarrison: boolean) => {
     const s = game();
     if (!withGarrison) s.lots[0][1] = null;
-    const t = spawnTroop(s, 0, 'spear', x, y);
+    const t = spawnTroop(s, 0, 'line', x, y);
     t.soldiers = 10;
     return { s, t };
   };
@@ -221,11 +229,11 @@ describe('reposição e manutenção', () => {
   });
   test('dinheiro negativo na virada do mês dispersa a tropa mais cara', () => {
     const s = game();
-    spawnTroop(s, 0, 'spear', 60, 100); spawnTroop(s, 0, 'cavalry', 60, 100);
+    spawnTroop(s, 0, 'line', 60, 100); spawnTroop(s, 0, 'cavalry', 60, 100);
     s.res.money = -500;
     run(s, 1);
-    expect(s.troops.map(t => t.type)).toEqual(['spear']);
-    expect(s.events.at(-1)!.text).toBe('Cavaleiros dispersos por falta de dinheiro');
+    expect(s.troops.map(t => t.type)).toEqual(['line']);
+    expect(s.events.at(-1)!.text).toBe('Cavalaria dispersa por falta de dinheiro');
   });
 });
 
@@ -243,7 +251,7 @@ describe('massas de terra', () => {
     const size = 1024, cost = new Uint8Array(size * size).fill(1);
     for (let d = -2; d <= 2; d++) for (let e = -2; e <= 2; e++) if (Math.max(Math.abs(d), Math.abs(e)) === 2) cost[(500 + e) * size + 500 + d] = 0; // ilhota 3×3 cercada de água
     const big: MoveGrid = { size, cost, cover: new Uint8Array(size * size), land: labelLand(size, cost) };
-    const s = game(), ids = Array.from({ length: 10 }, (_, i) => spawnTroop(s, 0, 'spear', 40 + i * 8, 40).id);
+    const s = game(), ids = Array.from({ length: 10 }, (_, i) => spawnTroop(s, 0, 'line', 40 + i * 8, 40).id);
     const t = performance.now();
     expect(moveTroops(s, big, ids, 2002, 2002)).toEqual({ ok: false, reason: 'Caminho impossível' });
     expect(performance.now() - t).toBeLessThan(300); // a varredura do continente levava ~1700 ms; folga para máquina carregada

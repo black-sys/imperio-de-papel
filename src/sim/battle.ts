@@ -1,9 +1,11 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { findCellPath } from './astar';
-import { BATTLE, TROOPS } from './balance';
+import { BATTLE, TROOPS, type TroopType } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
 import { logEvent, type Battle, type GameState, type Troop } from './state';
 
+/** Quem cada tipo castiga (+counter de dano). */
+const COUNTERS: Record<TroopType, TroopType> = { line: 'cavalry', cavalry: 'artillery', artillery: 'line' };
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 const provinceName = (pm: ProvinceMap, grid: MoveGrid, x: number, y: number) => { const c = cellAt(grid, x, y), p = c < 0 ? -1 : pm.cellProvince[c]; return p < 0 ? 'a costa' : pm.provinces[p].name; };
 
@@ -47,16 +49,16 @@ export function battleStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: nu
 
   for (const b of s.battles) {
     const troops = b.troopIds.map(id => byId.get(id)!);
-    const opening = s.clock - b.start < BATTLE.archerOpening;
+    const opening = s.clock - b.start < BATTLE.openingFire;
     const losses = new Map<Troop, number>();
     for (const a of troops) {
-      if (opening && a.type !== 'archer') continue;
+      if (opening && a.type !== 'artillery') continue;
       const foes = troops.filter(d => d.owner !== a.owner), total = foes.reduce((n, d) => n + d.soldiers, 0);
       if (total <= 0) continue;
       const ca = cellAt(grid, a.x, a.y);
       const power = a.soldiers * TROOPS[a.type].attack * BATTLE.rate * dt * (ca >= 0 && grid.cost[ca] === 3 ? BATTLE.river : 1);
       for (const d of foes) {
-        const counter = (a.type === 'spear' && d.type === 'cavalry') || (a.type === 'cavalry' && d.type === 'archer') ? BATTLE.counter : 1;
+        const counter = COUNTERS[a.type] === d.type ? BATTLE.counter : 1;
         const cd = cellAt(grid, d.x, d.y);
         const defense = TROOPS[d.type].defense * (cd >= 0 && grid.cover[cd] ? BATTLE.cover : 1) * (d.owner === -1 ? BATTLE.fortress : 1);
         losses.set(d, (losses.get(d) ?? 0) + (power * (d.soldiers / total) * counter) / defense);
@@ -78,7 +80,7 @@ export function battleStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: nu
   for (const t of [...s.troops]) {
     if (t.soldiers >= BATTLE.minSoldiers) continue;
     s.troops.splice(s.troops.indexOf(t), 1);
-    if (t.owner === 0) logEvent(s, `${TROOPS[t.type].name} dispersos`);
+    if (t.owner === 0) logEvent(s, `${TROOPS[t.type].name} dispersa`);
   }
   // fim: menos de dois lados ainda lutando
   for (const b of [...s.battles]) {

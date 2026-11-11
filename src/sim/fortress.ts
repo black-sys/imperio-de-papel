@@ -33,8 +33,8 @@ export function placeFortresses(s: GameState, pm: ProvinceMap, seed: number): vo
   const candidates = withSites.filter(p => hops[p.id] >= 2 && hops[p.id] < Infinity).map(p => p.id);
   for (let i = candidates.length - 1; i > 0; i--) { const j = Math.floor(rng() * (i + 1)); [candidates[i], candidates[j]] = [candidates[j], candidates[i]]; }
   for (const id of candidates.slice(0, Math.round(FORTRESS.share * withSites.length))) {
-    const h = hops[id], n = Math.min(FORTRESS.max, 2 * (h - 1)), archers = Math.floor(n / 3); // um terço de arqueiros a partir de 3 tropas
-    addFortress(s, pm, id, Array.from({ length: n }, (_, i): TroopType => (i >= n - archers ? 'archer' : 'spear')));
+    const h = hops[id], n = Math.min(FORTRESS.max, 2 * (h - 1)), archers = Math.floor(n / 3); // um terço de artilharia a partir de 3 tropas
+    addFortress(s, pm, id, Array.from({ length: n }, (_, i): TroopType => (i >= n - archers ? 'artillery' : 'line')));
   }
 }
 

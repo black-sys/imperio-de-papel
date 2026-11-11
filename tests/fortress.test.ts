@@ -25,12 +25,12 @@ describe('distribuição no mundo real', { timeout: 60000 }, () => {
       expect(checkColonize(s, real, f.province)).toEqual({ ok: false, reason: 'Fortaleza: só cai com tropas' });
     }
   });
-  test('força cresce com a distância: 2 a 10 tropas, um terço de arqueiros nas maiores', () => {
+  test('força cresce com a distância: 2 a 10 tropas, um terço de artilharia nas maiores', () => {
     const mean = (xs: number[]) => xs.reduce((a, b) => a + b, 0) / xs.length;
     const size = (pred: (h: number) => boolean) => mean(s.fortresses.filter(f => pred(hops[f.province])).map(f => f.garrison.length));
     for (const f of s.fortresses) {
       expect(f.garrison.length).toBe(Math.min(10, 2 * (hops[f.province] - 1)));
-      expect(f.garrison.filter(t => t === 'archer').length).toBe(Math.floor(f.garrison.length / 3));
+      expect(f.garrison.filter(t => t === 'artillery').length).toBe(Math.floor(f.garrison.length / 3));
       expect(f.garrison).not.toContain('cavalry');
       const there = s.troops.filter(t => t.home === f.province);
       expect(there.map(t => t.type).sort()).toEqual([...f.garrison].sort());
@@ -49,8 +49,8 @@ describe('distribuição no mundo real', { timeout: 60000 }, () => {
 describe('conquista e regeneração', () => {
   test('derrotar a guarnição dá a província com Vila N1', () => {
     const s = game();
-    addFortress(s, pm, 1, ['spear']);
-    for (let i = 0; i < 3; i++) spawnTroop(s, 0, 'spear', 180, 76 + i * 4); // no local da fortaleza
+    addFortress(s, pm, 1, ['line']);
+    for (let i = 0; i < 3; i++) spawnTroop(s, 0, 'line', 180, 76 + i * 4); // no local da fortaleza
     run(s, 2);
     expect(s.owner[1]).toBe(0);
     expect(s.city[1]).toEqual({ level: 1, remaining: 0 });
@@ -60,8 +60,8 @@ describe('conquista e regeneração', () => {
   });
   test('sem combate há 3 meses, volta à força total; antes disso não', () => {
     const s = game();
-    addFortress(s, pm, 1, ['spear', 'spear']);
-    spawnTroop(s, 0, 'spear', 180, 80);
+    addFortress(s, pm, 1, ['line', 'line']);
+    spawnTroop(s, 0, 'line', 180, 80);
     run(s, 1);
     const hurt = () => s.troops.filter(t => t.owner === -1).reduce((n, t) => n + t.soldiers, 0);
     expect(s.owner[1]).toBe(-1);
@@ -74,7 +74,7 @@ describe('conquista e regeneração', () => {
   });
   test('tropa da fortaleza morta volta na regeneração', () => {
     const s = game();
-    addFortress(s, pm, 1, ['spear', 'spear']);
+    addFortress(s, pm, 1, ['line', 'line']);
     s.troops.splice(s.troops.findIndex(t => t.owner === -1), 1);
     run(s, 3.1);
     expect(s.troops.filter(t => t.home === 1).length).toBe(2);
