@@ -100,4 +100,4 @@ export const AI_BENT = {
   expansionist: { garrisonShare: 1 / 2, margin: 2 },
   industrial: { garrisonShare: 1 / 3, margin: 3 },
 };
-export const AI = { defendRatio: 0.8, recomposeBelow: 0.5, phaseSteps: 10 }; // phaseSteps: passos de tropa entre as nações no mês
+export const AI = { defendRatio: 0.8, recomposeBelow: 0.5, phaseSteps: 10, targetTiles: 20 }; // phaseSteps: passos de tropa entre as nações no mês

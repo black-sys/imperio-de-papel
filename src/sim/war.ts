@@ -22,7 +22,7 @@ export function declareWar(s: GameState, n: number, target: number, pm?: Provinc
   a.atWar.push(target);
   b.atWar.push(n);
   logEvent(s, `A ${a.name} declarou guerra à ${b.name}`);
-  if (target === 0) s.speed = 0;
+  if (target === 0 && !b.ai) s.speed = 0; // pausa para o jogador humano ler o aviso
   void pm;
   return { ok: true };
 }

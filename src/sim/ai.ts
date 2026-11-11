@@ -1,11 +1,12 @@
 import type { ProvinceMap, VeinKind } from '../worldgen/provinces';
-import { AI_BENT, TROOPS, type BuildingType } from './balance';
+import { AI, AI_BENT, TROOPS, type BuildingType } from './balance';
 import { build, colonize, moveArmies, recruit, upgrade, upgradeCity, type Place } from './commands';
 import { colonizeCost, recruitCost, runMonth, type MonthReport } from './economy';
 import { buildRoute, supplyArmy } from './routes';
 import type { MoveGrid } from './movegrid';
-import { cityLevel, type GameState } from './state';
-import { inBattle, mergeArmies } from './armies';
+import { activeLevel, cityLevel, type GameState } from './state';
+import { inBattle, men, mergeArmies, provinceAt } from './armies';
+import { hostile } from './war';
 
 const VEIN_BUILDING: Record<VeinKind, BuildingType> = { grain: 'farm', wood: 'sawmill', coal: 'coal_mine', iron: 'iron_mine' };
 type Action = 'colonize' | 'veins' | 'lots' | 'upgrades' | 'recruit';
@@ -32,6 +33,8 @@ export function aiStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, n: number)
   const score = (id: number) => pm.provinces[id].veins.reduce((a, v) => a + v.richness * want(v.kind), 0) + pm.provinces[id].fertility * 0.5;
   const count = (type: BuildingType) => mine().reduce((c, id) => c + s.lots[id].filter(b => b?.type === type).length, 0);
   const proj: MonthReport = runMonth(s, pm, false, n);
+  defend(s, pm, grid, n);
+  recompose(s, pm, grid, n);
   const colonized = mine().length > 1 || s.colonizing.some(c => c.nation === n);
 
   // rotas (uma tentativa por cidade por mês): cada cidade sem ligação nem rota liga à cidade ligada mais próxima
@@ -106,15 +109,62 @@ export function aiStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, n: number)
   const armies = ready(), battalions = armies.reduce((k, a) => k + a.battalions.length, 0);
   if (!armies.length) return;
   const cap = pm.provinces[nation.capital].center, d = (id: number) => Math.hypot(pm.provinces[id].center.x - cap.x, pm.provinces[id].center.y - cap.y);
-  // faltando carvão ou ferro, a fortaleza que guarda esse minério vem primeiro; senão a mais fraca entre as 6 mais próximas
+  // alvos: as 6 fortalezas e as 6 províncias de nações em guerra mais próximas, só os que a margem da inclinação
+  // já permite (esperar por um forte demais trava a expansão). Capital inimiga vem primeiro; faltando carvão ou
+  // ferro, a fortaleza que guarda o minério; senão a defesa mais fraca, depois a mais perto
   const missing = (['coal', 'iron'] as VeinKind[]).filter(k => owned(k) === 0);
-  const guards = (f: (typeof s.fortresses)[0]) => pm.provinces[f.province].veins.some(v => missing.includes(v.kind));
-  // só alvos que a margem da inclinação já permite (esperar por um forte demais trava a expansão)
-  const near = [...s.fortresses].sort((a, b) => d(a.province) - d(b.province)).slice(0, 6).filter(f => battalions >= w.margin * f.garrison.length);
-  const target = near.find(guards) ?? near.sort((a, b) => a.garrison.length - b.garrison.length || d(a.province) - d(b.province))[0];
+  const site = (id: number) => pm.provinces[id].city;
+  const guard = (id: number) => Math.max(1, s.armies.reduce((k, a) => k + (hostile(s, a.owner, n) && Math.hypot(a.x - site(id).x, a.y - site(id).y) <= AI.targetTiles ? a.battalions.length : 0), 0));
+  const forts = [...s.fortresses].sort((a, b) => d(a.province) - d(b.province)).slice(0, 6).map(f => ({ id: f.province, def: f.garrison.length, capital: false }));
+  const enemy = s.owner.map((o, id) => (o >= 0 && nation.atWar.includes(o) ? id : -1)).filter(id => id >= 0)
+    .sort((a, b) => d(a) - d(b)).slice(0, 6).map(id => ({ id, def: guard(id), capital: s.nations[s.owner[id]].capital === id }));
+  const options = [...forts, ...enemy].filter(o => battalions >= w.margin * o.def);
+  const target = options.find(o => o.capital) ?? options.find(o => pm.provinces[o.id].veins.some(v => missing.includes(v.kind)) && s.owner[o.id] === -1)
+    ?? options.sort((a, b) => a.def - b.def || d(a.id) - d(b.id))[0];
   if (target) {
-    const site = pm.provinces[target.province].city;
+    const site = pm.provinces[target.id].city;
     moveArmies(s, grid, armies.map(a => a.id), site.x, site.y, n);
     for (const a of armies) if (!a.supply) supplyArmy(s, pm, grid, a.id, n);
+  }
+}
+
+const free = (s: GameState, n: number) => s.armies.filter(a => a.owner === n && !inBattle(s, a.id) && s.clock >= a.routedUntil);
+const battalionsOf = (list: GameState['armies']) => list.reduce((k, a) => k + a.battalions.length, 0);
+
+/**
+ * Invasores (exércitos de nações hostis em províncias de `n`): com força livre ≥ defendRatio × invasores, os livres
+ * mais próximos vão ao invasor mais perto da capital; senão todos recuam para a capital.
+ */
+function defend(s: GameState, pm: ProvinceMap, grid: MoveGrid, n: number): void {
+  const cap = pm.provinces[s.nations[n].capital].city;
+  const invaders = s.armies.filter(a => a.owner >= 0 && hostile(s, a.owner, n) && s.owner[provinceAt(pm, grid, a.x, a.y)] === n);
+  if (!invaders.length) return;
+  const mine = free(s, n), need = battalionsOf(invaders);
+  if (battalionsOf(mine) >= AI.defendRatio * need) {
+    const t = invaders.sort((a, b) => Math.hypot(a.x - cap.x, a.y - cap.y) - Math.hypot(b.x - cap.x, b.y - cap.y))[0];
+    const go: number[] = [];
+    let sum = 0;
+    for (const a of mine.sort((a, b) => Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y))) {
+      if (sum >= need) break;
+      go.push(a.id); sum += a.battalions.length;
+    }
+    moveArmies(s, grid, go, t.x, t.y, n);
+    for (const id of go) supplyArmy(s, pm, grid, id, n);
+  } else {
+    const away = mine.filter(a => Math.hypot(a.x - cap.x, a.y - cap.y) > AI.targetTiles).map(a => a.id);
+    if (away.length) moveArmies(s, grid, away, cap.x, cap.y, n);
+  }
+}
+
+/** Exército parado abaixo de recomposeBelow dos homens volta à província própria com Guarnição mais próxima. */
+function recompose(s: GameState, pm: ProvinceMap, grid: MoveGrid, n: number): void {
+  const homes = s.owner.map((o, id) => (o === n && s.lots[id].some(b => b?.type === 'garrison' && activeLevel(b) > 0) ? id : -1)).filter(id => id >= 0);
+  if (!homes.length) return;
+  for (const a of free(s, n)) {
+    if (a.path.length) continue;
+    const full = a.battalions.reduce((k, b) => k + TROOPS[b.type].soldiers, 0);
+    if (men(a) >= AI.recomposeBelow * full || homes.includes(provinceAt(pm, grid, a.x, a.y))) continue;
+    const home = homes.map(id => pm.provinces[id].city).sort((p, q) => Math.hypot(p.x - a.x, p.y - a.y) - Math.hypot(q.x - a.x, q.y - a.y))[0];
+    moveArmies(s, grid, [a.id], home.x, home.y, n);
   }
 }
