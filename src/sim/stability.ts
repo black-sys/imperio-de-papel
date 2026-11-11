@@ -1,6 +1,8 @@
 import type { ProvinceMap } from '../worldgen/provinces';
-import { HEADLINES, STAB } from './balance';
-import { activeLevel, cityLevel, type GameState } from './state';
+import { makeRng, subSeed } from '../worldgen/rng';
+import { BUILDINGS, HEADLINES, STAB, UNREST, zeroRes, type TroopType } from './balance';
+import { spawnArmy } from './armies';
+import { activeLevel, cityLevel, logFor, type GameState } from './state';
 
 /** Grava uma manchete no jornal (as últimas HEADLINES). */
 export function headline(s: GameState, text: string): void {
@@ -38,8 +40,73 @@ export function stabilityTarget(s: GameState, pm: ProvinceMap, id: number): { ta
   return { target, factors: f };
 }
 
-/** Virada do mês: a estabilidade de cada província com dono anda `approach` do caminho até o alvo. */
+const FACTORY = new Set(['steelworks', 'arms_factory']);
+
+/** A província vira neutra (revolta vitoriosa): sem cidade, prédios, rotas, treinos nem depósito. */
+function lose(s: GameState, id: number): void {
+  s.owner[id] = -1; s.city[id] = null; s.connected[id] = false; s.depot[id] = zeroRes(); s.stability[id] = 0;
+  s.lots[id] = s.lots[id].map(() => null); s.veins[id] = s.veins[id].map(() => null);
+  s.routes = s.routes.filter(r => r.a !== id && r.b !== id);
+  s.recruiting = s.recruiting.filter(r => r.province !== id);
+  s.occupations = s.occupations.filter(e => e.province !== id);
+  s.strikes = s.strikes.filter(x => x.province !== id);
+  for (const a of s.armies) if (a.supply?.from === id) a.supply = null;
+}
+
+/** Revoltas: rebeldes vencidos acabam com alívio; sobrevivendo, tomam a província (a capital resiste). */
+function resolveRevolts(s: GameState, pm: ProvinceMap): void {
+  for (const r of [...s.revolts]) {
+    const name = pm.provinces[r.province].name, owner = s.owner[r.province];
+    if (!s.armies.some(a => a.id === r.army)) {
+      s.revolts = s.revolts.filter(x => x !== r);
+      s.stability[r.province] = Math.min(100, s.stability[r.province] + UNREST.revolt.relief);
+      logFor(s, owner, `Revolta em ${name} vencida`);
+      continue;
+    }
+    if (s.month - r.since < UNREST.revolt.months - 1e-9 || s.nations[owner]?.capital === r.province) continue;
+    s.revolts = s.revolts.filter(x => x !== r);
+    s.armies = s.armies.filter(a => a.id !== r.army);
+    lose(s, r.province);
+    if (owner === 0) headline(s, `REBELDES TOMAM ${name.toUpperCase()}`);
+    logFor(s, owner, `${name} perdida para os rebeldes`);
+  }
+}
+
+/** Sorteios do mês em uma província: greve, incêndio, revolta. */
+function unrest(s: GameState, pm: ProvinceMap, id: number): void {
+  const owner = s.owner[id], name = pm.provinces[id].name, v = s.stability[id];
+  // uma semente por sorteio: números seguidos de sementes vizinhas saem correlacionados
+  const roll = (what: string) => makeRng(subSeed(s.seed, `${what}:${id}:${s.month}`))();
+  const [rs, rf, rr, pick] = [roll('strike'), roll('fire'), roll('revolt'), roll('fire-pick')];
+  const factory = s.lots[id].find(b => b && FACTORY.has(b.type) && activeLevel(b) > 0);
+  if (v < UNREST.strike.below && factory && rs < UNREST.strike.chance && !s.strikes.some(x => x.province === id)) {
+    s.strikes.push({ province: id, until: s.month + UNREST.strike.months });
+    if (owner === 0) headline(s, `GREVE PARALISA ${BUILDINGS[factory.type].name.toUpperCase()} DE ${name.toUpperCase()}`);
+    logFor(s, owner, `Greve em ${name}: fábricas paradas por ${UNREST.strike.months} meses`);
+  }
+  const all = [...s.lots[id].map((b, i) => ['lot', i, b] as const), ...s.veins[id].map((b, i) => ['vein', i, b] as const)].filter(x => x[2]);
+  if (v < UNREST.fire.below && all.length && rf < UNREST.fire.chance) {
+    const [kind, i, b] = all[Math.floor(pick * all.length)], list = kind === 'lot' ? s.lots[id] : s.veins[id];
+    const gone = b!.level <= 1 || b!.remaining > 0;
+    list[i] = gone ? null : { ...b!, level: b!.level - 1 };
+    if (owner === 0) headline(s, `INCÊNDIO ${gone ? 'DESTRÓI' : 'DANIFICA'} ${BUILDINGS[b!.type].name.toUpperCase()} EM ${name.toUpperCase()}`);
+    logFor(s, owner, `Incêndio em ${name}: ${BUILDINGS[b!.type].name} ${gone ? 'destruída' : 'danificada'}`);
+  }
+  if (v < UNREST.revolt.below && rr < UNREST.revolt.chance && !s.revolts.some(x => x.province === id)) {
+    const c = pm.provinces[id].city, k = 1 + Math.floor((UNREST.revolt.below - v) / 5) + cityLevel(s, id);
+    const a = spawnArmy(s, -1, Array.from({ length: k }, (): TroopType => 'line'), c.x, c.y, -1, `Rebeldes de ${name}`);
+    s.revolts.push({ province: id, since: s.month, army: a.id });
+    headline(s, owner === 0 ? `REVOLTA EM ${name.toUpperCase()}` : `REVOLTA EM ${name.toUpperCase()} ABALA A ${s.nations[owner].name.toUpperCase()}`);
+    logFor(s, owner, `Revolta em ${name}: ${k} batalhões de rebeldes`);
+  }
+}
+
+/** Virada do mês: revoltas, greves vencidas, aproximação do alvo e sorteios de cada província com dono. */
 export function stabilityMonth(s: GameState, pm: ProvinceMap): void {
+  s.revolts = s.revolts.filter(r => s.owner[r.province] >= 0);
+  resolveRevolts(s, pm);
+  s.strikes = s.strikes.filter(x => x.until > s.month + 1e-9 && s.owner[x.province] >= 0);
+  s.owner.forEach((o, id) => { if (o >= 0 && s.city[id]) unrest(s, pm, id); }); // sorteios com a estabilidade do início do mês
   s.owner.forEach((o, id) => {
     if (o < 0 || !s.city[id]) return;
     const { target } = stabilityTarget(s, pm, id), cur = s.stability[id];
