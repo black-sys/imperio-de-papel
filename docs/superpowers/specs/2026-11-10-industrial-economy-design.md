@@ -24,8 +24,14 @@ linha, artilharia e cavalaria de 1760, mantendo o combate e o comando atuais.
 
 ## Regras (calibração inicial, `balance.ts`)
 ### Recursos e início
-`res`: dinheiro, grãos, madeira, carvão, ferro, aço, armas. Capital com cidade nível 2 e estoque inicial de dinheiro,
-grãos, madeira, ferro e algumas armas (o bastante para a primeira infantaria); valores calibrados pelo teste de ritmo.
+`res`: dinheiro, grãos, madeira, carvão, ferro, aço, armas. Capital com cidade nível 2.
+
+Estoque inicial = base calibrada pelo teste de ritmo × o que o território da capital oferece (capital + vizinhas):
+- grãos, madeira, carvão e ferro: base do recurso × riqueza média dos veios desse recurso no território
+  (sem nenhum veio do recurso: piso de 0,5);
+- dinheiro: base × fertilidade da capital;
+- aço: 0; armas: fixo, o bastante para a primeira infantaria.
+Assim uma capital rica em ferro começa com mais ferro, e a escolha da capital pesa desde o primeiro mês.
 
 ### Cidade (uma por província)
 | Nível | Impostos/mês | Grãos/mês | Lotes liberados | Subir custa | Cota |
@@ -118,6 +124,8 @@ dica da tela inicial com os veios próximos. A escolha sob o ponteiro inclui lot
 ## Testes
 Geração: cidade em chão seco; lotes ≤ 10 tiles e secos; veios ≥ 20 tiles, secos e no terreno certo; riqueza 0,5–1,5;
 0–4 veios; capitais sugeridas com os quatro tipos na província + vizinhas; determinismo; testes atuais ajustados.
+
+Início: estoque inicial = base × riqueza média dos veios do recurso na capital + vizinhas (piso 0,5 sem veio); dinheiro × fertilidade; duas capitais com riquezas diferentes começam com estoques diferentes na mesma proporção.
 
 Economia: impostos por nível (fertilidade, mercado, capital); sem grãos → impostos pela metade até voltar; veios por
 riqueza; siderúrgica 2+2 → 1, parcial quando falta; fábrica de armas usa o aço do mesmo mês; lotes 1/2/4 por nível e
