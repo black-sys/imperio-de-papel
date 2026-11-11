@@ -8,7 +8,7 @@ import { hostile } from './war';
 
 /** Quem cada tipo castiga (+counter de dano). */
 const COUNTERS: Record<TroopType, TroopType> = { line: 'cavalry', cavalry: 'artillery', artillery: 'line' };
-const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2); // sem Math.hypot: lento no laço de contato
 const provinceName = (pm: ProvinceMap, grid: MoveGrid, x: number, y: number) => { const c = cellAt(grid, x, y), p = c < 0 ? -1 : pm.cellProvince[c]; return p < 0 ? 'a costa' : pm.provinces[p].name; };
 
 function join(b: Battle, t: Army): void {

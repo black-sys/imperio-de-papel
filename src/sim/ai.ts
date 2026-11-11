@@ -24,7 +24,8 @@ const ORDER: Record<GameState['nations'][0]['bent'], Action[]> = {
 export function aiStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, n: number): void {
   const nation = s.nations[n], w = AI_BENT[nation.bent];
   if (!nation.alive || s.owner[nation.capital] !== n) return;
-  const mine = () => s.owner.map((o, id) => (o === n ? id : -1)).filter(id => id >= 0);
+  // os comandos não mudam donos (colonizar só conclui na virada): a lista vale a decisão inteira
+  const own = s.owner.map((o, id) => (o === n ? id : -1)).filter(id => id >= 0), mine = () => own;
   const owned = (k: VeinKind) => mine().reduce((c, id) => c + pm.provinces[id].veins.filter(v => v.kind === k).length, 0);
   const have = (k: VeinKind) => mine().some(id => s.veins[id].some((b, i) => b && pm.provinces[id].veins[i].kind === k));
   // vizinha com mais veios úteis; carvão e ferro valem o triplo até ter 3 de cada; sem nenhum veio de madeira,
