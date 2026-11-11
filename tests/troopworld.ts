@@ -1,5 +1,6 @@
 import { chooseCapital, setSpeed } from '../src/sim/commands';
 import { labelLand, type MoveGrid } from '../src/sim/movegrid';
+import { planRoute } from '../src/sim/routes';
 import { newGame, type GameState } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
 import type { Province, ProvinceMap } from '../src/worldgen/provinces';
@@ -28,10 +29,18 @@ export function makeTestWorld(): { pm: ProvinceMap; grid: MoveGrid } {
 }
 
 export const world = makeTestWorld();
-/** Capital na província 0 (cidade nível 2), guarnição pronta no lote 1 e recursos de sobra. */
-export const game = (level = 1): GameState => {
+/** Capital na província 0 (cidade nível 2), guarnição pronta no lote 1 e recursos de sobra. Território seu e ligado abastece as tropas. */
+export const game = (level = 1, both = false): GameState => {
   const s = newGame(world.pm);
   chooseCapital(s, world.pm, 0);
+  // `both`: a província 1 também é sua e ligada (lutas e marchas lá acontecem com suprimento)
+  if (both) {
+    s.owner[1] = 0; s.city[1] = { level: 1, remaining: 0 };
+    const plan = planRoute(s, world.pm, world.grid, 0, 1); // rota pronta entre as duas cidades
+    if (!plan.ok) throw new Error(plan.reason);
+    s.routes.push({ id: s.nextRouteId++, a: 0, b: 1, path: plan.path, remaining: 0, cut: false });
+    s.connected[1] = true;
+  }
   s.lots[0][1] = { type: 'garrison', level, remaining: 0 };
   s.res = { money: 1000, grain: 1000, wood: 1000, coal: 1000, iron: 1000, steel: 1000, arms: 1000 };
   return s;

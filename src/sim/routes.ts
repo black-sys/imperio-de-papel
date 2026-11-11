@@ -1,7 +1,7 @@
 import { CELL } from '../worldgen/constants';
 import type { ProvinceMap } from '../worldgen/provinces';
 import { findCellPath } from './astar';
-import { RES_KEYS, RES_NAMES, ROUTE, type Res } from './balance';
+import { BATTLE, RES_KEYS, RES_NAMES, ROUTE, SUPPLY, TROOPS, type Res } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
 import { logEvent, type GameState, type Route } from './state';
 
@@ -136,5 +136,100 @@ function markCuts(s: GameState, pm: ProvinceMap, grid: MoveGrid): void {
     if (now === route.cut) continue;
     route.cut = now;
     if (route.remaining <= 0) logEvent(s, `Rota ${pm.provinces[route.a].name}–${pm.provinces[route.b].name} ${now ? 'cortada' : 'religada'}`);
+  }
+}
+
+// ---- suprimento das tropas ----
+
+const cellCenter = (grid: MoveGrid, c: number) => ({ x: (c % grid.size) * CELL + CELL / 2, y: Math.floor(c / grid.size) * CELL + CELL / 2 });
+
+/** Hostil a ≤ cutTiles de alguma célula de `cells`? */
+function cellsThreatened(s: GameState, grid: MoveGrid, cells: Set<number>, owner: number): boolean {
+  const S = grid.size, r = Math.ceil((ROUTE.cutTiles + CELL) / CELL);
+  for (const t of s.troops) {
+    if (t.owner === owner) continue;
+    const c = cellAt(grid, t.x, t.y);
+    if (c < 0) continue;
+    const cx = c % S, cy = Math.floor(c / S);
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const x = cx + dx, y = cy + dy;
+      if (x >= 0 && y >= 0 && x < S && y < S && cells.has(y * S + x) && Math.hypot(x * CELL + CELL / 2 - t.x, y * CELL + CELL / 2 - t.y) <= ROUTE.cutTiles) return true;
+    }
+  }
+  return false;
+}
+
+/** Cidade ligada mais próxima da tropa (em linha reta) e o caminho dela até a tropa. */
+function traceLine(s: GameState, pm: ProvinceMap, grid: MoveGrid, x: number, y: number): { path: number[]; from: number } | null {
+  const cities = s.connected.map((on, id) => (on && s.owner[id] === 0 && s.city[id] ? id : -1)).filter(id => id >= 0)
+    .sort((a, b) => Math.hypot(pm.provinces[a].city.x - x, pm.provinces[a].city.y - y) - Math.hypot(pm.provinces[b].city.x - x, pm.provinces[b].city.y - y));
+  const to = cellAt(grid, x, y), cost = routeGrid(s, pm, grid);
+  for (const from of cities.slice(0, 3)) {
+    const path = findCellPath({ ...grid, cost }, cellAt(grid, pm.provinces[from].city.x, pm.provinces[from].city.y), to);
+    if (path) return { path, from };
+  }
+  return null;
+}
+
+export function checkSupply(s: GameState, pm: ProvinceMap, grid: MoveGrid, troopId: number): Result {
+  const t = s.troops.find(t => t.id === troopId && t.owner === 0);
+  if (!t) return no('Tropa inválida');
+  if (s.clock < t.routedUntil) return no('Tropa em fuga');
+  if (t.supply) return no('Já tem linha de suprimento');
+  return traceLine(s, pm, grid, t.x, t.y) ? { ok: true } : no('Nenhuma cidade ligada alcança esta tropa');
+}
+
+export function supplyTroop(s: GameState, pm: ProvinceMap, grid: MoveGrid, troopId: number): Result {
+  const chk = checkSupply(s, pm, grid, troopId);
+  if (!chk.ok) return chk;
+  const t = s.troops.find(t => t.id === troopId)!, line = traceLine(s, pm, grid, t.x, t.y)!;
+  t.supply = { ...line, at: s.clock, cut: false };
+  return { ok: true };
+}
+
+export function dropSupply(s: GameState, troopId: number): Result {
+  const t = s.troops.find(t => t.id === troopId && t.owner === 0);
+  if (!t?.supply) return no('Sem linha de suprimento');
+  t.supply = null;
+  return { ok: true };
+}
+
+/**
+ * A cada passo: refaz linhas que ficaram para trás, marca linhas cortadas e calcula quem está abastecido (linha não
+ * cortada, província sua ligada, ou a ≤ range de cidade ligada ou de rota ligada). Tropas do jogador sem suprimento
+ * perdem homens. Fortalezas e outros reinos (ainda sem rede própria, ciclo 4) contam como abastecidos.
+ */
+export function updateSupply(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: number): void {
+  const index = routeIndex(s), S = grid.size, R = Math.ceil((SUPPLY.range + CELL) / CELL);
+  const live = new Set(s.routes.filter(r => r.remaining <= 0 && !r.cut && s.connected[r.a] && s.connected[r.b]).map(r => r.id));
+  const cities = s.connected.map((on, id) => (on && s.owner[id] === 0 && s.city[id] ? pm.provinces[id].city : null)).filter(c => !!c);
+  for (const t of s.troops) {
+    if (t.owner !== 0) { t.supplied = true; continue; } // fortalezas sempre; outros reinos ainda sem rede própria (ciclo 4)
+    if (t.supply) {
+      const end = cellCenter(grid, t.supply.path.at(-1) ?? 0);
+      if (Math.hypot(end.x - t.x, end.y - t.y) > SUPPLY.repathTiles && s.clock - t.supply.at >= SUPPLY.repathMonths - 1e-9) {
+        const line = traceLine(s, pm, grid, t.x, t.y);
+        if (line) t.supply = { ...line, at: s.clock, cut: false };
+      }
+      // inimigo lutando com a própria tropa não corta a linha: ignora o trecho final, a ≤ join tiles dela
+      const tail = new Set(t.supply.path.filter(c => { const p = cellCenter(grid, c); return Math.hypot(p.x - t.x, p.y - t.y) > BATTLE.join; }));
+      t.supply.cut = !s.connected[t.supply.from] || cellsThreatened(s, grid, tail, 0);
+    }
+    let ok = !!t.supply && !t.supply.cut;
+    // dentro de província sua ligada à capital (defender a própria fronteira não desgasta)
+    if (!ok) { const c = cellAt(grid, t.x, t.y), p = c < 0 ? -1 : pm.cellProvince[c]; ok = p >= 0 && s.owner[p] === 0 && s.connected[p]; }
+    if (!ok) ok = cities.some(c => Math.hypot(c.x - t.x, c.y - t.y) <= SUPPLY.range);
+    if (!ok) {
+      const c = cellAt(grid, t.x, t.y), cx = c % S, cy = Math.floor(c / S);
+      for (let dy = -R; dy <= R && !ok; dy++) for (let dx = -R; dx <= R && !ok; dx++) {
+        const ids = index.get((cy + dy) * S + cx + dx);
+        if (ids && ids.some(id => live.has(id))) ok = Math.hypot((cx + dx) * CELL + CELL / 2 - t.x, (cy + dy) * CELL + CELL / 2 - t.y) <= SUPPLY.range;
+      }
+    }
+    t.supplied = ok;
+    if (ok) continue;
+    t.soldiers -= SUPPLY.attrition * dt;
+    const key = `t${t.id}`;
+    if (s.clock - (s.stallWarned[key] ?? -Infinity) >= SUPPLY.warnMonths) { s.stallWarned[key] = s.clock; logEvent(s, `${TROOPS[t.type].name} sem suprimento`); }
   }
 }

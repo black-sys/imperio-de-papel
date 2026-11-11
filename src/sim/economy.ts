@@ -1,7 +1,8 @@
 import type { ProvinceMap, VeinKind } from '../worldgen/provinces';
+import { CELL } from '../worldgen/constants';
 import { Biome } from '../worldgen/types';
 import {
-  BUILDINGS, CITY, COLONIZE, DEPOT_MONTHS, GARRISON_UPKEEP, GRAIN_SHORT_TAX, RES_KEYS, RES_NAMES, STALL_WARN_MONTHS, START_BASE, START_NO_VEIN, STEEL_ON_N3,
+  BUILDINGS, CITY, COLONIZE, DEPOT_MONTHS, SUPPLY, GARRISON_UPKEEP, GRAIN_SHORT_TAX, RES_KEYS, RES_NAMES, STALL_WARN_MONTHS, START_BASE, START_NO_VEIN, STEEL_ON_N3,
   TROOPS, TROOP_GROWTH, UPGRADE_COST, UPGRADE_TIME, zeroRes, type BuildingType, type Res, type TroopType,
 } from './balance';
 import { activeLevel, cityLevel, logEvent, type GameState } from './state';
@@ -104,6 +105,7 @@ export function runMonth(s: GameState, pm: ProvinceMap, apply: boolean): MonthRe
   // manutenção
   mine.forEach((m, id) => { if (m) for (const b of s.lots[id]) if (b?.type === 'garrison' && activeLevel(b)) add('money', 'Guarnições', -GARRISON_UPKEEP); });
   for (const t of s.troops) if (t.owner === 0) for (const [k, v] of Object.entries(TROOPS[t.type].upkeep) as [keyof Res, number][]) add(k, 'Tropas', -v);
+  for (const t of s.troops) if (t.owner === 0 && t.supply) add('money', 'Linhas de suprimento', -(SUPPLY.lineMoney + SUPPLY.linePerTile * t.supply.path.length * CELL));
   const grainShort = r.grain <= 0 && mine.some(Boolean);
   if (r.grain < 0) r.grain = 0;
   const net = zeroRes();

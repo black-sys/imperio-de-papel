@@ -2,7 +2,7 @@ import type { ProvinceMap } from '../worldgen/provinces';
 import { CELL } from '../worldgen/constants';
 import { battleStep } from './battle';
 import { fortressStep } from './fortress';
-import { updateRoutes } from './routes';
+import { updateRoutes, updateSupply } from './routes';
 import { REFILL, TROOPS, TROOP_CAP, type TroopType } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
 import { activeLevel, type GameState, type Troop } from './state';
@@ -27,6 +27,7 @@ export const inBattle = (s: GameState, id: number) => s.battles.some(b => b.troo
 export function troopStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: number): void {
   for (const t of s.troops) march(t, grid, dt);
   updateRoutes(s, pm, grid);
+  updateSupply(s, pm, grid, dt);
   battleStep(s, pm, grid, dt);
   for (const t of s.troops) refill(s, pm, grid, t, dt);
   fortressStep(s, pm);
@@ -46,7 +47,7 @@ function march(t: Troop, grid: MoveGrid, dt: number): void {
 function refill(s: GameState, pm: ProvinceMap, grid: MoveGrid, t: Troop, dt: number): void {
   if (t.morale < 1 && s.clock >= t.routedUntil && !inBattle(s, t.id)) t.morale = 1; // recomposta depois da fuga
   const max = TROOPS[t.type].soldiers;
-  if (t.owner !== 0 || t.soldiers >= max || t.path.length || s.clock < t.routedUntil || inBattle(s, t.id)) return;
+  if (t.owner !== 0 || !t.supplied || t.soldiers >= max || t.path.length || s.clock < t.routedUntil || inBattle(s, t.id)) return;
   const p = provinceAt(pm, grid, t.x, t.y);
   if (p < 0 || s.owner[p] !== 0) return;
   const rate = s.lots[p].some(b => b?.type === 'garrison' && activeLevel(b) > 0) ? REFILL.garrisonRate : REFILL.rate;

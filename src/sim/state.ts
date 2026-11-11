@@ -12,7 +12,7 @@ export interface Troop {
   morale: number; // 0–1, espelha a moral do lado na batalha
   routedUntil: number; // em fuga (sem obedecer) até este `clock`
   home: number;
-  supply: { path: number[]; from: number; at: number } | null; // linha de suprimento: células da cidade `from` até a tropa; `at` = clock do traçado
+  supply: { path: number[]; from: number; at: number; cut: boolean } | null; // linha de suprimento: células da cidade `from` até a tropa; `at` = clock do traçado
   supplied: boolean; // abastecida neste passo
 }
 /** Rota entre as cidades das províncias `a` e `b`. `remaining` > 0 = em obra; `cut` = cortada por tropa hostil ou território inimigo. */

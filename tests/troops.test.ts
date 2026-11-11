@@ -216,7 +216,7 @@ describe('reposição e manutenção', () => {
   test('não repõe fora do reino, andando ou sem dinheiro', () => {
     const a = hurt(180, 100, true);
     run(a.s, 1);
-    expect(a.t.soldiers).toBe(10);
+    expect(a.t.soldiers).toBeLessThanOrEqual(10); // fora do reino não repõe (e, sem suprimento, ainda desgasta)
     const b = hurt(60, 100, true);
     b.s.res.money = 0;
     run(b.s, 0.9); // antes da renda do mês

@@ -1,6 +1,6 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { findCellPath } from './astar';
-import { BATTLE, TROOPS, type TroopType } from './balance';
+import { BATTLE, SUPPLY, TROOPS, type TroopType } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
 import { logEvent, type Battle, type GameState, type Troop } from './state';
 
@@ -15,7 +15,8 @@ function join(b: Battle, t: Troop): void {
   let side = b.sides.find(s => s.owner === t.owner);
   if (!side) b.sides.push(side = { owner: t.owner, initial: 0, morale: 1 });
   // mantém as baixas já sofridas ao somar o reforço
-  const lost = ((1 - side.morale) / BATTLE.moraleLoss) * side.initial;
+  // sem suprimento chega cansada: conta como se já tivesse perdido parte dos homens (moral inicial menor)
+  const lost = ((1 - side.morale) / BATTLE.moraleLoss) * side.initial + (t.supplied ? 0 : (t.soldiers * (1 - SUPPLY.unsuppliedMorale)) / BATTLE.moraleLoss);
   side.initial += t.soldiers;
   side.morale = 1 - (BATTLE.moraleLoss * lost) / side.initial;
 }
@@ -56,11 +57,11 @@ export function battleStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: nu
       const foes = troops.filter(d => d.owner !== a.owner), total = foes.reduce((n, d) => n + d.soldiers, 0);
       if (total <= 0) continue;
       const ca = cellAt(grid, a.x, a.y);
-      const power = a.soldiers * TROOPS[a.type].attack * BATTLE.rate * dt * (ca >= 0 && grid.cost[ca] === 3 ? BATTLE.river : 1);
+      const power = a.soldiers * TROOPS[a.type].attack * BATTLE.rate * dt * (ca >= 0 && grid.cost[ca] === 3 ? BATTLE.river : 1) * (a.supply && !a.supply.cut ? SUPPLY.lineBonus : 1);
       for (const d of foes) {
         const counter = COUNTERS[a.type] === d.type ? BATTLE.counter : 1;
         const cd = cellAt(grid, d.x, d.y);
-        const defense = TROOPS[d.type].defense * (cd >= 0 && grid.cover[cd] ? BATTLE.cover : 1) * (d.owner === -1 ? BATTLE.fortress : 1);
+        const defense = TROOPS[d.type].defense * (cd >= 0 && grid.cover[cd] ? BATTLE.cover : 1) * (d.owner === -1 ? BATTLE.fortress : 1) * (d.supply && !d.supply.cut ? SUPPLY.lineBonus : 1);
         losses.set(d, (losses.get(d) ?? 0) + (power * (d.soldiers / total) * counter) / defense);
       }
     }

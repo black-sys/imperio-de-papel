@@ -8,7 +8,7 @@ import { game, run, world } from './troopworld';
 const { grid } = world;
 /** Jogador (dono 0) em (x, y) contra o dono 1 a 4 tiles a leste; roda até a batalha acabar. */
 function fight(mine: TroopType[], theirs: TroopType[], x = 200, y = 20, speed = 1, dx = 4) {
-  const s = game(), unit = speed === 1 ? 0.02 : 0.08;
+  const s = game(1, true), unit = speed === 1 ? 0.02 : 0.08;
   const a = mine.map((t, i) => spawnTroop(s, 0, t, x, y + i * 4)), b = theirs.map((t, i) => spawnTroop(s, 1, t, x + dx, y + i * 4));
   run(s, unit, speed);
   expect(s.battles.length).toBe(1);
@@ -32,11 +32,11 @@ describe('vantagens', () => {
     expect(r.theirs.length).toBe(0);
   });
   test('artilharia atira antes do contato; a infantaria não', () => {
-    const s = game(), a = spawnTroop(s, 0, 'artillery', 200, 20), b = spawnTroop(s, 1, 'line', 204, 20);
+    const s = game(1, true), a = spawnTroop(s, 0, 'artillery', 200, 20), b = spawnTroop(s, 1, 'line', 204, 20);
     run(s, 0.08);
     expect(b.soldiers).toBeLessThan(20);
     expect(a.soldiers).toBe(12);
-    const s2 = game(), c = spawnTroop(s2, 0, 'line', 200, 20), d = spawnTroop(s2, 1, 'line', 204, 20);
+    const s2 = game(1, true), c = spawnTroop(s2, 0, 'line', 200, 20), d = spawnTroop(s2, 1, 'line', 204, 20);
     run(s2, 0.08);
     expect([c.soldiers, d.soldiers]).toEqual([20, 20]);
   });
@@ -102,7 +102,7 @@ describe('moral e fuga', () => {
     expect(s.battles).toEqual([]);
   });
   test('tropa com ordem sai da batalha ao se afastar', () => {
-    const s = game(), t = spawnTroop(s, 0, 'line', 200, 20);
+    const s = game(1, true), t = spawnTroop(s, 0, 'line', 200, 20);
     spawnTroop(s, -1, 'line', 204, 20, 1);
     run(s, 0.04);
     expect(s.battles.length).toBe(1);
@@ -112,7 +112,7 @@ describe('moral e fuga', () => {
     expect(t.routedUntil).toBe(0);
     const left = t.soldiers;
     run(s, 0.2);
-    expect(t.soldiers).toBe(left);
+    expect(t.soldiers).toBeGreaterThanOrEqual(left); // fora da batalha não perde mais ninguém (em território seu, repõe)
   });
   test('tropas vizinhas (até 20 tiles) entram na batalha; as distantes não', () => {
     const s = game(), near = spawnTroop(s, 0, 'line', 190, 30), far = spawnTroop(s, 0, 'line', 150, 20);
@@ -124,9 +124,14 @@ describe('moral e fuga', () => {
 });
 
 describe('determinismo', () => {
-  const sig = (r: ReturnType<typeof fight>) => [...r.a, ...r.b].map(t => +t.soldiers.toFixed(6));
   test('mesmo resultado a 1× e a 8×', () => {
-    expect(sig(fight(['line', 'artillery'], ['cavalry', 'line'], 200, 20, 8))).toEqual(sig(fight(['line', 'artillery'], ['cavalry', 'line'])));
+    // mesmo tempo total nos dois (depois da batalha a reposição continua: comparar no mesmo instante)
+    const go = (speed: number) => {
+      const s = game(1, true), ts = [spawnTroop(s, 0, 'line', 200, 20), spawnTroop(s, 0, 'artillery', 200, 24), spawnTroop(s, 1, 'cavalry', 204, 20), spawnTroop(s, 1, 'line', 204, 24)];
+      run(s, 1.6, speed);
+      return ts.map(t => +t.soldiers.toFixed(6));
+    };
+    expect(go(8)).toEqual(go(1));
   });
   test('batalha continua igual depois de ida e volta pelo JSON', () => {
     const mk = () => { const s = game(); spawnTroop(s, 0, 'line', 200, 20); spawnTroop(s, 0, 'artillery', 200, 24); spawnTroop(s, 1, 'cavalry', 204, 20); run(s, 0.1); return s; };
