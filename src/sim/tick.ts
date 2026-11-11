@@ -5,6 +5,7 @@ import { ARMY } from './balance';
 import { inBattle, spawnArmy, troopStep } from './armies';
 import { reinforcing } from './routes';
 import { runMonth } from './economy';
+import { diplomacyMonth } from './diplomacy';
 import { found, logFor, type Building, type GameState } from './state';
 
 const EPS = 1e-9;
@@ -45,6 +46,7 @@ function economyStep(s: GameState, pm: ProvinceMap, months: number): void {
         }
       }
     }
+    if (boundary && s.nations.length) diplomacyMonth(s, pm); // depois das contas de todas as nações
   }
 }
 

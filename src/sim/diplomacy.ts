@@ -166,3 +166,51 @@ export function leaveAlliance(s: GameState, n: number, other: number): Result {
   if (human(s, n) || human(s, other)) logEvent(s, `Aliança entre a ${s.nations[n].name} e a ${s.nations[other].name} desfeita`);
   return OK;
 }
+
+/** Virada do mês: relação, trocas do comércio, acordos vencidos, cartas expiradas e respostas às propostas do jogador. */
+export function diplomacyMonth(s: GameState, pm: ProvinceMap): void {
+  const alive = s.nations.filter(n => n.alive), M = DIPLO.monthly;
+  // relação: guerra, pactos, inimigo em comum; fronteira sem pacto desgasta
+  for (const a of alive) for (const b of alive) {
+    if (b.id <= a.id) continue;
+    let d = 0;
+    if (a.atWar.includes(b.id)) d += M.war;
+    else {
+      const pacts = s.pacts.filter(p => (p.a === a.id && p.b === b.id) || (p.a === b.id && p.b === a.id));
+      for (const p of pacts) d += p.kind === 'trade' ? M.trade : p.kind === 'alliance' ? M.alliance : M.pact;
+      if (!pacts.length && borders(s, pm, a.id, b.id)) d += M.border;
+      if (a.atWar.some(x => b.atWar.includes(x))) d += M.commonFoe;
+    }
+    if (d) relate(s, a.id, b.id, d);
+  }
+  const mine = (p: Pact) => human(s, p.a) || human(s, p.b), other = (p: Pact) => s.nations[human(s, p.a) ? p.b : p.a].name;
+  // comércio: cada lado entrega o que tiver do combinado; faltas seguidas rompem
+  for (const p of s.pacts.filter(x => x.kind === 'trade' && x.trade)) {
+    let short = false;
+    for (const [from, to, [k, q]] of [[p.a, p.b, p.trade!.aGives], [p.b, p.a, p.trade!.bGives]] as const) {
+      const give = Math.min(q, Math.max(0, s.nations[from].res[k]));
+      if (give < q - 1e-9) short = true;
+      s.nations[from].res[k] -= give; s.nations[to].res[k] += give;
+    }
+    p.missed = short ? p.missed + 1 : 0;
+    if (p.missed < DIPLO.tradeMissMax) continue;
+    endPact(s, p);
+    relate(s, p.a, p.b, DIPLO.events.tradeBroken);
+    if (mine(p)) logEvent(s, `Comércio com a ${other(p)} rompido: entregas em falta`);
+  }
+  // acordos com prazo vencido
+  for (const p of s.pacts.filter(x => x.until !== null && x.until <= s.month + 1e-9)) {
+    endPact(s, p);
+    if (mine(p)) logEvent(s, `Acordo de ${KIND_LABEL[p.kind]} com a ${other(p)} venceu`);
+  }
+  s.letters = s.letters.filter(l => l.expires > s.month + 1e-9);
+  // respostas às propostas do jogador
+  const player = s.nations.find(n => n.alive && !n.ai);
+  for (const q of s.pending.filter(x => x.answerAt <= s.month + 1e-9)) {
+    s.pending = s.pending.filter(x => x !== q);
+    if (!player) continue;
+    const name = s.nations[q.to].name, r = evaluate(s, pm, q.to, player.id, q.proposal);
+    const done = r.ok ? sign(s, pm, player.id, q.to, q.proposal) : r;
+    logEvent(s, done.ok ? `A ${name} aceitou: ${KIND_LABEL[q.proposal.kind]}` : `A ${name} recusou: ${done.reason}`);
+  }
+}

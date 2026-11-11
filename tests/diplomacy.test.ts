@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import { chooseCapital } from '../src/sim/commands';
-import { addPact, advantage, answerLetter, checkPropose, evaluate, leaveAlliance, pactBetween, propose, relate, relation, relationLabel, sign } from '../src/sim/diplomacy';
+import { addPact, advantage, answerLetter, checkPropose, diplomacyMonth, evaluate, leaveAlliance, pactBetween, propose, relate, relation, relationLabel, sign } from '../src/sim/diplomacy';
+import { eliminate } from '../src/sim/conquest';
 import { fall } from '../src/sim/conquest';
 import { spawnArmy } from '../src/sim/armies';
 import { newGame, type Bent, type GameState } from '../src/sim/state';
@@ -245,5 +246,80 @@ describe('a IA avalia', () => {
     expect(evaluate(s, pm, 0, 1, white)).toEqual({ ok: false, reason: 'Estamos vencendo' });
     s.month = 60;
     expect(evaluate(s, pm, 0, 1, white)).toEqual({ ok: true });
+  });
+});
+
+describe('virada do mês', () => {
+  const month = (s: GameState, k = 1) => { for (let i = 0; i < k; i++) { s.month += 1; diplomacyMonth(s, pm); } };
+  test('variação mensal da relação', () => {
+    const s = trio();
+    month(s);
+    expect([relation(s, 0, 1), relation(s, 1, 2), relation(s, 0, 2)]).toEqual([-1, -1, 0]); // fronteiras 0–1 e 1–2
+    const w = trio();
+    declareWar(w, 1, 2, pm); // −30
+    addPact(w, 'nonaggression', 0, 1, 99);
+    month(w);
+    expect(relation(w, 1, 2)).toBe(-33); // guerra −3 (sem o −1 de fronteira)
+    expect(relation(w, 0, 1)).toBe(1); // pacto +1, sem fronteira
+    expect(relation(w, 0, 2)).toBe(0);
+    const t2 = trio();
+    addPact(t2, 'trade', 0, 1, 99, { aGives: ['iron', 1], bGives: ['money', 1] });
+    addPact(t2, 'alliance', 1, 2, null);
+    declareWar(t2, 0, 2, pm); // 1 e 0 não são inimigos; aliado 1 entra contra 0? não: aliado do alvo (2) é 1 → 1 contra 0
+    expect(t2.nations[1].atWar).toContain(0);
+  });
+  test('inimigo em comum: +1', () => {
+    const s = trio();
+    s.nations.push({ ...s.nations[1], id: 3, name: 'Nação de X3', capital: -1, atWar: [] });
+    s.relations = s.relations.map(r => [...r, 0]).concat([[0, 0, 0, 0]]);
+    declareWar(s, 3, 0, pm); declareWar(s, 3, 2, pm);
+    month(s);
+    expect(relation(s, 0, 2)).toBe(1);
+  });
+  test('comércio troca na virada; falta entrega o que tem; 3 meses sem entregar rompem (−10)', () => {
+    const s = trio();
+    addPact(s, 'trade', 0, 1, 99, { aGives: ['iron', 10], bGives: ['money', 25] });
+    const i0 = s.nations[0].res.iron, m0 = s.nations[0].res.money, i1 = s.nations[1].res.iron, m1 = s.nations[1].res.money;
+    month(s);
+    expect([s.nations[0].res.iron, s.nations[0].res.money, s.nations[1].res.iron, s.nations[1].res.money]).toEqual([i0 - 10, m0 + 25, i1 + 10, m1 - 25]);
+    s.nations[0].res.iron = 4;
+    month(s);
+    expect(s.nations[0].res.iron).toBe(0);
+    expect(pactBetween(s, 0, 1, 'trade')!.missed).toBe(1);
+    month(s, 2);
+    expect(pactBetween(s, 0, 1, 'trade')).toBeUndefined();
+    expect(relation(s, 0, 1)).toBe(2 * 4 - 10);
+    expect(texts(s)).toContain('Comércio com a Nação de R1 rompido: entregas em falta');
+  });
+  test('acordos vencem; cartas expiram', () => {
+    const s = trio();
+    addPact(s, 'nonaggression', 0, 1, 2);
+    s.letters.push({ id: 1, from: 1, proposal: { kind: 'alliance' }, expires: 3 });
+    month(s, 2);
+    expect(pactBetween(s, 0, 1, 'nonaggression')).toBeUndefined();
+    expect(texts(s)).toContain('Acordo de não agressão com a Nação de R1 venceu');
+    expect(s.letters.length).toBe(1);
+    month(s);
+    expect(s.letters).toEqual([]);
+  });
+  test('proposta do jogador: resposta no mês seguinte (aceite e recusa com motivo)', () => {
+    const s = trio();
+    propose(s, pm, 0, 1, { kind: 'nonaggression' });
+    relate(s, 0, 2, -20);
+    propose(s, pm, 0, 2, { kind: 'nonaggression' });
+    month(s);
+    expect(s.pending).toEqual([]);
+    expect(pactBetween(s, 0, 1, 'nonaggression')).toBeDefined();
+    expect(texts(s)).toContain('A Nação de R1 aceitou: não agressão');
+    expect(texts(s)).toContain('A Nação de R2 recusou: Não confiamos em vocês');
+  });
+  test('nação eliminada leva pactos, cartas e pendências', () => {
+    const s = trio();
+    addPact(s, 'trade', 0, 1, 99, { aGives: ['iron', 1], bGives: ['money', 1] });
+    s.letters.push({ id: 1, from: 1, proposal: { kind: 'alliance' }, expires: 3 });
+    propose(s, pm, 0, 1, { kind: 'alliance' });
+    eliminate(s, pm, 1, 2);
+    expect([s.pacts, s.letters, s.pending]).toEqual([[], [], []]);
+    month(s);
   });
 });

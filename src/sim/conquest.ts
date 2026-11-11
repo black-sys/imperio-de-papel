@@ -85,6 +85,10 @@ export function eliminate(s: GameState, pm: ProvinceMap, loser: number, by: numb
     s.lots[id] = s.lots[id].map(() => null); s.veins[id] = s.veins[id].map(() => null);
   });
   s.occupations = s.occupations.filter(e => e.nation !== loser && s.owner[e.province] >= 0);
+  // diplomacia: os acordos, as cartas e as propostas dela acabam com ela
+  s.pacts = s.pacts.filter(p => p.a !== loser && p.b !== loser);
+  s.letters = s.letters.filter(l => l.from !== loser);
+  s.pending = s.pending.filter(q => q.to !== loser);
   logEvent(s, `A ${L.name} foi eliminada pela ${s.nations[by]?.name ?? 'guerra'}`);
   if (s.result) return;
   if (loser === 0) s.result = 'defeat';
