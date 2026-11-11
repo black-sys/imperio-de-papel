@@ -2,7 +2,7 @@ import { initHud, initTopbar, setInfo, setProgress, setSeedField, setTopbar, sho
 import { MapRenderer } from './client/map/renderer';
 import { pickAt, provinceAtTile, troopsInRect } from './client/map/pick';
 import { TileCache } from './client/map/tileCache';
-import { clampView, MIN_SCALE, toWorld, zoomAt, type View } from './client/map/view';
+import { clampView, minScale, toWorld, zoomAt, type View } from './client/map/view';
 import { renderPanel, setTip, toast } from './client/panel';
 import { WorldClient } from './client/worldClient';
 import { build, chooseCapital, colonize, moveTroops, recruit, setSpeed, upgrade, type Result } from './sim/commands';
@@ -21,13 +21,13 @@ const renderer = new MapRenderer(canvas);
 const tiles = new TileCache((L, x, y) => client.tile(L, x, y));
 const selectedTroops = new Set<number>();
 const groups = new Map<string, number[]>(); // Shift+1–9 salva, 1–9 chama
-let view: View = clampView({ cx: 2048, cy: 2048, scale: MIN_SCALE, w: innerWidth, h: innerHeight });
+let view: View = clampView({ cx: 2048, cy: 2048, scale: 0, w: innerWidth, h: innerHeight });
 let lastClose: View | null = null; // última vista de perto (tecla M)
 let seed = parseSeed(new URLSearchParams(location.search).get('seed')) ?? randomSeed();
 let pm: ProvinceMap | null = null;
 let game: GameState | null = null;
 let moveGrid: MoveGrid | null = null;
-let pins: { x: number; y: number }[] = [];
+let pins: { x: number; y: number; province: number }[] = [];
 let lastSpeed = 1, seenEvents = 0, selected = -1;
 
 async function load(s: number) {
@@ -47,8 +47,8 @@ async function load(s: number) {
   setProgress(null, 1);
   renderer.setWorld(pm, tiles);
   // tela inicial: continente inteiro com selos nas capitais sugeridas
-  pins = pm.suggestedCapitals.map(i => pm!.provinces[i].center);
-  view = clampView({ ...view, scale: MIN_SCALE });
+  pins = pm.suggestedCapitals.map(i => ({ ...pm!.provinces[i].center, province: i }));
+  view = clampView({ ...view, scale: 0 }); // 0 = zoom mínimo desta tela
   toast('Escolha onde fundar sua capital: clique num selo ♜');
 }
 
@@ -100,7 +100,7 @@ window.addEventListener('keydown', e => {
   const k = e.key.toLowerCase();
   if (k === 'm') {
     // alterna entre o continente e a última vista de perto
-    if (view.scale > MIN_SCALE * 1.01) { lastClose = view; view = clampView({ ...view, scale: MIN_SCALE }); }
+    if (view.scale > minScale(view) * 1.01) { lastClose = view; view = clampView({ ...view, scale: 0 }); }
     else if (lastClose) view = clampView({ ...lastClose, w: view.w, h: view.h });
   }
   if (k === 'escape') selectedTroops.clear();
@@ -145,7 +145,7 @@ canvas.addEventListener('pointerup', e => {
   const b = box;
   down = null; box = null;
   if (b) return pickTroops(troopsInRect(game, view, b[0], b[1], b[2], b[3]), e.shiftKey);
-  const hit = pickAt(game, pm, view, e.clientX, e.clientY);
+  const hit = pickAt(game, pm, view, e.clientX, e.clientY, true, pins);
   if (hit?.kind === 'troop') return pickTroops([hit.id], e.shiftKey);
   if (e.shiftKey) return;
   selectedTroops.clear();

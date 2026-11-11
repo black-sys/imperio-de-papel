@@ -70,3 +70,11 @@ test('markersKey: muda só com o que aparece', () => {
   expect(markersKey(s, pm, view, o)).toBe(k3);
   expect(k3).not.toBe(k2);
 });
+
+test('selo da capital sugerida é alvo de clique, mesmo com o centro fora da província', () => {
+  const s = game();
+  const pins = [{ x: 30, y: 30, province: 1 }]; // centro desenhado na província 0, mas o selo é da 1
+  const [sx, sy] = scr(30, 30);
+  expect(pickAt(s, pm, view, sx + 8, sy, true, pins)).toEqual({ kind: 'province', province: 1 });
+  expect(pickAt(s, pm, view, sx + 30, sy, true, pins)).toEqual({ kind: 'province', province: 0 });
+});

@@ -24,7 +24,7 @@ export function cityAt(s: GameState, pm: ProvinceMap, id: number): { x: number; 
 export type Pick = { kind: 'troop'; id: number } | { kind: 'city' | 'fortress' | 'province'; province: number } | null;
 
 /** O que está sob o ponto da tela: tropa > cidade > fortaleza > província. */
-export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: number, mineOnly = true): Pick {
+export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: number, mineOnly = true, pins: { x: number; y: number; province?: number }[] = []): Pick {
   const PAD = 14; // folga além do retângulo da tropa (acima fica o número)
   let best: { id: number; d: number } | null = null;
   for (const t of s.troops) {
@@ -38,6 +38,8 @@ export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: n
   const near = (x: number, y: number, r: number) => { const [px, py] = toScreen(v, x, y); return Math.hypot(px - sx, py - sy) <= r; };
   for (let id = 0; id < s.owner.length; id++) { const c = s.owner[id] >= 0 ? cityAt(s, pm, id) : null; if (c && near(c.x, c.y, CITY_R)) return { kind: 'city', province: id }; }
   if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) { const c = pm.provinces[f.province].sites[0]; if (c && near(c.x, c.y, FORT_R)) return { kind: 'fortress', province: f.province }; }
+  // selo de capital sugerida (raio 11 px + folga): vale a província dele, mesmo que o centro caia fora dela
+  for (const pin of pins) if (pin.province !== undefined && near(pin.x, pin.y, 13)) return { kind: 'province', province: pin.province };
   const [x, y] = toWorld(v, sx, sy), p = provinceAtTile(pm, x, y);
   return p >= 0 ? { kind: 'province', province: p } : null;
 }

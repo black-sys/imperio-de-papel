@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { clampView, fallbackFor, levelFor, MAX_SCALE, MIN_SCALE, tileSpan, toScreen, toWorld, visibleTiles, zoomAt, type View } from '../src/client/map/view';
+import { clampView, fallbackFor, levelFor, MAX_SCALE, MIN_SCALE, minScale, tileSpan, toScreen, toWorld, visibleTiles, zoomAt, type View } from '../src/client/map/view';
 
 const rng = (() => { let a = 7; return () => ((a = (Math.imul(a, 1103515245) + 12345) >>> 0) / 4294967296); })();
 const v = (o: Partial<View> = {}): View => ({ cx: 2048, cy: 2048, scale: 1, w: 1280, h: 800, ...o });
@@ -74,4 +74,15 @@ test('substituto: o ladrilho do nível acima que contém este', () => {
   expect(f).toEqual({ L: 1, x: 2, y: 4 });
   expect(f.x * tileSpan(1) <= 5 * tileSpan(0) && (5 + 1) * tileSpan(0) <= (f.x + 1) * tileSpan(1)).toBe(true);
   expect(fallbackFor({ L: 4, x: 1, y: 1 })).toBeNull();
+});
+
+test('tela baixa: o zoom mínimo diminui para caber o continente inteiro', () => {
+  const small = { cx: 2048, cy: 2048, scale: 0.01, w: 1366, h: 650 };
+  expect(minScale(small)).toBeCloseTo(650 / 4096, 9);
+  const a = clampView(small);
+  expect(a.scale).toBeCloseTo(650 / 4096, 9);
+  expect(toScreen(a, 0, 0)[1]).toBeGreaterThanOrEqual(-1e-9);
+  expect(toScreen(a, 4096, 4096)[1]).toBeLessThanOrEqual(650 + 1e-9);
+  expect(minScale({ ...small, h: 1080, w: 1920 })).toBe(MIN_SCALE); // tela comum: o mínimo de sempre
+  expect(levelFor(650 / 4096)).toBe(4);
 });

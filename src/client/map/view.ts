@@ -6,6 +6,9 @@ export const TILE_PX = 192, LEVELS = 5, MAX_SCALE = 3, MIN_SCALE = MAX_SCALE / 2
 export interface View { cx: number; cy: number; scale: number; w: number; h: number }
 export interface TileId { L: number; x: number; y: number }
 
+/** Zoom mínimo para esta tela: o de sempre, ou menor se a tela for baixa demais para o continente inteiro. */
+export const minScale = (v: { w: number; h: number }) => Math.min(MIN_SCALE, Math.min(v.w, v.h) / WORLD_TILES);
+
 export const toScreen = (v: View, x: number, y: number): [number, number] => [(x - v.cx) * v.scale + v.w / 2, (y - v.cy) * v.scale + v.h / 2];
 export const toWorld = (v: View, sx: number, sy: number): [number, number] => [(sx - v.w / 2) / v.scale + v.cx, (sy - v.h / 2) / v.scale + v.cy];
 
@@ -15,14 +18,14 @@ export const toWorld = (v: View, sx: number, sy: number): [number, number] => [(
  * capitais sugeridas ficam quase todas na costa.
  */
 export function clampView(v: View): View {
-  const scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale));
-  const axis = (c: number) => (scale <= MIN_SCALE ? WORLD_TILES / 2 : Math.min(WORLD_TILES, Math.max(0, c)));
+  const lo = minScale(v), scale = Math.min(MAX_SCALE, Math.max(lo, v.scale));
+  const axis = (c: number) => (scale <= lo ? WORLD_TILES / 2 : Math.min(WORLD_TILES, Math.max(0, c)));
   return { ...v, scale, cx: axis(v.cx), cy: axis(v.cy) };
 }
 
 /** Zoom mantendo fixo o ponto do mundo sob (sx, sy). */
 export function zoomAt(v: View, sx: number, sy: number, factor: number): View {
-  const [wx, wy] = toWorld(v, sx, sy), scale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, v.scale * factor));
+  const [wx, wy] = toWorld(v, sx, sy), scale = Math.min(MAX_SCALE, Math.max(minScale(v), v.scale * factor));
   return clampView({ ...v, scale, cx: wx - (sx - v.w / 2) / scale, cy: wy - (sy - v.h / 2) / scale });
 }
 
