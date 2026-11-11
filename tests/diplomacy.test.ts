@@ -1,0 +1,132 @@
+import { describe, expect, test } from 'vitest';
+import { chooseCapital } from '../src/sim/commands';
+import { addPact, pactBetween, relate, relation, relationLabel } from '../src/sim/diplomacy';
+import { fall } from '../src/sim/conquest';
+import { spawnArmy } from '../src/sim/armies';
+import { newGame, type Bent, type GameState } from '../src/sim/state';
+import { aiWarRoll, declareWar } from '../src/sim/war';
+import { makeRouteWorld } from './troopworld';
+
+const { pm } = makeRouteWorld(); // R0, R1, R2 em faixa (vizinhas em cadeia)
+/** Três nações: 0 (jogador) em R0, 1 em R1, 2 em R2. */
+export const trio = (bent: Bent = 'industrial'): GameState => {
+  const s = newGame(pm);
+  chooseCapital(s, pm, 0);
+  for (const id of [1, 2]) {
+    s.nations.push({ ...s.nations[0], id, name: `Nação de R${id}`, bent, ai: true, capital: id, res: { ...s.nations[0].res }, atWar: [], founded: 0 });
+    s.owner[id] = id; s.city[id] = { level: 2, remaining: 0 }; s.connected[id] = true;
+  }
+  s.relations = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
+  return s;
+};
+const texts = (s: GameState) => s.events.map(e => e.text);
+
+describe('relação', () => {
+  test('começa em 0, é simétrica e limitada', () => {
+    const s = trio();
+    expect(relation(s, 0, 1)).toBe(0);
+    relate(s, 0, 1, 30);
+    expect(relation(s, 1, 0)).toBe(30);
+    relate(s, 0, 1, 500);
+    expect(relation(s, 0, 1)).toBe(100);
+    relate(s, 0, 1, -900);
+    expect(relation(s, 0, 1)).toBe(-100);
+  });
+  test('rótulos', () => {
+    expect([50, 15, 14, 0, -14, -15, -50, -51].map(relationLabel)).toEqual(['amistosa', 'cordial', 'neutra', 'neutra', 'neutra', 'fria', 'fria', 'hostil']);
+  });
+});
+
+describe('guerra com pactos', () => {
+  test('declarar guerra custa −30 de relação com o alvo', () => {
+    const s = trio();
+    declareWar(s, 1, 2, pm);
+    expect(relation(s, 1, 2)).toBe(-30);
+  });
+  test('trair um pacto de não agressão: −50 com a vítima, −25 com as outras, o pacto acaba', () => {
+    const s = trio();
+    addPact(s, 'nonaggression', 1, 2, 60);
+    expect(declareWar(s, 1, 2, pm)).toEqual({ ok: true });
+    expect(relation(s, 1, 2)).toBe(-50 - 30);
+    expect(relation(s, 1, 0)).toBe(-25);
+    expect(pactBetween(s, 1, 2, 'nonaggression')).toBeUndefined();
+    expect(texts(s)).toContain('A Nação de R1 traiu o pacto com a Nação de R2');
+  });
+  test('trégua também conta como traição', () => {
+    const s = trio();
+    addPact(s, 'truce', 0, 1, 60);
+    declareWar(s, 0, 1, pm);
+    expect(relation(s, 0, 2)).toBe(-25);
+  });
+  test('aliado não pode ser atacado; o aliado do alvo entra na guerra', () => {
+    const s = trio();
+    addPact(s, 'alliance', 1, 2, null);
+    expect(declareWar(s, 1, 2, pm)).toEqual({ ok: false, reason: 'Desfaça a aliança antes' });
+    expect(declareWar(s, 0, 1, pm)).toEqual({ ok: true });
+    expect(s.nations[2].atWar).toContain(0);
+    expect(s.nations[0].atWar.sort()).toEqual([1, 2]);
+    expect(texts(s)).toContain('A Nação de R2 entra na guerra ao lado da Nação de R1');
+  });
+  test('aliança defensiva não se propaga em cadeia', () => {
+    const s = trio();
+    s.nations.push({ ...s.nations[1], id: 3, name: 'Nação de X3', capital: -1, atWar: [] });
+    s.relations = s.relations.map(r => [...r, 0]).concat([[0, 0, 0, 0]]);
+    addPact(s, 'alliance', 1, 2, null);
+    addPact(s, 'alliance', 2, 3, null);
+    declareWar(s, 0, 1, pm);
+    expect(s.nations[2].atWar).toContain(0);
+    expect(s.nations[3].atWar).not.toContain(0);
+  });
+  test('a guerra cancela o comércio do par', () => {
+    const s = trio();
+    addPact(s, 'trade', 1, 2, 60, { aGives: ['iron', 10], bGives: ['money', 25] });
+    declareWar(s, 1, 2, pm);
+    expect(pactBetween(s, 1, 2, 'trade')).toBeUndefined();
+  });
+});
+
+describe('conquista e relação', () => {
+  test('província tomada: −20; cessão sem dano mantém os níveis', () => {
+    const s = trio();
+    s.lots[1][0] = { type: 'market', level: 2, remaining: 0 };
+    s.owner[2] = 2;
+    fall(s, pm, 2, 0, false); // capital do 2 cedida sem dano (ainda elimina)
+    expect(relation(s, 0, 2)).toBe(-20);
+    const t = trio();
+    t.lots[1][0] = { type: 'market', level: 2, remaining: 0 };
+    t.nations[1].capital = 2; // R1 não é capital
+    fall(t, pm, 1, 0, false);
+    expect(t.lots[1][0]).toEqual({ type: 'market', level: 2, remaining: 0 });
+    expect(t.city[1]).toEqual({ level: 2, remaining: 0 });
+  });
+});
+
+describe('a IA respeita a relação ao declarar', () => {
+  const firstWar = (setup: (s: GameState) => void) => {
+    for (let m = 24; m <= 400; m++) {
+      const s = trio('militarist');
+      spawnArmy(s, 1, Array.from({ length: 8 }, () => 'line' as const), 190, 32);
+      setup(s);
+      s.month = m;
+      aiWarRoll(s, pm, 1);
+      if (s.nations[1].atWar.length) return m;
+    }
+    return Infinity;
+  };
+  test('com relação cordial ou aliado, não declara', () => {
+    expect(firstWar(s => { relate(s, 1, 0, 20); relate(s, 1, 2, 20); })).toBe(Infinity);
+    expect(firstWar(s => { addPact(s, 'alliance', 1, 0, null); addPact(s, 'alliance', 1, 2, null); })).toBe(Infinity);
+    expect(firstWar(() => {})).toBeLessThan(Infinity);
+  });
+  test('com não agressão só trai se a relação for hostil', () => {
+    expect(firstWar(s => { addPact(s, 'nonaggression', 1, 0, 999); addPact(s, 'nonaggression', 1, 2, 999); })).toBe(Infinity);
+    expect(firstWar(s => { addPact(s, 'nonaggression', 1, 0, 999); addPact(s, 'nonaggression', 1, 2, 999); relate(s, 1, 2, -60); })).toBeLessThan(Infinity);
+  });
+});
+
+test('JSON com relações e pactos', () => {
+  const s = trio();
+  addPact(s, 'trade', 1, 2, 60, { aGives: ['iron', 10], bGives: ['money', 25] });
+  relate(s, 0, 2, -12);
+  expect(JSON.parse(JSON.stringify(s))).toEqual(s);
+});

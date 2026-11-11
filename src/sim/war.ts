@@ -1,6 +1,7 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { makeRng, subSeed } from '../worldgen/rng';
-import { WAR } from './balance';
+import { DIPLO, WAR } from './balance';
+import { alliesOf, endPact, pactBetween, relate, relation } from './diplomacy';
 import { logEvent, type GameState } from './state';
 
 type Result = { ok: true } | { ok: false; reason: string };
@@ -19,9 +20,31 @@ export function declareWar(s: GameState, n: number, target: number, pm?: Provinc
   if (!a?.alive || !b?.alive) return no('Nação inválida');
   if (n === target) return no('Não pode declarar guerra a si mesma');
   if (a.atWar.includes(target)) return no('Já em guerra');
+  if (pactBetween(s, n, target, 'alliance')) return no('Desfaça a aliança antes');
+  // trégua ou não agressão: declarar é traição, e todas as nações lembram
+  const pact = pactBetween(s, n, target, 'nonaggression') ?? pactBetween(s, n, target, 'truce');
+  if (pact) {
+    endPact(s, pact);
+    relate(s, n, target, DIPLO.events.betrayVictim);
+    for (const o of s.nations) if (o.alive && o.id !== n && o.id !== target) relate(s, n, o.id, DIPLO.events.betrayOthers);
+    logEvent(s, `A ${a.name} traiu o pacto com a ${b.name}`);
+  }
+  const trade = pactBetween(s, n, target, 'trade');
+  if (trade) endPact(s, trade);
+  relate(s, n, target, DIPLO.events.war);
   a.atWar.push(target);
   b.atWar.push(n);
   logEvent(s, `A ${a.name} declarou guerra à ${b.name}`);
+  // aliança defensiva: os aliados do alvo entram contra quem declarou (sem arrastar os aliados deles)
+  for (const ally of alliesOf(s, target)) {
+    const c = s.nations[ally];
+    if (!c?.alive || ally === n || c.atWar.includes(n)) continue;
+    c.atWar.push(n); a.atWar.push(ally);
+    const t = pactBetween(s, n, ally, 'trade');
+    if (t) endPact(s, t);
+    logEvent(s, `A ${c.name} entra na guerra ao lado da ${b.name}`);
+    if (ally === 0 && !c.ai) s.speed = 0;
+  }
   if (target === 0 && !b.ai) s.speed = 0; // pausa para o jogador humano ler o aviso
   void pm;
   return { ok: true };
@@ -38,10 +61,15 @@ export function aiWarRoll(s: GameState, pm: ProvinceMap, n: number): void {
   const mine = battalions(s, n);
   for (const v of [...border].sort((x, y) => x - y)) {
     if (!s.nations[v]?.alive || me.atWar.includes(v)) continue;
+    const rel = relation(s, n, v);
+    if (rel >= 15 || pactBetween(s, n, v, 'alliance')) continue; // relação cordial ou aliado: não declara
+    // com trégua ou não agressão, só a Militarista hostil trai
+    if ((pactBetween(s, n, v, 'nonaggression') || pactBetween(s, n, v, 'truce')) && !(me.bent === 'militarist' && rel < -50)) continue;
     const theirs = battalions(s, v);
     let p = 0;
     if (me.bent === 'militarist') p = WAR.militarist * (mine >= WAR.strongRatio * theirs ? WAR.strongMult : 1);
     else if (mine > theirs) p = WAR.expansionist;
+    if (rel < -50) p *= 2;
     if (p > 0 && makeRng(subSeed(s.seed, `war:${n}:${s.month}:${v}`))() < p) { declareWar(s, n, v, pm); return; }
   }
 }

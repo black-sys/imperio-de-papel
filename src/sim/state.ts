@@ -24,6 +24,16 @@ export interface Route { id: number; owner: number; a: number; b: number; path: 
 /** Cidade: `remaining` > 0 = subindo para `level` (vale o nível anterior até lá). */
 export interface CityState { level: number; remaining: number }
 export type Bent = 'militarist' | 'expansionist' | 'industrial';
+/** Proposta diplomática, do ponto de vista de quem propõe (`give` = o que quem propõe entrega no comércio). */
+export type Proposal = { kind: 'peace'; cede: number[]; money: number; payer: number }
+  | { kind: 'nonaggression' } | { kind: 'alliance' }
+  | { kind: 'trade'; give: [keyof Res, number]; get: [keyof Res, number] };
+export type PactKind = 'truce' | 'nonaggression' | 'trade' | 'alliance';
+/** Acordo em vigor entre `a` e `b` até o mês `until` (null = sem prazo). Comércio: o que cada lado entrega por mês. */
+export interface Pact {
+  id: number; kind: PactKind; a: number; b: number; until: number | null;
+  trade?: { aGives: [keyof Res, number]; bGives: [keyof Res, number] }; missed: number;
+}
 /** Uma nação (0 = jogador): o que antes era só do jogador vive aqui. `ai` = joga sozinha (rivais; o teste de ritmo liga no 0). */
 export interface Nation {
   id: number; name: string; bent: Bent; incomeMult: number; alive: boolean; ai: boolean;
@@ -55,6 +65,12 @@ export interface GameState {
   nextRouteId: number;
   occupations: { province: number; nation: number; progress: number }[]; // meses de ocupação acumulados
   result: null | 'victory' | 'defeat';
+  relations: number[][]; // [a][b] === [b][a], de −100 a 100
+  pacts: Pact[];
+  nextPactId: number;
+  letters: { id: number; from: number; proposal: Proposal; expires: number }[]; // caixa do jogador
+  pending: { to: number; proposal: Proposal; answerAt: number }[]; // propostas do jogador aguardando resposta
+  nextLetterId: number;
   depot: Res[]; // por província: carga guardada enquanto a cidade está desligada da capital
   connected: boolean[]; // por província: ligada à capital por rotas prontas e não cortadas
   clock: number; // meses já simulados em passos fixos (datas de tropas e batalhas)
@@ -66,6 +82,7 @@ export function newGame(pm: ProvinceMap, seed = 0): GameState {
     month: 0, speed: 0, seed, nations: [], colonizing: [], events: [], eventCount: 0,
     armies: [], nextArmyId: 1, recruiting: [], fortresses: [], battles: [], clock: 0, stepAcc: 0,
     stallWarned: {}, routes: [], nextRouteId: 1, occupations: [], result: null,
+    relations: [], pacts: [], nextPactId: 1, letters: [], pending: [], nextLetterId: 1,
     depot: pm.provinces.map(() => zeroRes()), connected: pm.provinces.map(() => false),
     owner: pm.provinces.map(() => -1),
     city: pm.provinces.map(() => null),

@@ -1,5 +1,6 @@
 import type { ProvinceMap } from '../worldgen/provinces';
-import { OCCUPY, zeroRes } from './balance';
+import { DIPLO, OCCUPY, zeroRes } from './balance';
+import { relate } from './diplomacy';
 import type { MoveGrid } from './movegrid';
 import { men, provinceAt } from './armies';
 import { activeLevel, logEvent, type Building, type GameState } from './state';
@@ -43,15 +44,18 @@ export function occupationStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt
 }
 
 /** Dano de guerra num prédio: perde um nível; N1 ou em obra é destruído. */
-const damage = (b: Building | null): Building | null => (!b || b.remaining > 0 || b.level <= 1 ? null : { ...b, level: b.level - 1 });
+const hurt = (b: Building | null): Building | null => (!b || b.remaining > 0 || b.level <= 1 ? null : { ...b, level: b.level - 1 });
 
-/** A província cai para a nação `n` com dano de guerra; se era capital, a dona é eliminada. */
-export function fall(s: GameState, pm: ProvinceMap, province: number, n: number): void {
+/** A província cai para a nação `n` com dano de guerra (`damage` false: cessão num tratado); se era capital, a dona é eliminada. */
+export function fall(s: GameState, pm: ProvinceMap, province: number, n: number, damage = true): void {
   const prev = s.owner[province], name = pm.provinces[province].name;
-  s.lots[province] = s.lots[province].map(damage);
-  s.veins[province] = s.veins[province].map(damage);
-  const c = s.city[province];
-  s.city[province] = { level: Math.max(1, (c?.level ?? 1) - 1), remaining: 0 };
+  if (damage) {
+    s.lots[province] = s.lots[province].map(hurt);
+    s.veins[province] = s.veins[province].map(hurt);
+    const c = s.city[province];
+    s.city[province] = { level: Math.max(1, (c?.level ?? 1) - 1), remaining: 0 };
+  }
+  if (prev >= 0) relate(s, prev, n, DIPLO.events.province);
   s.recruiting = s.recruiting.filter(r => r.province !== province);
   s.colonizing = s.colonizing.filter(x => x.province !== province);
   s.routes = s.routes.filter(r => r.a !== province && r.b !== province);

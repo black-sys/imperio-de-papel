@@ -41,6 +41,8 @@ function foundNation(s: GameState, pm: ProvinceMap, id: number, bent: Bent, inco
     res: startingStock(pm, id), capital: id, grainShort: false, armyNumber: 0, atWar: [], founded: s.month,
   };
   s.nations.push(n);
+  for (const row of s.relations) row.push(0); // relação começa neutra com todos
+  s.relations.push(s.nations.map(() => 0));
   s.owner[id] = n.id;
   s.city[id] = { level: 2, remaining: 0 };
   s.connected[id] = true; // a capital é sempre ligada

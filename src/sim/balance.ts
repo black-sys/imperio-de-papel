@@ -101,3 +101,16 @@ export const AI_BENT = {
   industrial: { garrisonShare: 1 / 3, margin: 3 },
 };
 export const AI = { defendRatio: 0.8, recomposeBelow: 0.5, phaseSteps: 10, targetTiles: 20 }; // phaseSteps: passos de tropa entre as nações no mês
+
+// ---- diplomacia (ciclo 5) ----
+export const DIPLO = {
+  months: 60, letterMonths: 3, tradeMissMax: 3, maxQty: 999,
+  monthly: { border: -1, war: -3, trade: 2, alliance: 2, pact: 1, commonFoe: 1 },
+  events: { war: -30, province: -20, betrayVictim: -50, betrayOthers: -25, leave: -30, tradeBroken: -10, peace: 10 },
+};
+export const PRICE = { money: 1, grain: 1, wood: 1, coal: 2, iron: 2, steel: 5, arms: 4 };
+export const AI_DIPLO = {
+  strongRatio: 1.5, tradeRatio: 0.9, tradeRatioIndustrial: 0.8, shortBonus: 1.2, allyRelation: 40, allyPropose: 50,
+  peaceLosing: -0.2, peaceMonths: 48, peaceWinning: 0.2, exhaustionPer12: 0.1, provinceWeight: 0.1, indemnityShare: 0.3,
+  napBent: { industrial: 25, expansionist: 0, militarist: -20 }, napInterest: 20, expansionistEvery: 12,
+};
