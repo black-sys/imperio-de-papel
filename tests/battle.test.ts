@@ -38,7 +38,8 @@ describe('vantagens', () => {
     expect(men(a)).toBe(12);
     const s2 = game(1, true), c = spawnArmy(s2, 0, ['line'], 200, 20), d = spawnArmy(s2, 1, ['line'], 204, 20);
     run(s2, 0.08);
-    expect([men(c), men(d)]).toEqual([20, 20]);
+    expect(men(c)).toBe(20);
+    expect(men(d)).toBeCloseTo(20 - 0.08, 6); // só o desgaste: a nação inimiga dos testes não tem rede
   });
   test('artilharia é lenta: 100 tiles por mês', () => {
     const s = game(2), t = spawnArmy(s, 0, ['artillery'], 10, 102);
@@ -57,13 +58,14 @@ describe('vantagens', () => {
 
 describe('terreno', () => {
   test('defensor na floresta perde menos', () => {
-    const open = fight(['line'], ['line'], 100, 100), forest = fight(['line'], ['line'], 38, 100, 1, -4); // inimigo em x=34 (célula 8, floresta); jogador fora dela
+    // o jogador defende: em x=34 (célula 8, floresta) ou em campo aberto; o inimigo ataca de fora
+    const open = fight(['line'], ['line'], 100, 100), forest = fight(['line'], ['line'], 34, 100);
     expect(grid.cover[25 * 64 + 8]).toBe(1);
-    expect(men(forest.b[0])).toBeGreaterThan(men(open.b[0]) + 1);
+    expect(men(forest.a[0])).toBeGreaterThan(men(open.a[0]) + 1);
   });
   test('quem luta de dentro do rio causa menos dano', () => {
-    const dry = fight(['line'], ['line'], 100, 100), river = fight(['line'], ['line'], 130, 100); // jogador na célula 32 (rio)
-    expect(men(river.b[0])).toBeGreaterThan(men(dry.b[0]) + 1);
+    const dry = fight(['line'], ['line'], 100, 100), river = fight(['line'], ['line'], 126, 100); // inimigo em x=130, célula 32 (rio)
+    expect(men(river.a[0])).toBeGreaterThan(men(dry.a[0]) + 1);
   });
 });
 

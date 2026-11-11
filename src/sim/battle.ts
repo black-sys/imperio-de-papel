@@ -4,6 +4,7 @@ import { BATTLE, SUPPLY, TROOPS, type TroopType } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
 import { logEvent, type Army, type Battalion, type Battle, type GameState } from './state';
 import { men, splitOverflow } from './armies';
+import { hostile } from './war';
 
 /** Quem cada tipo castiga (+counter de dano). */
 const COUNTERS: Record<TroopType, TroopType> = { line: 'cavalry', cavalry: 'artillery', artillery: 'line' };
@@ -35,7 +36,7 @@ export function battleStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: nu
   for (const a of s.armies) {
     if (a.owner === -1 || engaged.has(a.id) || routed(a)) continue; // fortalezas não se enfrentam: todo contato tem um exército móvel
     for (const d of s.armies) {
-      if (d.owner === a.owner || routed(d) || dist(a, d) > BATTLE.contact) continue;
+      if (!hostile(s, a.owner, d.owner) || routed(d) || dist(a, d) > BATTLE.contact) continue;
       let b = s.battles.find(b => b.armyIds.includes(d.id));
       if (!b) {
         s.battles.push(b = { x: (a.x + d.x) / 2, y: (a.y + d.y) / 2, start: s.clock, armyIds: [], sides: [] });
@@ -47,7 +48,7 @@ export function battleStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: nu
   }
   // quem está perto de uma batalha com inimigos entra nela
   for (const b of s.battles) for (const t of s.armies)
-    if (!engaged.has(t.id) && !routed(t) && dist(t, b) <= BATTLE.join && b.sides.some(side => side.owner !== t.owner)) { join(b, t); engaged.add(t.id); }
+    if (!engaged.has(t.id) && !routed(t) && dist(t, b) <= BATTLE.join && b.sides.some(side => hostile(s, side.owner, t.owner))) { join(b, t); engaged.add(t.id); }
 
   for (const b of s.battles) {
     const armies = b.armyIds.map(id => byId.get(id)!);
@@ -57,7 +58,7 @@ export function battleStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: nu
     const losses = new Map<Battalion, number>();
     for (const { army: A, bat: a } of units) {
       if (opening && a.type !== 'artillery') continue;
-      const foes = units.filter(u => u.army.owner !== A.owner), total = foes.reduce((n, u) => n + u.bat.soldiers, 0);
+      const foes = units.filter(u => hostile(s, u.army.owner, A.owner)), total = foes.reduce((n, u) => n + u.bat.soldiers, 0);
       if (total <= 0) continue;
       const ca = cellAt(grid, A.x, A.y);
       const power = a.soldiers * TROOPS[a.type].attack * BATTLE.rate * dt * (ca >= 0 && grid.cost[ca] === 3 ? BATTLE.river : 1) * (A.supply && !A.supply.cut ? SUPPLY.lineBonus : 1);
@@ -96,7 +97,7 @@ export function battleStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: nu
   // fim: menos de dois lados ainda lutando
   for (const b of [...s.battles]) {
     const left = b.armyIds.map(id => byId.get(id)!).filter(t => s.armies.includes(t) && !routed(t));
-    if (new Set(left.map(t => t.owner)).size >= 2) continue;
+    if (left.some(x => left.some(y => hostile(s, x.owner, y.owner)))) continue;
     s.battles.splice(s.battles.indexOf(b), 1);
     for (const t of left) { t.morale = 1; splitOverflow(s, t); }
     const me = b.sides.find(side => side.owner === 0);

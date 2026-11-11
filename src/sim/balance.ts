@@ -92,3 +92,4 @@ export const COLONIZE = { money: 70, growth: 1.39, wood: 50, woodGrowth: 1.15, m
 // ---- nações (ciclo 4) ----
 export const DIFFICULTY = { easy: 0.7, normal: 1, hard: 1.3 }; // renda dos rivais (o jogador é sempre 1)
 export const MAX_RIVALS = 4;
+export const WAR = { militarist: 0.15, expansionist: 0.08, strongMult: 2, strongRatio: 1.5, graceMonths: 24 };

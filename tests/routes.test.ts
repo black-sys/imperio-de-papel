@@ -10,14 +10,14 @@ import { generateWorld } from '../src/worldgen/global/world';
 import { generateProvinces } from '../src/worldgen/provinces';
 import { found, newGame, type GameState } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
-import { makeRouteWorld } from './troopworld';
+import { addEnemy, makeRouteWorld } from './troopworld';
 
 const { pm, grid } = makeRouteWorld();
 const rich = { money: 9000, grain: 900, wood: 900, coal: 900, iron: 900, steel: 900, arms: 900 };
 /** Capital na 0; as províncias 1 e 2 já são suas (cidade nível 1, sem rota). */
 const game = (): GameState => {
   const s = newGame(pm);
-  chooseCapital(s, pm, 0);
+  chooseCapital(s, pm, 0); addEnemy(s);
   found(s, 1); found(s, 2);
   s.nations[0].res = { ...rich };
   return s;

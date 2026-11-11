@@ -29,10 +29,16 @@ export function makeTestWorld(): { pm: ProvinceMap; grid: MoveGrid } {
 }
 
 export const world = makeTestWorld();
+/** Nação 1 sem território, em guerra com o jogador: o "outro reino" dos testes de tropas. */
+export function addEnemy(s: GameState): void {
+  s.nations.push({ ...s.nations[0], id: 1, name: 'Nação inimiga', ai: false, capital: -1, res: { ...s.nations[0].res }, atWar: [0] });
+  s.nations[0].atWar.push(1);
+}
 /** Capital na província 0 (cidade nível 2), guarnição pronta no lote 1 e recursos de sobra. Território seu e ligado abastece as tropas. */
 export const game = (level = 1, both = false): GameState => {
   const s = newGame(world.pm);
   chooseCapital(s, world.pm, 0);
+  addEnemy(s);
   // `both`: a província 1 também é sua e ligada (lutas e marchas lá acontecem com suprimento)
   if (both) {
     s.owner[1] = 0; s.city[1] = { level: 1, remaining: 0 };

@@ -3,6 +3,7 @@ import type { ProvinceMap } from '../worldgen/provinces';
 import { findCellPath } from './astar';
 import { BATTLE, REINFORCE, RES_KEYS, RES_NAMES, ROUTE, SUPPLY, TROOPS, type Res } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
+import { hostile } from './war';
 import { activeLevel, logFor, type Army, type GameState, type Route } from './state';
 
 type Result = { ok: true } | { ok: false; reason: string };
@@ -124,7 +125,7 @@ export function updateRoutes(s: GameState, pm: ProvinceMap, grid: MoveGrid): voi
  * exércitos mudam de lugar (fortalezas ficam paradas): cortes de rotas e de linhas viram consultas diretas.
  */
 const threatCache = new WeakMap<GameState, Map<number, { sig: number; mask: Uint8Array }>>();
-const threatens = (s: GameState, owner: number, n: number) => owner !== n;
+const threatens = (s: GameState, owner: number, n: number) => hostile(s, owner, n);
 function threatMask(s: GameState, grid: MoveGrid, n: number): Uint8Array {
   let sig = 0;
   for (const t of s.armies) if (threatens(s, t.owner, n)) sig = (Math.imul(sig, 31) + ((t.x * 4) | 0) * 7919 + ((t.y * 4) | 0)) | 0;
@@ -205,7 +206,7 @@ export function dropSupply(s: GameState, troopId: number, n = 0): Result {
  */
 export function updateSupply(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: number): void {
   for (const t of s.armies) {
-    if (t.owner !== 0) { t.supplied = true; continue; }
+    if (t.owner < 0) { t.supplied = true; continue; } // fortalezas sempre
     const n = t.owner, cover = coverageMask(s, pm, grid, n); // fortalezas sempre; outros reinos ainda sem rede própria (ciclo 4)
     if (t.supply) {
       const end = cellCenter(grid, t.supply.path.at(-1) ?? 0);
