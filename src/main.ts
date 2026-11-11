@@ -1,19 +1,19 @@
 import { initHud, initTopbar, setInfo, setProgress, setSeedField, setTopbar, showError } from './client/hud';
 import { MapRenderer } from './client/map/renderer';
-import { pickAt, provinceAtTile, routeTargetAt, troopsInRect } from './client/map/pick';
+import { armiesInRect, pickAt, provinceAtTile, routeTargetAt } from './client/map/pick';
 import { TileCache } from './client/map/tileCache';
 import { clampView, minScale, toWorld, zoomAt, type View } from './client/map/view';
 import { costText } from './client/labels';
 import { renderPanel, setTip, toast, veinsAround, type PanelFocus } from './client/panel';
 import { WorldClient } from './client/worldClient';
-import { build, chooseCapital, colonize, moveTroops, recruit, setSpeed, upgrade, upgradeCity, type Place, type Result } from './sim/commands';
+import { build, chooseCapital, colonize, moveArmies, recruit, setSpeed, upgrade, upgradeCity, type Place, type Result } from './sim/commands';
 import { runMonth } from './sim/economy';
 import { addFortress, placeFortresses } from './sim/fortress';
-import { buildRoute, dropSupply, planRoute, removeRoute, supplyTroop } from './sim/routes';
+import { buildRoute, dropSupply, planRoute, removeRoute, supplyArmy } from './sim/routes';
 import { makeMoveGrid, type MoveGrid } from './sim/movegrid';
 import { newGame, type GameState } from './sim/state';
 import { tick } from './sim/tick';
-import { spawnTroop, troopCap } from './sim/troops';
+import { armyCap, battalionCount, mergeArmies, renameArmy, spawnArmy, splitArmy } from './sim/armies';
 import type { ProvinceMap } from './worldgen/provinces';
 import { parseSeed, randomSeed } from './worldgen/seed';
 
@@ -21,7 +21,7 @@ const client = new WorldClient();
 const canvas = document.getElementById('map') as HTMLCanvasElement;
 const renderer = new MapRenderer(canvas);
 const tiles = new TileCache((L, x, y) => client.tile(L, x, y));
-const selectedTroops = new Set<number>();
+const selectedArmies = new Set<number>();
 const groups = new Map<string, number[]>(); // Shift+1–9 salva, 1–9 chama
 let view: View = clampView({ cx: 2048, cy: 2048, scale: 0, w: innerWidth, h: innerHeight });
 let lastClose: View | null = null; // última vista de perto (tecla M)
@@ -40,7 +40,7 @@ async function load(s: number) {
   history.replaceState(null, '', `?seed=${s}`);
   showError(null);
   pm = null; game = null; moveGrid = null; pins = []; selected = -1; seenEvents = 0; lastSpeed = 1; lastClose = null;
-  groups.clear(); selectedTroops.clear(); routeFrom = null; preview = null;
+  groups.clear(); selectedArmies.clear(); routeFrom = null; preview = null;
   tiles.clear(); renderer.setWorld(null, null);
   let w: { provinces: ProvinceMap; map: Parameters<typeof makeMoveGrid>[0] };
   try { w = await client.generate(s, setProgress); }
@@ -58,13 +58,13 @@ async function load(s: number) {
 
 const report = (r: Result) => { if (!r.ok) toast(r.reason); };
 /** Seleciona tropas; com Shift soma (ou tira, se já estavam todas). */
-function pickTroops(ids: number[], add: boolean): void {
-  if (!add) selectedTroops.clear();
-  const all = add && ids.every(id => selectedTroops.has(id));
-  for (const id of ids) all ? selectedTroops.delete(id) : selectedTroops.add(id);
+function pickArmies(ids: number[], add: boolean): void {
+  if (!add) selectedArmies.clear();
+  const all = add && ids.every(id => selectedArmies.has(id));
+  for (const id of ids) all ? selectedArmies.delete(id) : selectedArmies.add(id);
 }
 function order(x: number, y: number): void {
-  if (game && moveGrid && selectedTroops.size) report(moveTroops(game, moveGrid, [...selectedTroops], x, y));
+  if (game && moveGrid && selectedArmies.size) report(moveArmies(game, moveGrid, [...selectedArmies], x, y));
 }
 const actions = {
   colonize: (id: number) => game && pm && report(colonize(game, pm, id)),
@@ -82,11 +82,14 @@ const actions = {
     view = clampView({ ...view, cx: c.x, cy: c.y, scale: 1.5 });
     toast('Capital fundada. O tempo está pausado: espaço ou 1× para começar.');
   },
-  close: () => { selected = -1; focus = null; selectedTroops.clear(); routeFrom = null; preview = null; },
+  close: () => { selected = -1; focus = null; selectedArmies.clear(); routeFrom = null; preview = null; },
   startRoute: (id: number) => { routeFrom = id; preview = null; toast('Clique noutra cidade sua · Esc cancela'); },
   removeRoute: (routeId: number) => game && pm && report(removeRoute(game, routeId, pm)),
-  supply: (troopId: number) => game && pm && moveGrid && report(supplyTroop(game, pm, moveGrid, troopId)),
-  dropSupply: (troopId: number) => game && report(dropSupply(game, troopId)),
+  supply: (armyId: number) => game && pm && moveGrid && report(supplyArmy(game, pm, moveGrid, armyId)),
+  dropSupply: (armyId: number) => game && report(dropSupply(game, armyId)),
+  split: (armyId: number, indices: number[]) => game && report(splitArmy(game, armyId, indices)),
+  merge: (into: number, from: number) => { if (game) { report(mergeArmies(game, into, from)); selectedArmies.delete(from); } },
+  rename: (armyId: number) => { const a = game?.armies.find(x => x.id === armyId); const n = a && prompt('Nome do exército', a.name); if (game && n !== null && n !== undefined) report(renameArmy(game, armyId, n)); },
 };
 
 function speed(v: number) {
@@ -112,11 +115,11 @@ window.addEventListener('keydown', e => {
     if (view.scale > minScale(view) * 1.01) { lastClose = view; view = clampView({ ...view, scale: 0 }); }
     else if (lastClose) view = clampView({ ...lastClose, w: view.w, h: view.h });
   }
-  if (k === 'escape') { selectedTroops.clear(); routeFrom = null; preview = null; }
+  if (k === 'escape') { selectedArmies.clear(); routeFrom = null; preview = null; }
   if (k === 'r' && game && selected >= 0 && game.owner[selected] === 0 && game.city[selected]) actions.startRoute(selected);
   if (/^Digit[1-9]$/.test(e.code) && game) {
-    if (e.shiftKey) groups.set(e.code, [...selectedTroops]);
-    else pickTroops((groups.get(e.code) ?? []).filter(id => game!.troops.some(t => t.id === id)), false);
+    if (e.shiftKey) groups.set(e.code, [...selectedArmies]);
+    else pickArmies((groups.get(e.code) ?? []).filter(id => game!.armies.some(t => t.id === id)), false);
   }
   if (k === ' ' && game) { e.preventDefault(); if (game.capital >= 0) speed(game.speed === 0 ? lastSpeed : 0); } // antes da capital o tempo fica parado
   keys.add(k);
@@ -154,7 +157,7 @@ canvas.addEventListener('pointerup', e => {
   if (e.button !== 0 || !down || !pm || !game) return;
   const b = box;
   down = null; box = null;
-  if (b) return pickTroops(troopsInRect(game, view, b[0], b[1], b[2], b[3]), e.shiftKey);
+  if (b) return pickArmies(armiesInRect(game, view, b[0], b[1], b[2], b[3]), e.shiftKey);
   const hit = pickAt(game, pm, view, e.clientX, e.clientY, true, pins);
   if (routeFrom !== null) { // modo traçar rota: o clique numa cidade sua confirma; fora dela, sai do modo
     const target = routeTargetAt(pm, view, e.clientX, e.clientY); // a mesma consulta da prévia: tropa ao lado da cidade não engole o clique
@@ -162,9 +165,9 @@ canvas.addEventListener('pointerup', e => {
     routeFrom = null; preview = null;
     return;
   }
-  if (hit?.kind === 'troop') return pickTroops([hit.id], e.shiftKey);
+  if (hit?.kind === 'army') return pickArmies([hit.id], e.shiftKey);
   if (e.shiftKey) return;
-  selectedTroops.clear();
+  selectedArmies.clear();
   selected = hit ? hit.province : -1;
   focus = hit?.kind === 'lot' ? { lot: hit.lot } : hit?.kind === 'vein' ? { vein: hit.vein } : null;
 });
@@ -203,18 +206,18 @@ function frame(now: number) {
   if (fw || rt) { const step = (900 * Math.min(dt, 0.1)) / view.scale; view = clampView({ ...view, cx: view.cx + rt * step, cy: view.cy - fw * step }); }
   if (pm && game) {
     if (game.capital >= 0) tick(game, pm, Math.min(dt, 1), moveGrid); // aba em segundo plano: no máximo 1 s por quadro
-    for (const id of selectedTroops) if (!game.troops.some(t => t.id === id)) selectedTroops.delete(id); // mortas saem da seleção
+    for (const id of selectedArmies) if (!game.armies.some(t => t.id === id)) selectedArmies.delete(id); // destruídos saem da seleção
     setTopbar(game.capital >= 0 ? { res: game.res, report: runMonth(game, pm, false), month: game.month, speed: game.speed,
-      troops: `${game.troops.filter(t => t.owner === 0).length + game.recruiting.length}/${troopCap(game)}`,
+      troops: `${battalionCount(game) + game.recruiting.length}/${armyCap(game)}`,
       depot: game.depot.reduce((a, d) => { for (const k of Object.keys(a) as (keyof typeof a)[]) a[k] += d[k]; return a; }, { money: 0, grain: 0, wood: 0, coal: 0, iron: 0, steel: 0, arms: 0 }) } : null);
-    renderPanel(game, pm, selected, actions, [...selectedTroops], focus);
+    renderPanel(game, pm, selected, actions, [...selectedArmies], focus);
     // eventos novos viram mensagens: compara com o total (o log só guarda os últimos 50)
     const fresh = game.eventCount - seenEvents;
     for (const ev of game.events.slice(Math.max(0, game.events.length - fresh))) toast(ev.text);
     seenEvents = game.eventCount;
   }
   canvas.style.cursor = routeFrom !== null ? 'copy' : 'crosshair';
-  renderer.draw(game, view, { selectedTroops, selectedProvince: selected, pins, grid: moveGrid, preview }, box);
+  renderer.draw(game, view, { selectedArmies, selectedProvince: selected, pins, grid: moveGrid, preview }, box);
   setInfo({ fps });
   frames++;
   if (now - fpsT > 500) { fps = Math.round((frames * 1000) / (now - fpsT)); frames = 0; fpsT = now; }
@@ -222,7 +225,7 @@ function frame(now: number) {
 }
 requestAnimationFrame(frame);
 if (import.meta.env.DEV) { // para testes no console
-  Object.assign(window, { renderer, tiles, selectedTroops, sim: { recruit, moveTroops, spawnTroop, addFortress, chooseCapital, planRoute } });
+  Object.assign(window, { renderer, tiles, selectedArmies, sim: { recruit, moveArmies, spawnArmy, addFortress, chooseCapital, planRoute } });
   Object.defineProperties(window, {
     game: { get: () => game }, pm: { get: () => pm }, moveGrid: { get: () => moveGrid },
     selected: { get: () => selected, set: v => (selected = v) }, view: { get: () => view, set: v => (view = clampView(v)) },

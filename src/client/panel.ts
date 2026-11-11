@@ -1,8 +1,9 @@
-import { BUILDINGS, CITY, DEPOT_MONTHS, RES_NAMES, SUPPLY, TROOPS, type BuildingType, type TroopType } from '../sim/balance';
+import { ARMY, BUILDINGS, CITY, DEPOT_MONTHS, REINFORCE, RES_NAMES, SUPPLY, TROOPS, type BuildingType, type TroopType } from '../sim/balance';
 import { checkBuild, checkColonize, checkRecruit, checkUpgrade, checkUpgradeCity, type Place, type Result } from '../sim/commands';
 import { buildCost, cityTax, colonizeCost, recruitCost, runMonth } from '../sim/economy';
 import { activeLevel, cityLevel, type GameState } from '../sim/state';
-import { inBattle } from '../sim/troops';
+import { inBattle, men } from '../sim/armies';
+import { reinforcing } from '../sim/routes';
 import type { ProvinceMap } from '../worldgen/provinces';
 import { costText, RES_ICON, roman, VEIN_NAME, veinLabel } from './labels';
 import { TROOP_ICON } from './map/markers';
@@ -18,8 +19,11 @@ export interface PanelActions {
   close(): void;
   startRoute(id: number): void;
   removeRoute(routeId: number): void;
-  supply(troopId: number): void;
-  dropSupply(troopId: number): void;
+  supply(armyId: number): void;
+  dropSupply(armyId: number): void;
+  split(armyId: number, indices: number[]): void;
+  merge(intoId: number, fromId: number): void;
+  rename(armyId: number): void;
 }
 /** Lugar para onde o painel rola ao abrir (clique num lote ou veio no mapa). */
 export type PanelFocus = { lot: number } | { vein: number } | null;
@@ -43,10 +47,10 @@ export function veinsAround(pm: ProvinceMap, id: number): string {
 }
 
 /** Painel lateral da província selecionada. Re-renderiza só quando o conteúdo muda (cliques não se perdem). */
-export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: number, act: PanelActions, troops: number[] = [], focus: PanelFocus = null): void {
-  const picked = s ? s.troops.filter(t => troops.includes(t.id)) : [];
+export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: number, act: PanelActions, armies: number[] = [], focus: PanelFocus = null): void {
+  const picked = s ? s.armies.filter(t => armies.includes(t.id)) : [];
   if (!s || !pm || (id < 0 && picked.length === 0)) { el.style.display = 'none'; lastHtml = ''; lastFocus = ''; return; }
-  if (picked.length) return show(troopsHtml(s, pm, picked), id, act, '');
+  if (picked.length) return show(armiesHtml(s, pm, picked), id, act, '');
   const p = pm.provinces[id], mine = s.owner[id] === 0 && !!s.city[id], fort = s.fortresses.find(f => f.province === id);
   let html = `<button class="x" data-a="close">✕</button><h2>${esc(p.name)}</h2>
     <div class="sub">${s.capital === id ? 'Sua capital' : mine ? 'Seu reino' : fort ? 'Fortaleza neutra' : 'Neutra'} · ${BIOME_NAMES[p.biome]}${p.coastal ? ' · costeira' : ''}</div>
@@ -59,7 +63,7 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
   } else if (!mine) {
     const col = s.colonizing.find(c => c.province === id);
     if (fort) {
-      const alive = s.troops.filter(t => t.owner === -1 && t.home === id);
+      const alive = s.armies.find(t => t.owner === -1 && t.home === id)?.battalions ?? [];
       const count = (type: TroopType) => { const n = alive.filter(t => t.type === type).length; return n ? `${TROOP_ICON[type]} ${n} × ${TROOPS[type].name.toLowerCase()}` : ''; };
       html += `<p><b>Guarnição:</b> ${TROOP_TYPES.map(count).filter(Boolean).join(', ')}. Derrote-a para tomar a província.</p>`;
     }
@@ -100,7 +104,11 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
         const q = s.recruiting.find(r => r.province === id && r.lot === lot);
         train = q ? `<small>Treinando ${TROOPS[q.type].name.toLowerCase()}… faltam ${q.remaining.toFixed(1)} meses</small>`
           : TROOP_TYPES.map(t => button(`r:${lot}:${t}`, `${TROOP_ICON[t]} ${TROOPS[t].name}`, checkRecruit(s, pm, id, lot, t), ` <small>${costText({ ...recruitCost(s, t), months: TROOPS[t].months })}</small>`)).join('');
-        train = `<div class="act">${train}</div>`;
+        // para onde vai o próximo batalhão: pela linha (reforço), para um exército parado perto, ou um exército novo
+        const line = s.armies.find(a => reinforcing(s, a) === id), c = pm.provinces[id].city;
+        const near = s.armies.find(a => a.owner === 0 && !a.path.length && !inBattle(s, a.id) && a.battalions.length < ARMY.maxBattalions && Math.hypot(a.x - c.x, a.y - c.y) <= 2 * ARMY.joinTiles);
+        const dest = line ? `vai pela linha para o ${esc(line.name)}` : near ? `entra no ${esc(near.name)}` : 'forma um exército novo';
+        train = `<div class="act">${train}</div><small class="sub">Próximo batalhão: ${dest}</small>`;
       }
       html += `<div class="slot" id="${key}"><b>${def.name} ${stars(b.level)}</b>${status}<div class="act">${upgradeButton(s, pm, id, place)}</div>${train}</div>`;
     });
@@ -133,17 +141,36 @@ function veinsHtml(s: GameState, pm: ProvinceMap, id: number, build: boolean): s
   return html;
 }
 
-function troopsHtml(s: GameState, pm: ProvinceMap, troops: GameState['troops']): string {
-  const rows = troops.map(t => {
-    const state = s.clock < t.routedUntil ? 'em fuga' : inBattle(s, t.id) ? 'em batalha' : t.path.length ? 'marchando' : 'parada';
-    const sup = t.supply ? (t.supply.cut ? '<span class="why">linha de suprimento cortada</span>' : `⛽ linha de suprimento de ${esc(pm.provinces[t.supply.from].name)}`)
-      : t.supplied ? 'abastecida' : `<span class="why">sem suprimento (perde ${SUPPLY.attrition} homem/mês)</span>`;
-    const lineCost = SUPPLY.lineMoney; // o comprimento só se sabe ao traçar
-    const btn = t.supply ? `<button data-a="ds:${t.id}">Cortar linha</button>` : `<button data-a="sp:${t.id}">Abastecer <small>${RES_ICON.money}${lineCost}+/mês</small></button>`;
-    return `<div class="slot"><b>${TROOP_ICON[t.type]} ${TROOPS[t.type].name}</b> ${Math.ceil(t.soldiers)}/${TROOPS[t.type].soldiers}<div class="sub">moral ${Math.round(t.morale * 100)}% · ${state} · ${sup}</div><div class="act">${btn}</div></div>`;
-  });
-  return `<button class="x" data-a="close">✕</button><h2>${troops.length === 1 ? 'Tropa' : `${troops.length} tropas`}</h2>
-    <div class="sub">Clique direito no terreno ou no mapa para mandar</div>${rows.join('')}`;
+// batalhões marcados para dividir ("exército:índice"); sobrevivem às re-renderizações do painel
+const checked = new Set<string>();
+
+function armiesHtml(s: GameState, pm: ProvinceMap, armies: GameState['armies']): string {
+  const state = (a: (typeof armies)[0]) => (s.clock < a.routedUntil ? 'em fuga' : inBattle(s, a.id) ? 'em batalha' : a.path.length ? 'marchando' : 'parado');
+  const head = `<button class="x" data-a="close">✕</button>`;
+  if (armies.length > 1) {
+    const rows = armies.map(a => `<div class="slot"><b>${esc(a.name)}</b> ${Math.ceil(men(a))} homens · ${a.battalions.length} batalhões<div class="sub">${state(a)}</div></div>`).join('');
+    return `${head}<h2>${armies.length} exércitos</h2><div class="sub">Clique direito no mapa para mandar</div>${rows}`;
+  }
+  const a = armies[0];
+  const sup = a.supply ? (a.supply.cut ? '<span class="why">linha de suprimento cortada</span>' : `⛽ linha de suprimento de ${esc(pm.provinces[a.supply.from].name)}`)
+    : a.supplied ? 'abastecido' : `<span class="why">sem suprimento (cada batalhão perde ${SUPPLY.attrition} homem/mês)</span>`;
+  const from = reinforcing(s, a);
+  const reinf = from !== null ? `<div class="sub">⛽ Reforço de ${esc(pm.provinces[from].name)}: +${REINFORCE.rate} homens/mês por batalhão</div>`
+    : a.supply && inBattle(s, a.id) ? '<div class="why">Sem reforço: a cidade da linha precisa estar ligada e ter Guarnição</div>' : '';
+  const rows = a.battalions.map((b, i) => {
+    const k = `${a.id}:${i}`;
+    return `<label class="slot" style="display:block"><input type="checkbox" data-a="ck:${k}" ${checked.has(k) ? 'checked' : ''}> ${TROOP_ICON[b.type]} ${TROOPS[b.type].name} · ${Math.ceil(b.soldiers)}/${TROOPS[b.type].soldiers}</label>`;
+  }).join('');
+  const marked = a.battalions.map((_, i) => i).filter(i => checked.has(`${a.id}:${i}`));
+  const near = s.armies.filter(o => o !== a && o.owner === 0 && Math.hypot(o.x - a.x, o.y - a.y) <= ARMY.joinTiles);
+  const btn = (act: string, label: string, ok = true) => `<button data-a="${act}" ${ok ? '' : 'disabled'}>${label}</button>`;
+  const lineBtn = a.supply ? btn(`ds:${a.id}`, 'Cortar linha') : btn(`sp:${a.id}`, `Abastecer <small>${RES_ICON.money}${SUPPLY.lineMoney}+/mês</small>`);
+  return `${head}<h2>${esc(a.name)} <button data-a="rn:${a.id}" title="Renomear">✎</button></h2>
+    <div class="sub">${Math.ceil(men(a))} homens · moral ${Math.round(a.morale * 100)}% · ${state(a)} · ${sup}</div>${reinf}
+    <h3>Batalhões (${a.battalions.length}/${ARMY.maxBattalions})</h3>${rows}
+    <div class="act">${btn(`sl:${a.id}:${marked.join(',')}`, `Dividir (formar exército com os marcados)`, marked.length > 0 && marked.length < a.battalions.length)}
+    ${near.map(o => btn(`mg:${a.id}:${o.id}`, `Juntar com ${esc(o.name)}`)).join('')}${lineBtn}</div>
+    <div class="sub">Clique direito no mapa para mandar</div>`;
 }
 
 function show(html: string, id: number, act: PanelActions, focus: string): void {
@@ -158,7 +185,7 @@ function show(html: string, id: number, act: PanelActions, focus: string): void 
   // que começa num botão e termina no botão novo se perderia
   el.onpointerdown = e => {
     if (e.button !== 0) return;
-    const a = (e.target as HTMLElement).closest('button')?.dataset.a;
+    const a = ((e.target as HTMLElement).closest('button, input') as HTMLElement | null)?.dataset.a;
     if (!a) return;
     const parsePlace = (kind: string, i: string): Place => (kind === 'lot' ? { lot: Number(i) } : { vein: Number(i) });
     if (a === 'close') act.close();
@@ -167,6 +194,10 @@ function show(html: string, id: number, act: PanelActions, focus: string): void 
     else if (a === 'upc') act.upgradeCity(id);
     else if (a === 'route') act.startRoute(id);
     else if (a.startsWith('rr:')) act.removeRoute(Number(a.slice(3)));
+    else if (a.startsWith('ck:')) { const k = a.slice(3); if (checked.has(k)) checked.delete(k); else checked.add(k); }
+    else if (a.startsWith('sl:')) { const [, armyId, list] = a.split(':'); act.split(Number(armyId), list ? list.split(',').map(Number) : []); for (const k of [...checked]) if (k.startsWith(`${armyId}:`)) checked.delete(k); }
+    else if (a.startsWith('mg:')) { const [, into, from] = a.split(':'); act.merge(Number(into), Number(from)); }
+    else if (a.startsWith('rn:')) act.rename(Number(a.slice(3)));
     else if (a.startsWith('sp:')) act.supply(Number(a.slice(3)));
     else if (a.startsWith('ds:')) act.dropSupply(Number(a.slice(3)));
     else if (a.startsWith('up:')) { const [, k, i] = a.split(':'); act.upgrade(id, parsePlace(k, i)); }

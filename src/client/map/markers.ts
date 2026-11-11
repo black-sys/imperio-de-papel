@@ -1,4 +1,4 @@
-import { BUILDINGS, CITY, type BuildingType, type TroopType } from '../../sim/balance';
+import { ARMY, BUILDINGS, CITY, type BuildingType, type TroopType } from '../../sim/balance';
 import { cityLevel } from '../../sim/state';
 import { roman } from '../labels';
 import type { MoveGrid } from '../../sim/movegrid';
@@ -10,7 +10,7 @@ import { toScreen, type View } from './view';
 
 export const TROOP_ICON: Record<TroopType, string> = { line: '🎖', artillery: '💣', cavalry: '🐎' };
 export interface MarkerOpts {
-  selectedTroops: Set<number>; selectedProvince: number; pins: { x: number; y: number }[]; grid: MoveGrid | null;
+  selectedArmies: Set<number>; selectedProvince: number; pins: { x: number; y: number }[]; grid: MoveGrid | null;
   preview?: { path: number[]; ok: boolean } | null; // prévia da rota sendo traçada
 }
 
@@ -21,21 +21,23 @@ const onScreen = (v: View, px: number, py: number, m = 40) => px > -m && py > -m
 /** Chave do que os marcadores mostram: igual enquanto nada visível muda (posições ao pixel de tela). */
 export function markersKey(s: GameState, pm: ProvinceMap, v: View, o: MarkerOpts): string {
   const parts: (string | number)[] = [v.cx, v.cy, v.scale, v.w, v.h, o.selectedProvince, o.pins.length, s.capital];
-  for (const t of s.troops) {
+  const open = v.scale >= ARMY.openScale;
+  if (open) parts.push('open');
+  for (const t of s.armies) {
     const [px, py] = toScreen(v, t.x, t.y);
     if (!onScreen(v, px, py)) continue;
-    parts.push(`t${t.id}:${Math.round(px)},${Math.round(py)},${Math.ceil(t.soldiers)},${o.selectedTroops.has(t.id) ? 1 : 0},${t.path.length ? 1 : 0}`);
+    parts.push(`t${t.id}:${Math.round(px)},${Math.round(py)},${t.battalions.map(b => `${b.type[0]}${Math.ceil(b.soldiers)}`).join('')},${o.selectedArmies.has(t.id) ? 1 : 0},${t.path.length ? 1 : 0}`);
   }
   const code = (b: { type: string; level: number; remaining: number } | null) => (b ? `${b.type.slice(0, 3)}${b.level}${b.remaining > 0 ? 'o' : ''}` : '-');
   s.city.forEach((c, id) => { if (c) parts.push(`c${id}:${c.level}${c.remaining > 0 ? 'o' : ''}${s.owner[id]}`); });
   s.lots.forEach((l, id) => { if (l.some(b => b)) parts.push(`l${id}:${l.map(code).join('')}`); });
   s.veins.forEach((l, id) => { if (l.some(b => b)) parts.push(`v${id}:${l.map(code).join('')}`); });
   for (const c of s.colonizing) parts.push(`c${c.province}:${Math.ceil(c.remaining)}`);
-  if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) parts.push(`f${f.province}:${s.troops.filter(t => t.home === f.province).length}`);
+  if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) parts.push(`f${f.province}:${s.armies.find(t => t.home === f.province)?.battalions.length ?? 0}`);
   for (const b of s.battles) parts.push(`w${Math.round(b.x)},${Math.round(b.y)}:${b.sides.map(x => Math.round(x.morale * 20)).join('/')}`);
   for (const r of s.routes) parts.push(`r${r.id}:${r.remaining > 0 ? 'o' : ''}${r.cut ? 'x' : ''}`);
   parts.push(`k${s.connected.map(c => (c ? 1 : 0)).join('')}`);
-  for (const t of s.troops) if (t.owner === 0) parts.push(`s${t.id}:${t.supplied ? 1 : 0}${t.supply ? `${t.supply.path.length},${t.supply.path.at(-1)},${t.supply.cut ? 1 : 0}` : ''}`);
+  for (const t of s.armies) if (t.owner === 0) parts.push(`s${t.id}:${t.supplied ? 1 : 0}${t.supply ? `${t.supply.path.length},${t.supply.path.at(-1)},${t.supply.cut ? 1 : 0}` : ''}`);
   if (o.preview) parts.push(`p${o.preview.path.length},${o.preview.path.at(-1)},${o.preview.ok ? 1 : 0}`);
   return parts.join('|');
 }
@@ -70,8 +72,8 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
   if (o.grid) {
     const S = o.grid.size;
     ctx.strokeStyle = 'rgba(62,42,24,0.8)'; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
-    for (const t of s.troops) {
-      if (!o.selectedTroops.has(t.id) || !t.path.length) continue;
+    for (const t of s.armies) {
+      if (!o.selectedArmies.has(t.id) || !t.path.length) continue;
       ctx.beginPath(); ctx.moveTo(...P(t.x, t.y));
       t.path.forEach((c, i) => { if (i % 4 === 3 || i === t.path.length - 1) ctx.lineTo(...P((c % S) * CELL + CELL / 2, Math.floor(c / S) * CELL + CELL / 2)); });
       ctx.stroke();
@@ -144,22 +146,27 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5; ctx.lineTo(x + Math.cos(a) * FORT_R, y + Math.sin(a) * FORT_R); }
     ctx.closePath(); ctx.fill(); ctx.stroke();
     ctx.fillStyle = PAPER; ctx.font = 'bold 11px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText(String(s.troops.filter(t => t.home === f.province).length), x, y + 1);
+    ctx.fillText(String(s.armies.find(t => t.home === f.province)?.battalions.length ?? 0), x, y + 1);
   }
-  // tropas (as da fortaleza ficam dentro do pentágono: não são desenhadas uma a uma)
-  for (const t of s.troops) {
+  // exércitos (as guarnições de fortaleza ficam dentro do pentágono): de longe uma peça; de perto, as fichas dos batalhões
+  for (const t of s.armies) {
     if (t.owner === -1) continue;
     const [x, y] = P(t.x, t.y);
-    if (!onScreen(v, x, y)) continue;
-    const w = TROOP_W, h = TROOP_H;
-    ctx.fillStyle = color(t.owner); ctx.strokeStyle = INK; ctx.lineWidth = 1.6;
-    ctx.fillRect(x - w / 2, y - h / 2, w, h); ctx.strokeRect(x - w / 2, y - h / 2, w, h);
-    ctx.strokeStyle = PAPER; ctx.fillStyle = PAPER; ctx.beginPath();
-    if (t.type === 'line') { ctx.moveTo(x - w / 2, y - h / 2); ctx.lineTo(x + w / 2, y + h / 2); ctx.moveTo(x + w / 2, y - h / 2); ctx.lineTo(x - w / 2, y + h / 2); ctx.stroke(); }
-    else if (t.type === 'cavalry') { ctx.moveTo(x - w / 2, y + h / 2); ctx.lineTo(x + w / 2, y - h / 2); ctx.stroke(); }
-    else { ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill(); }
-    if (o.selectedTroops.has(t.id)) { ctx.strokeStyle = GOLD; ctx.lineWidth = 3; ctx.strokeRect(x - w / 2 - 4, y - h / 2 - 4, w + 8, h + 8); }
-    label(ctx, String(Math.ceil(t.soldiers)), x, y + h / 2 + 9);
+    if (!onScreen(v, x, y, 80)) continue;
+    const w = TROOP_W, h = TROOP_H, total = Math.ceil(t.battalions.reduce((n, b) => n + b.soldiers, 0));
+    if (v.scale >= ARMY.openScale) {
+      // fichas em formação ao redor do estandarte: infantaria à frente, cavalaria nos flancos, artilharia atrás
+      const spots = formation(t.battalions.map(b => b.type));
+      t.battalions.forEach((b, i) => chip(ctx, b.type, Math.ceil(b.soldiers), color(t.owner), x + spots[i][0], y + spots[i][1]));
+      ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, y + 6); ctx.lineTo(x, y - 14); ctx.stroke(); // estandarte
+      ctx.fillStyle = color(t.owner); ctx.beginPath(); ctx.moveTo(x, y - 14); ctx.lineTo(x + 10, y - 10); ctx.lineTo(x, y - 6); ctx.fill();
+      if (o.selectedArmies.has(t.id)) { ctx.strokeStyle = GOLD; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, 40, 0, Math.PI * 2); ctx.stroke(); }
+      label(ctx, `${t.name} · ${total}`, x, y + 48, 10);
+    } else {
+      piece(ctx, mainType(t.battalions.map(b => b.type)), color(t.owner), x, y, w, h);
+      if (o.selectedArmies.has(t.id)) { ctx.strokeStyle = GOLD; ctx.lineWidth = 3; ctx.strokeRect(x - w / 2 - 4, y - h / 2 - 4, w + 8, h + 8); }
+      label(ctx, `${total} · ${t.battalions.length}`, x, y + h / 2 + 9);
+    }
     if (t.owner === 0 && !t.supplied) { ctx.fillStyle = CUT; ctx.fillRect(x - 10, y + h / 2 + 15, 20, 3); } // sem suprimento
     if (t.owner === 0 && t.supply && !t.supply.cut) label(ctx, '⛽', x + w / 2 + 7, y - h / 2, 10);
   }
@@ -219,14 +226,14 @@ function drawNetwork(ctx: CanvasRenderingContext2D, s: GameState, pm: ProvinceMa
     ctx.globalAlpha = 1;
     if (r.cut) { // ✕ no ponto da rota mais perto de uma tropa hostil
       let best = r.path[Math.floor(r.path.length / 2)], bd = Infinity;
-      for (const t of s.troops) if (t.owner !== 0) for (const c of r.path) { const d = Math.hypot((c % S) * CELL - t.x, Math.floor(c / S) * CELL - t.y); if (d < bd) { bd = d; best = c; } }
+      for (const t of s.armies) if (t.owner !== 0) for (const c of r.path) { const d = Math.hypot((c % S) * CELL - t.x, Math.floor(c / S) * CELL - t.y); if (d < bd) { bd = d; best = c; } }
       const [x, y] = toScreen(v, (best % S) * CELL + CELL / 2, Math.floor(best / S) * CELL + CELL / 2);
       ctx.setLineDash([]); ctx.strokeStyle = CUT; ctx.lineWidth = 3;
       stroke(ctx, [[x - 6, y - 6], [x + 6, y + 6]]); stroke(ctx, [[x + 6, y - 6], [x - 6, y + 6]]);
     }
   }
   // linhas de suprimento até as tropas: contorno escuro e pontos dourados (legível sobre a floresta)
-  for (const t of s.troops) if (t.owner === 0 && t.supply) {
+  for (const t of s.armies) if (t.owner === 0 && t.supply) {
     const pts = pathPoints(t.supply.path, grid, v, every, pm.provinces[t.supply.from].city);
     ctx.setLineDash([]); ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(43,26,14,0.35)'; stroke(ctx, pts);
     ctx.setLineDash([3, 6]); ctx.lineWidth = 3; ctx.strokeStyle = t.supply.cut ? CUT : SUPPLY_INK; stroke(ctx, pts);
@@ -237,4 +244,39 @@ function drawNetwork(ctx: CanvasRenderingContext2D, s: GameState, pm: ProvinceMa
     stroke(ctx, pathPoints(preview.path, grid, v, every));
   }
   ctx.setLineDash([]); ctx.lineCap = 'butt';
+}
+
+/** Tipo que aparece na peça: o mais numeroso (empate: infantaria, cavalaria, artilharia). */
+function mainType(types: TroopType[]): TroopType {
+  const order: TroopType[] = ['line', 'cavalry', 'artillery'];
+  return order.reduce((best, t) => (types.filter(x => x === t).length > types.filter(x => x === best).length ? t : best), order[0]);
+}
+
+/** Retângulo de carta militar com o símbolo do tipo. */
+function piece(ctx: CanvasRenderingContext2D, type: TroopType, fill: string, x: number, y: number, w: number, h: number): void {
+  ctx.fillStyle = fill; ctx.strokeStyle = INK; ctx.lineWidth = 1.6;
+  ctx.fillRect(x - w / 2, y - h / 2, w, h); ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+  ctx.strokeStyle = PAPER; ctx.fillStyle = PAPER; ctx.lineWidth = 1.6; ctx.beginPath();
+  if (type === 'line') { ctx.moveTo(x - w / 2, y - h / 2); ctx.lineTo(x + w / 2, y + h / 2); ctx.moveTo(x + w / 2, y - h / 2); ctx.lineTo(x - w / 2, y + h / 2); ctx.stroke(); }
+  else if (type === 'cavalry') { ctx.moveTo(x - w / 2, y + h / 2); ctx.lineTo(x + w / 2, y - h / 2); ctx.stroke(); }
+  else { ctx.arc(x, y, Math.min(w, h) / 5, 0, Math.PI * 2); ctx.fill(); }
+}
+
+/** Ficha de um batalhão (menor que a peça), com os homens embaixo. */
+function chip(ctx: CanvasRenderingContext2D, type: TroopType, soldiers: number, fill: string, x: number, y: number): void {
+  piece(ctx, type, fill, x, y, 20, 13);
+  ctx.font = 'bold 9px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(243,231,201,0.85)'; ctx.strokeText(String(soldiers), x, y + 13);
+  ctx.fillStyle = INK; ctx.fillText(String(soldiers), x, y + 13);
+}
+
+/** Posições (px) das fichas: infantaria na fileira da frente (acima), cavalaria nos flancos, artilharia atrás (abaixo). */
+export function formation(types: TroopType[]): [number, number][] {
+  const out: [number, number][] = new Array(types.length);
+  const row = (idx: number[], y: number) => idx.forEach((i, k) => { out[i] = [(k - (idx.length - 1) / 2) * 24, y]; });
+  const of = (t: TroopType) => types.map((x, i) => (x === t ? i : -1)).filter(i => i >= 0);
+  row(of('line'), -22);
+  of('cavalry').forEach((i, k) => { out[i] = [(k % 2 ? 1 : -1) * (40 + Math.floor(k / 2) * 22), 0]; });
+  row(of('artillery'), 22);
+  return out;
 }

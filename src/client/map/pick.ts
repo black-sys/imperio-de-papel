@@ -22,21 +22,21 @@ export function cityAt(s: GameState, pm: ProvinceMap, id: number): { x: number; 
 export const VEIN_DETAIL = 0.35, LOT_DETAIL = 2.5; // escalas (px/tile) a partir das quais veios e lotes aparecem (lotes ficam a 4–10 tiles da cidade: menos que isso some sob o marcador dela)
 export const SPOT_R = 10; // raio de clique de lote e veio (px)
 
-export type Pick = { kind: 'troop'; id: number } | { kind: 'city' | 'fortress' | 'province'; province: number }
+export type Pick = { kind: 'army'; id: number } | { kind: 'city' | 'fortress' | 'province'; province: number }
   | { kind: 'lot'; province: number; lot: number } | { kind: 'vein'; province: number; vein: number } | null;
 
 /** O que está sob o ponto da tela: tropa > cidade > fortaleza > província. */
 export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: number, mineOnly = true, pins: { x: number; y: number; province?: number }[] = []): Pick {
   const PAD = 14; // folga além do retângulo da tropa (acima fica o número)
   let best: { id: number; d: number } | null = null;
-  for (const t of s.troops) {
+  for (const t of s.armies) {
     if (mineOnly && t.owner !== 0) continue;
     const [px, py] = toScreen(v, t.x, t.y), dx = Math.abs(px - sx), dy = Math.abs(py - sy);
     if (dx > TROOP_W / 2 + PAD || dy > TROOP_H / 2 + PAD) continue;
     const d = dx + dy;
     if (!best || d < best.d) best = { id: t.id, d };
   }
-  if (best) return { kind: 'troop', id: best.id };
+  if (best) return { kind: 'army', id: best.id };
   const near = (x: number, y: number, r: number) => { const [px, py] = toScreen(v, x, y); return Math.hypot(px - sx, py - sy) <= r; };
   for (let id = 0; id < s.owner.length; id++) { const c = s.owner[id] >= 0 ? cityAt(s, pm, id) : null; if (c && near(c.x, c.y, CITY_R)) return { kind: 'city', province: id }; }
   // lotes só das suas cidades (de perto); veios de qualquer província (é assim que se escolhe o que colonizar)
@@ -54,9 +54,9 @@ export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: n
 }
 
 /** Tropas do jogador com o centro dentro do retângulo da tela (qualquer ordem dos cantos). */
-export function troopsInRect(s: GameState, v: View, x0: number, y0: number, x1: number, y1: number): number[] {
+export function armiesInRect(s: GameState, v: View, x0: number, y0: number, x1: number, y1: number): number[] {
   const [ax, bx] = [Math.min(x0, x1), Math.max(x0, x1)], [ay, by] = [Math.min(y0, y1), Math.max(y0, y1)];
-  return s.troops.filter(t => { if (t.owner !== 0) return false; const [px, py] = toScreen(v, t.x, t.y); return px >= ax && px <= bx && py >= ay && py <= by; }).map(t => t.id);
+  return s.armies.filter(t => { if (t.owner !== 0) return false; const [px, py] = toScreen(v, t.x, t.y); return px >= ax && px <= bx && py >= ay && py <= by; }).map(t => t.id);
 }
 
 /** Alvo do modo de traçar rota: só a província sob o ponteiro (tropas e marcadores não atrapalham o clique na cidade). */
