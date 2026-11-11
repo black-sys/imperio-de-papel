@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { setSpeed, startGame } from '../src/sim/commands';
 import { placeFortresses } from '../src/sim/fortress';
 import { makeMoveGrid } from '../src/sim/movegrid';
-import { battalionCount } from '../src/sim/armies';
+import { armyCap, battalionCount } from '../src/sim/armies';
 import { newGame, type Bent, type GameState } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
 import { generateWorld } from '../src/worldgen/global/world';
@@ -41,12 +41,13 @@ describe('IA: economia e exército', { timeout: 300000 }, () => {
     });
     expect(worst).toBeLessThanOrEqual(3);
   });
-  test('Militarista tem mais batalhões que Industrial aos 150 meses', () => {
+  test('Militarista sustenta mais batalhões que Industrial aos 150 meses (com o comércio, a Industrial compra o que falta e empata no efetivo)', () => {
     const a = start(['militarist', 'industrial', 'industrial', 'industrial']), b = start(['industrial', 'industrial', 'industrial', 'industrial']);
     a.nations[1].bent = 'militarist'; // sem guerra no teste: a Militarista só declararia depois e só contra vizinhos
     for (const s of [a, b]) for (const n of s.nations) n.founded = 1e9; // carência eterna: ninguém declara
     months(a, 150); months(b, 150);
-    expect(battalionCount(a, 1)).toBeGreaterThan(battalionCount(b, 1));
+    expect(armyCap(a, 1)).toBeGreaterThan(armyCap(b, 1));
+    expect(battalionCount(a, 1)).toBeGreaterThanOrEqual(battalionCount(b, 1));
   });
   test('determinismo: 60 meses a 1× e a 8×', () => {
     const a = start(), b = start();

@@ -71,6 +71,7 @@ export interface GameState {
   letters: { id: number; from: number; proposal: Proposal; expires: number }[]; // caixa do jogador
   pending: { to: number; proposal: Proposal; answerAt: number }[]; // propostas do jogador aguardando resposta
   nextLetterId: number;
+  lastOffer: Record<string, number>; // "de:para:tipo" → mês da última proposta da IA (não repete por 12 meses)
   warSince: Record<string, number>; // "a:b" (a < b) → mês em que a guerra do par começou (cansaço)
   depot: Res[]; // por província: carga guardada enquanto a cidade está desligada da capital
   connected: boolean[]; // por província: ligada à capital por rotas prontas e não cortadas
@@ -83,7 +84,7 @@ export function newGame(pm: ProvinceMap, seed = 0): GameState {
     month: 0, speed: 0, seed, nations: [], colonizing: [], events: [], eventCount: 0,
     armies: [], nextArmyId: 1, recruiting: [], fortresses: [], battles: [], clock: 0, stepAcc: 0,
     stallWarned: {}, routes: [], nextRouteId: 1, occupations: [], result: null,
-    relations: [], pacts: [], nextPactId: 1, letters: [], pending: [], nextLetterId: 1, warSince: {},
+    relations: [], pacts: [], nextPactId: 1, letters: [], pending: [], nextLetterId: 1, warSince: {}, lastOffer: {},
     depot: pm.provinces.map(() => zeroRes()), connected: pm.provinces.map(() => false),
     owner: pm.provinces.map(() => -1),
     city: pm.provinces.map(() => null),

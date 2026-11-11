@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { chooseCapital } from '../src/sim/commands';
-import { addPact, advantage, answerLetter, checkPropose, diplomacyMonth, evaluate, leaveAlliance, pactBetween, propose, relate, relation, relationLabel, sign } from '../src/sim/diplomacy';
+import { addPact, aiDiplomacy, advantage, answerLetter, checkPropose, diplomacyMonth, evaluate, leaveAlliance, pactBetween, propose, relate, relation, relationLabel, sign } from '../src/sim/diplomacy';
 import { eliminate } from '../src/sim/conquest';
 import { fall } from '../src/sim/conquest';
 import { spawnArmy } from '../src/sim/armies';
@@ -221,12 +221,18 @@ describe('a IA avalia', () => {
   });
   test('comércio: 90% aceito, 85% recusado (Industrial aceita 85%); sem o recurso, recusa', () => {
     const e = trio('expansionist'), i = trio('industrial');
+    for (const s of [e, i]) { s.nations[1].res.iron = 900; s.veins[1][3] = { type: 'iron_mine', level: 3, remaining: 0 }; } // produz e tem ferro
     // quem propõe dá dinheiro (que sobra a quem aceita: sem bônus de falta) e pede 10 ferro (valor 20)
     expect(evaluate(e, pm, 1, 0, { kind: 'trade', give: ['money', 18], get: ['iron', 10] })).toEqual({ ok: true });
     expect(evaluate(e, pm, 1, 0, { kind: 'trade', give: ['money', 17], get: ['iron', 10] })).toEqual({ ok: false, reason: 'Troca desvantajosa' });
     expect(evaluate(i, pm, 1, 0, { kind: 'trade', give: ['money', 17], get: ['iron', 10] })).toEqual({ ok: true });
     e.nations[1].res.steel = 0;
     expect(evaluate(e, pm, 1, 0, { kind: 'trade', give: ['money', 99], get: ['steel', 10] })).toEqual({ ok: false, reason: 'Não temos esse recurso' });
+  });
+  test('a Militarista não vende material de guerra', () => {
+    const m = trio('militarist');
+    m.nations[1].res.iron = 900; m.veins[1][3] = { type: 'iron_mine', level: 3, remaining: 0 };
+    expect(evaluate(m, pm, 1, 0, { kind: 'trade', give: ['money', 99], get: ['iron', 10] })).toEqual({ ok: false, reason: 'Não vendemos material de guerra' });
   });
   test('aliança exige relação ≥ 40', () => {
     const s = trio();
@@ -321,5 +327,29 @@ describe('virada do mês', () => {
     eliminate(s, pm, 1, 2);
     expect([s.pacts, s.letters, s.pending]).toEqual([[], [], []]);
     month(s);
+  });
+});
+
+describe('a IA propõe', () => {
+  test('Industrial com sobra de ferro e falta de grãos oferece ferro por grãos', () => {
+    const s = trio('industrial');
+    s.veins[1][3] = { type: 'iron_mine', level: 1, remaining: 0 }; // veio 3 = ferro
+    s.nations[1].res.iron = 100;
+    s.nations[2].res.grain = 0; // só o jogador tem grãos para dar
+    aiDiplomacy(s, pm, 1);
+    expect(s.letters.length).toBe(1);
+    const p = s.letters[0].proposal;
+    expect(p.kind).toBe('trade');
+    if (p.kind === 'trade') { expect(p.give[0]).toBe('iron'); expect(p.get[0]).toBe('grain'); }
+  });
+  test('quem perde a guerra propõe paz; uma proposta por mês; não repete a mesma carta', () => {
+    const s = trio('militarist');
+    declareWar(s, 0, 1, pm);
+    spawnArmy(s, 0, Array.from({ length: 8 }, () => 'line' as const), 60, 64);
+    spawnArmy(s, 1, ['line'], 190, 32);
+    aiDiplomacy(s, pm, 1);
+    expect(s.letters.map(l => l.proposal.kind)).toEqual(['peace']);
+    aiDiplomacy(s, pm, 1);
+    expect(s.letters.length).toBe(1);
   });
 });

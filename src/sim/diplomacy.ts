@@ -30,6 +30,7 @@ export function addPact(s: GameState, kind: PactKind, a: number, b: number, unti
 }
 export function endPact(s: GameState, p: Pact): void { s.pacts = s.pacts.filter(x => x !== p); }
 
+const WAR_GOODS: string[] = ['coal', 'iron', 'steel', 'arms']; // a Militarista não vende
 export const warKey = (a: number, b: number) => (a < b ? `${a}:${b}` : `${b}:${a}`);
 export const KIND_LABEL: Record<Proposal['kind'] | PactKind, string> = { peace: 'paz', truce: 'trégua', nonaggression: 'não agressão', trade: 'comércio', alliance: 'aliança' };
 
@@ -91,7 +92,9 @@ export function evaluate(s: GameState, pm: ProvinceMap, n: number, from: number,
   if (p.kind === 'trade') {
     if (rel <= -50) return no('Não negociamos com vocês');
     const net = runMonth(s, pm, false, n).net, [gk, gq] = p.get, [rk, rq] = p.give; // ela entrega `get`, recebe `give`
-    if (me.res[gk] < gq && net[gk] < gq) return no('Não temos esse recurso');
+    if (me.bent === 'militarist' && WAR_GOODS.includes(gk)) return no('Não vendemos material de guerra');
+    // só entrega o que produz ou o que tem para um ano de entregas (não troca o próprio sustento)
+    if (net[gk] <= 0 || (net[gk] < gq && me.res[gk] < 12 * gq)) return no('Não temos esse recurso');
     const received = PRICE[rk] * rq * (net[rk] <= 0 ? AI_DIPLO.shortBonus : 1), given = PRICE[gk] * gq;
     return received >= (me.bent === 'industrial' ? AI_DIPLO.tradeRatioIndustrial : AI_DIPLO.tradeRatio) * given - 1e-9 ? OK : no('Troca desvantajosa');
   }
@@ -213,4 +216,49 @@ export function diplomacyMonth(s: GameState, pm: ProvinceMap): void {
     const done = r.ok ? sign(s, pm, player.id, q.to, q.proposal) : r;
     logEvent(s, done.ok ? `A ${name} aceitou: ${KIND_LABEL[q.proposal.kind]}` : `A ${name} recusou: ${done.reason}`);
   }
+}
+
+/**
+ * Uma proposta por mês da nação `n` (IA), pela ordem: paz quando perde ou a guerra se arrasta; aliança com amiga que
+ * tem o mesmo inimigo; Industrial: comércio de sobra por falta e não agressão com vizinhos; Expansionista: não
+ * agressão de vez em quando. A mesma proposta ao mesmo destino só se repete depois de 12 meses.
+ */
+export function aiDiplomacy(s: GameState, pm: ProvinceMap, n: number): void {
+  const me = s.nations[n];
+  if (!me?.alive) return;
+  const fresh = (to: number, kind: string) => s.month - (s.lastOffer[`${n}:${to}:${kind}`] ?? -Infinity) >= 12;
+  const send = (to: number, p: Proposal) => {
+    if (!fresh(to, p.kind) || !checkPropose(s, pm, n, to, p).ok) return false;
+    s.lastOffer[`${n}:${to}:${p.kind}`] = s.month;
+    propose(s, pm, n, to, p);
+    return true; // proposta feita (aceita ou não): uma por mês
+  };
+  const others = s.nations.filter(o => o.alive && o.id !== n).map(o => o.id);
+  // paz
+  for (const e of [...me.atWar].sort((x, y) => x - y)) {
+    const adv = advantage(s, pm, n, e), long = s.month - (s.warSince[warKey(n, e)] ?? s.month) >= AI_DIPLO.peaceMonths && adv <= AI_DIPLO.peaceWinning;
+    if (adv >= AI_DIPLO.peaceLosing && !long) continue;
+    const white: Proposal = { kind: 'peace', cede: [], money: 0, payer: n };
+    // a IA do outro lado recusaria a branca? oferece o que o inimigo já ocupa
+    const lose = s.occupations.filter(o => o.nation === e && s.owner[o.province] === n).map(o => o.province);
+    const offer = !human(s, e) && !evaluate(s, pm, e, n, white).ok && lose.length ? { ...white, cede: lose } : white;
+    if (send(e, offer)) return;
+  }
+  // aliança
+  for (const o of others) {
+    if (relation(s, n, o) >= AI_DIPLO.allyPropose && me.atWar.some(x => s.nations[o].atWar.includes(x)) && send(o, { kind: 'alliance' })) return;
+  }
+  if (me.bent === 'industrial') {
+    const net = runMonth(s, pm, false, n).net, keys = RES_KEYS.filter(k => k !== 'money');
+    const surplus = keys.filter(k => net[k] > 0 && me.res[k] >= 3 * net[k]).sort((a, b) => PRICE[b] * net[b] - PRICE[a] * net[a]);
+    const short = keys.filter(k => net[k] <= 0);
+    for (const k of surplus.slice(0, 1)) for (const r of short) {
+      const q = Math.min(DIPLO.maxQty, Math.max(1, Math.round(net[k] / 2))), want = Math.min(DIPLO.maxQty, Math.max(1, Math.floor((PRICE[k] * q) / PRICE[r])));
+      for (const o of others) if (relation(s, n, o) > -50 && s.nations[o].res[r] >= want && send(o, { kind: 'trade', give: [k, q], get: [r, want] })) return;
+    }
+  }
+  const napTo = (min: number) => others.filter(o => borders(s, pm, n, o) && relation(s, n, o) > min && !pactBetween(s, n, o, 'truce'));
+  if (me.bent === 'industrial') for (const o of napTo(-15)) if (send(o, { kind: 'nonaggression' })) return;
+  if (me.bent === 'expansionist' && s.month % AI_DIPLO.expansionistEvery === n % AI_DIPLO.expansionistEvery)
+    for (const o of napTo(0)) if (send(o, { kind: 'nonaggression' })) return;
 }
