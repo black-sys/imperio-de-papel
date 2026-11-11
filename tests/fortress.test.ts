@@ -15,12 +15,12 @@ describe('distribuição no mundo real', { timeout: 60000 }, () => {
   const place = (seed: number) => { const s = newGame(real); placeFortresses(s, real, seed); return s; };
   const s = place(860), hops = capitalHops(real);
   test('~25% das províncias, com local, longe das capitais sugeridas', () => {
-    const withSites = real.provinces.filter(p => p.sites.length > 0).length;
+    const withSites = real.provinces.filter(p => p.lots.length > 0).length;
     expect(Math.abs(s.fortresses.length - 0.25 * withSites)).toBeLessThanOrEqual(1);
     const near = new Set(real.suggestedCapitals.flatMap(c => [c, ...real.provinces[c].neighbors]));
     for (const f of s.fortresses) {
       expect(near.has(f.province)).toBe(false);
-      expect(real.provinces[f.province].sites.length).toBeGreaterThan(0);
+      expect(real.provinces[f.province].lots.length).toBeGreaterThan(0);
       expect(Number.isFinite(hops[f.province])).toBe(true);
       expect(checkColonize(s, real, f.province)).toEqual({ ok: false, reason: 'Fortaleza: só cai com tropas' });
     }
@@ -53,7 +53,7 @@ describe('conquista e regeneração', () => {
     for (let i = 0; i < 3; i++) spawnTroop(s, 0, 'spear', 180, 76 + i * 4); // no local da fortaleza
     run(s, 2);
     expect(s.owner[1]).toBe(0);
-    expect(s.buildings[1][0]).toEqual({ type: 'village', level: 1, remaining: 0 });
+    expect(s.city[1]).toEqual({ level: 1, remaining: 0 });
     expect(s.fortresses).toEqual([]);
     expect(s.troops.every(t => t.owner === 0)).toBe(true);
     expect(texts(s)).toContain('Fortaleza de P1 conquistada');

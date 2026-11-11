@@ -20,19 +20,20 @@ export function makeTestWorld(): { pm: ProvinceMap; grid: MoveGrid } {
   }
   const prov = (id: number, cx: number): Province => ({
     id, name: `P${id}`, center: { x: cx, y: 128 }, cells: 2000, neighbors: [1 - id], coastal: false, biome: Biome.Grassland,
-    fertility: 1, forest: 1, rock: 1, slots: 4, sites: [{ x: cx, y: 80 }, { x: cx + 20, y: 80 }, { x: cx, y: 100 }, { x: cx + 20, y: 100 }],
-    city: { x: cx, y: 80 }, lots: [], veins: [],
+    fertility: 1, forest: 1, rock: 1, city: { x: cx, y: 80 },
+    lots: [{ x: cx, y: 100 }, { x: cx + 20, y: 80 }, { x: cx + 20, y: 100 }, { x: cx + 8, y: 92 }],
+    veins: [{ kind: 'grain', richness: 1, x: cx - 40, y: 40 }, { kind: 'wood', richness: 1, x: cx + 40, y: 40 }, { kind: 'coal', richness: 1, x: cx - 40, y: 200 }, { kind: 'iron', richness: 1, x: cx + 40, y: 200 }],
   });
   return { grid: { size, cost, cover, land: labelLand(size, cost) }, pm: { cellProvince, suggestedCapitals: [0], provinces: [prov(0, 60), prov(1, 180)] } };
 }
 
 export const world = makeTestWorld();
-/** Capital na província 0, guarnição pronta na vaga 1 e recursos de sobra. */
+/** Capital na província 0 (cidade nível 2), guarnição pronta no lote 1 e recursos de sobra. */
 export const game = (level = 1): GameState => {
   const s = newGame(world.pm);
   chooseCapital(s, world.pm, 0);
-  s.buildings[0][1] = { type: 'garrison', level, remaining: 0 };
-  s.res = { gold: 1000, wood: 1000, stone: 1000 };
+  s.lots[0][1] = { type: 'garrison', level, remaining: 0 };
+  s.res = { money: 1000, grain: 1000, wood: 1000, coal: 1000, iron: 1000, steel: 1000, arms: 1000 };
   return s;
 };
 /** Avança `months` na velocidade dada, em ticks de 0.1 s. */

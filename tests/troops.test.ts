@@ -19,18 +19,18 @@ describe('recrutamento', () => {
     expect(checkRecruit(s, pm, 0, 1, 'archer')).toEqual({ ok: false, reason: 'Requer Guarnição N2' });
     expect(checkRecruit(s, pm, 0, 1, 'cavalry')).toEqual({ ok: false, reason: 'Requer Guarnição N3' });
     expect(recruit(s, pm, 0, 1, 'spear')).toEqual({ ok: true });
-    expect(s.res).toEqual({ gold: 960, wood: 980, stone: 1000 });
+    expect(s.res).toMatchObject({ money: 960, wood: 980, iron: 1000 });
     expect(recruit(s, pm, 0, 1, 'spear')).toEqual({ ok: false, reason: 'Já está treinando uma tropa' });
   });
   test('guarnição em obra não treina', () => {
     const s = game();
-    s.buildings[0][1] = { type: 'garrison', level: 1, remaining: 2 };
+    s.lots[0][1] = { type: 'garrison', level: 1, remaining: 2 };
     expect(checkRecruit(s, pm, 0, 1, 'spear')).toEqual({ ok: false, reason: 'Precisa de uma Guarnição' });
   });
   test('falta de recurso', () => {
     const s = game();
-    s.res.gold = 10;
-    expect(checkRecruit(s, pm, 0, 1, 'spear')).toEqual({ ok: false, reason: 'Falta 30 de ouro' });
+    s.res.money = 10;
+    expect(checkRecruit(s, pm, 0, 1, 'spear')).toEqual({ ok: false, reason: 'Falta 30 de dinheiro' });
   });
   test('a tropa nasce no local do prédio depois de 2 meses', () => {
     const s = game();
@@ -47,9 +47,9 @@ describe('recrutamento', () => {
     expect(troopCap(s)).toBe(2);
     spawnTroop(s, 0, 'spear', 80, 80);
     recruit(s, pm, 0, 1, 'spear');
-    s.buildings[0][2] = garrison(); // o teto é do reino: soma das guarnições
+    s.lots[0][2] = garrison(); // o teto é do reino: soma das guarnições
     expect(troopCap(s)).toBe(4);
-    s.buildings[0][2] = null;
+    s.lots[0][2] = null;
     expect(checkRecruit({ ...s, recruiting: [] }, pm, 0, 1, 'spear')).toEqual({ ok: true });
     spawnTroop(s, 0, 'spear', 80, 80);
     expect(checkRecruit({ ...s, recruiting: [] }, pm, 0, 1, 'spear')).toEqual({ ok: false, reason: 'Teto de tropas atingido' });
@@ -58,20 +58,20 @@ describe('recrutamento', () => {
   });
   test('custo cresce com o tamanho do exército (tropas + em treino); fortalezas não contam', () => {
     const s = game(3);
-    expect(recruitCost(s, 'spear')).toEqual({ gold: 40, wood: 20, stone: 0 });
+    expect(recruitCost(s, 'spear')).toEqual({ money: 40, wood: 20 });
     spawnTroop(s, 0, 'spear', 80, 80);
     spawnTroop(s, -1, 'spear', 180, 80, 1);
     expect(recruit(s, pm, 0, 1, 'cavalry')).toEqual({ ok: true }); // 2ª tropa: base × growth
-    expect(s.res.gold).toBeCloseTo(1000 - 90 * TROOP_GROWTH, 6);
-    expect(s.res.stone).toBeCloseTo(1000 - 20 * TROOP_GROWTH, 6);
+    expect(s.res.money).toBeCloseTo(1000 - 90 * TROOP_GROWTH, 6);
+    expect(s.res.iron).toBeCloseTo(1000 - 20 * TROOP_GROWTH, 6);
     const c = recruitCost(s, 'spear'); // 3ª tropa
-    expect(c.gold).toBeCloseTo(40 * TROOP_GROWTH ** 2, 6);
+    expect(c.money).toBeCloseTo(40 * TROOP_GROWTH ** 2, 6);
     expect(c.wood).toBeCloseTo(20 * TROOP_GROWTH ** 2, 6);
     expect(TROOP_GROWTH).toBeGreaterThan(1);
   });
   test('guarnição em melhoria mantém o teto do nível anterior', () => {
     const s = game();
-    s.buildings[0][1] = { type: 'garrison', level: 2, remaining: 3 };
+    s.lots[0][1] = { type: 'garrison', level: 2, remaining: 3 };
     expect(troopCap(s)).toBe(2);
   });
 });
@@ -79,20 +79,22 @@ describe('recrutamento', () => {
 describe('metas de nível da guarnição', () => {
   test('N2 exige 3 guarnições no reino', () => {
     const s = game();
-    s.buildings[0][2] = garrison();
-    expect(checkUpgrade(s, pm, 0, 1)).toEqual({ ok: false, reason: 'Guarnições: 2/3' });
-    s.buildings[0][3] = garrison();
-    expect(upgrade(s, pm, 0, 1)).toEqual({ ok: true });
+    s.lots[0][2] = garrison();
+    expect(checkUpgrade(s, pm, 0, { lot: 1 })).toEqual({ ok: false, reason: 'Guarnições: 2/3' });
+    s.lots[0][3] = garrison();
+    expect(upgrade(s, pm, 0, { lot: 1 })).toEqual({ ok: true });
   });
   test('N3 exige 3 guarnições N2 ou maiores', () => {
     const s = game(2);
-    s.buildings[0][2] = garrison(2); s.buildings[0][3] = garrison(1);
-    expect(checkUpgrade(s, pm, 0, 1)).toEqual({ ok: false, reason: 'Guarnições nível 2: 2/3' });
-    s.buildings[0][3] = garrison(3);
-    expect(upgrade(s, pm, 0, 1)).toEqual({ ok: true });
+    s.lots[0][2] = garrison(2); s.lots[0][3] = garrison(1);
+    expect(checkUpgrade(s, pm, 0, { lot: 1 })).toEqual({ ok: false, reason: 'Guarnições nível 2: 2/3' });
+    s.lots[0][3] = garrison(3);
+    expect(upgrade(s, pm, 0, { lot: 1 })).toEqual({ ok: true });
   });
-  test('outros prédios não têm meta', () => {
-    expect(checkUpgrade(game(), pm, 0, 0)).toEqual({ ok: true });
+  test('a cota vale para os outros prédios também', () => {
+    const s = game();
+    s.veins[0][0] = { type: 'farm', level: 1, remaining: 0 };
+    expect(checkUpgrade(s, pm, 0, { vein: 0 })).toEqual({ ok: false, reason: 'Fazendas: 1/3' });
   });
 });
 
@@ -104,11 +106,11 @@ test('fortaleza não pode ser colonizada', () => {
 });
 
 test('manutenção das tropas sai da renda', () => {
-  const s = game(), before = monthlyIncome(s, pm).gold;
+  const s = game(), before = monthlyIncome(s, pm).money;
   spawnTroop(s, 0, 'spear', 80, 80);
   spawnTroop(s, 0, 'cavalry', 80, 80);
   spawnTroop(s, -1, 'spear', 80, 80, 1); // fortaleza não custa
-  expect(monthlyIncome(s, pm).gold).toBe(before - 4);
+  expect(monthlyIncome(s, pm).money).toBe(before - 4);
 });
 
 test('estado com tropas faz ida e volta pelo JSON', () => {
@@ -184,17 +186,17 @@ describe('ordens e movimento', () => {
 describe('reposição e manutenção', () => {
   const hurt = (x: number, y: number, withGarrison: boolean) => {
     const s = game();
-    if (!withGarrison) s.buildings[0][1] = null;
+    if (!withGarrison) s.lots[0][1] = null;
     const t = spawnTroop(s, 0, 'spear', x, y);
     t.soldiers = 10;
     return { s, t };
   };
-  test('1 soldado por mês em província sua, a 2 de ouro cada', () => {
+  test('1 soldado por mês em província sua, a 2 de dinheiro cada', () => {
     const { s, t } = hurt(60, 100, false), c = hurt(60, 100, false);
     c.t.soldiers = 20; // controle: tropa cheia não gasta
     run(s, 1); run(c.s, 1);
     expect(t.soldiers).toBeCloseTo(11, 5);
-    expect(c.s.res.gold - s.res.gold).toBeCloseTo(2, 5);
+    expect(c.s.res.money - s.res.money).toBeCloseTo(2, 5);
   });
   test('3 por mês com Guarnição; nunca passa do tamanho da tropa', () => {
     const { s, t } = hurt(60, 100, true);
@@ -203,27 +205,27 @@ describe('reposição e manutenção', () => {
     run(s, 5);
     expect(t.soldiers).toBe(20);
   });
-  test('não repõe fora do reino, andando ou sem ouro', () => {
+  test('não repõe fora do reino, andando ou sem dinheiro', () => {
     const a = hurt(180, 100, true);
     run(a.s, 1);
     expect(a.t.soldiers).toBe(10);
     const b = hurt(60, 100, true);
-    b.s.res.gold = 0;
+    b.s.res.money = 0;
     run(b.s, 0.9); // antes da renda do mês
     expect(b.t.soldiers).toBe(10);
-    expect(b.s.res.gold).toBe(0);
+    expect(b.s.res.money).toBe(0);
     const c = hurt(10, 102, true);
     moveTroops(c.s, grid, [c.t.id], 110, 102);
     run(c.s, 0.3);
     expect(c.t.soldiers).toBe(10);
   });
-  test('ouro negativo na virada do mês dispersa a tropa mais cara', () => {
+  test('dinheiro negativo na virada do mês dispersa a tropa mais cara', () => {
     const s = game();
     spawnTroop(s, 0, 'spear', 60, 100); spawnTroop(s, 0, 'cavalry', 60, 100);
-    s.res.gold = -500;
+    s.res.money = -500;
     run(s, 1);
     expect(s.troops.map(t => t.type)).toEqual(['spear']);
-    expect(s.events.at(-1)!.text).toBe('Cavaleiros dispersos por falta de ouro');
+    expect(s.events.at(-1)!.text).toBe('Cavaleiros dispersos por falta de dinheiro');
   });
 });
 

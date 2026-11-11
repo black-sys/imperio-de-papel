@@ -15,8 +15,6 @@ export interface Province {
   fertility: number; // 0–1.5
   forest: number;
   rock: number;
-  slots: number; // 3–6
-  sites: { x: number; y: number }[]; // tiles, um por vaga
   city: { x: number; y: number }; // tiles
   lots: { x: number; y: number }[]; // até 4, junto da cidade (fábricas)
   veins: Vein[]; // 0–4, longe da cidade (minas e campos)
@@ -259,7 +257,7 @@ function describe(map: WorldMap, cp: Int16Array): Province[] {
   return Array.from({ length: count }, (_, p) => ({
     id: p, name: '', cells: cells[p], neighbors: [...nb[p]].sort((a, b) => a - b), coastal: coastal[p] === 1,
     center: { x: (center[p] % S) * CELL + CELL / 2, y: Math.floor(center[p] / S) * CELL + CELL / 2 },
-    biome: Biome.Grassland, fertility: 1, forest: 0, rock: 0, slots: 3, sites: [], city: { x: 0, y: 0 }, lots: [], veins: [],
+    biome: Biome.Grassland, fertility: 1, forest: 0, rock: 0, city: { x: 0, y: 0 }, lots: [], veins: [],
   }));
 }
 
@@ -330,7 +328,6 @@ function addAttributes(map: WorldMap, cp: Int16Array, provinces: Province[]): vo
     if (map.elevation[i] >= MOUNTAIN_LEVEL) mtn[p]++;
     if (map.river[i]) riv[p]++;
   }
-  const mean = provinces.reduce((a, p) => a + p.cells, 0) / count;
   const rng = makeRng(subSeed(map.seed, 'nomes')), used = new Set<string>(), veinRng = makeRng(subSeed(map.seed, 'vein'));
   for (const p of provinces) {
     const dry = Math.max(1, biomeCount[p.id].reduce((a, b) => a + b, 0));
@@ -339,13 +336,11 @@ function addAttributes(map: WorldMap, cp: Int16Array, provinces: Province[]): vo
     p.forest = clamp15(tree[p.id] / dry / 0.15);
     const mFrac = mtn[p.id] / dry;
     p.rock = clamp15((rock[p.id] / dry / 0.02) * 0.7 + mFrac * 1.5);
-    let slots = 3 + (p.cells > mean ? 1 : 0) + (p.cells > 1.5 * mean ? 1 : 0) + (p.fertility > 0.9 ? 1 : 0);
-    if (mFrac > 0.4 || p.biome === Biome.Swamp) slots--;
-    p.slots = Math.min(6, Math.max(3, slots));
-    p.sites = pickSites(map, cellsOf[p.id], p);
-    p.city = p.sites[0] ?? { ...p.center };
-    p.lots = p.sites.length ? pickLots(map, cellsOf[p.id], p.city) : [];
-    p.veins = p.sites.length ? pickVeins(map, cellsOf[p.id], p, veinRng) : [];
+    // a cidade fica no melhor local seco e plano perto do centro; sem nenhum, a província não tem lugar para construir
+    const site = pickSites(map, cellsOf[p.id], p.center, 1)[0];
+    p.city = site ?? { ...p.center };
+    p.lots = site ? pickLots(map, cellsOf[p.id], p.city) : [];
+    p.veins = site ? pickVeins(map, cellsOf[p.id], p, veinRng) : [];
     let name = '';
     do name = makeName(rng); while (used.has(name));
     used.add(name);
@@ -354,7 +349,7 @@ function addAttributes(map: WorldMap, cp: Int16Array, provinces: Province[]): vo
 }
 
 /** Um local por vaga: células secas, sem rio e sem montanha, mais planas e perto do centro primeiro, afastadas ≥ 4 tiles. */
-function pickSites(map: WorldMap, cells: number[], p: Province): { x: number; y: number }[] {
+function pickSites(map: WorldMap, cells: number[], center: { x: number; y: number }, count: number): { x: number; y: number }[] {
   const S = map.size;
   const slope = (i: number) => {
     const x = i % S; let m = 0;
@@ -364,7 +359,7 @@ function pickSites(map: WorldMap, cells: number[], p: Province): { x: number; y:
   const cand = cells.filter(i => map.water[i] === 0 && !map.river[i]);
   const score = (i: number) => {
     const x = (i % S) * CELL + CELL / 2, y = Math.floor(i / S) * CELL + CELL / 2;
-    return Math.hypot(x - p.center.x, y - p.center.y) / CELL + slope(i) * 2000 + (map.elevation[i] >= MOUNTAIN_LEVEL ? 50 : 0);
+    return Math.hypot(x - center.x, y - center.y) / CELL + slope(i) * 2000 + (map.elevation[i] >= MOUNTAIN_LEVEL ? 50 : 0);
   };
   const ranked = cand.map(i => [score(i), i] as const).sort((a, b) => a[0] - b[0] || a[1] - b[1]).map(e => e[1]);
   const out: { x: number; y: number }[] = [];
@@ -372,16 +367,15 @@ function pickSites(map: WorldMap, cells: number[], p: Province): { x: number; y:
   // passadas cada vez mais permissivas: espaçamento menor e, por último, clareira de 2 tiles
   for (const [minD, clear] of [[12, 3], [8, 3], [4, 3], [4, 2], [3, 2]]) {
     for (const i of ranked) {
-      if (out.length >= p.slots) break;
+      if (out.length >= count) break;
       const x = (i % S) * CELL + CELL / 2, y = Math.floor(i / S) * CELL + CELL / 2;
       if (out.some(o => Math.hypot(o.x - x, o.y - y) < minD) || (rejected.get(i) ?? 99) <= clear) continue;
       if (!dryAround(map, x, y, clear)) { rejected.set(i, clear); continue; }
       out.push({ x, y });
     }
-    if (out.length >= p.slots) break;
+    if (out.length >= count) break;
   }
-  if (out.length < p.slots) p.slots = out.length; // ilha rasa em lago sem chão firme: menos vagas (pode ser 0; não colonizável)
-  return out;
+  return out; // ilha rasa em lago sem chão firme: pode voltar vazio (não colonizável)
 }
 
 
@@ -488,7 +482,7 @@ export function suggestCapitals(provinces: Province[]): number[] {
   // perto das montanhas), os quatro recursos podem estar a duas províncias de distância
   for (const [pct, hops] of [[0.5, 1], [0.3, 1], [0.3, 2]]) {
     const min = sorted[Math.floor(sorted.length * pct)];
-    cand = provinces.filter(p => score(p) >= min && p.neighbors.length >= 3 && p.slots >= 3 && kindsNear(p, hops).size === 4)
+    cand = provinces.filter(p => score(p) >= min && p.neighbors.length >= 3 && p.lots.length >= 2 && kindsNear(p, hops).size === 4)
       .sort((a, b) => score(b) - score(a) || a.id - b.id);
     for (let d = 1100; d >= 400; d -= 100) {
       const chosen: Province[] = [];
@@ -502,6 +496,6 @@ export function suggestCapitals(provinces: Province[]): number[] {
   if (cand.length) return cand.slice(0, 5).map(p => p.id);
   // continente pequeno/ilhado: sem filtros, as melhores com local de construção (ou qualquer uma)
   const any = [...provinces].sort((a, b) => score(b) - score(a) || a.id - b.id);
-  const withSites = any.filter(p => p.sites.length > 0);
+  const withSites = any.filter(p => p.lots.length > 0);
   return (withSites.length ? withSites : any).slice(0, 5).map(p => p.id);
 }

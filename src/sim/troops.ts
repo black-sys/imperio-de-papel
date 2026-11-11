@@ -9,7 +9,7 @@ import { activeLevel, type GameState, type Troop } from './state';
 /** Tropas que o reino sustenta: soma das guarnições do jogador (em melhoria vale o nível anterior). */
 export function troopCap(s: GameState): number {
   let cap = 0;
-  s.owner.forEach((o, id) => { if (o === 0) for (const b of s.buildings[id]) if (b?.type === 'garrison') cap += TROOP_CAP[activeLevel(b)]; });
+  s.owner.forEach((o, id) => { if (o === 0) for (const b of s.lots[id]) if (b?.type === 'garrison') cap += TROOP_CAP[activeLevel(b)]; });
   return cap;
 }
 
@@ -47,9 +47,9 @@ function refill(s: GameState, pm: ProvinceMap, grid: MoveGrid, t: Troop, dt: num
   if (t.owner !== 0 || t.soldiers >= max || t.path.length || s.clock < t.routedUntil || inBattle(s, t.id)) return;
   const p = provinceAt(pm, grid, t.x, t.y);
   if (p < 0 || s.owner[p] !== 0) return;
-  const rate = s.buildings[p].some(b => b?.type === 'garrison' && activeLevel(b) > 0) ? REFILL.garrisonRate : REFILL.rate;
-  const add = Math.min(max - t.soldiers, rate * dt), gold = add * REFILL.gold;
-  if (s.res.gold < gold) return;
-  s.res.gold -= gold;
+  const rate = s.lots[p].some(b => b?.type === 'garrison' && activeLevel(b) > 0) ? REFILL.garrisonRate : REFILL.rate;
+  const add = Math.min(max - t.soldiers, rate * dt), money = add * REFILL.money;
+  if (s.res.money < money) return;
+  s.res.money -= money;
   t.soldiers += add;
 }

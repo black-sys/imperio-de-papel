@@ -70,7 +70,7 @@ describe('moral e fuga', () => {
     expect(texts(r.s)).toContain('Derrota perto de P0');
     expect(moveTroops(r.s, grid, [t.id], 100, 100)).toEqual({ ok: false, reason: 'Tropa em fuga' });
     run(r.s, 0.6);
-    expect(Math.hypot(t.x - 60, t.y - 80)).toBeLessThan(4); // sites[0] da província 0
+    expect(Math.hypot(t.x - 60, t.y - 80)).toBeLessThan(4); // cidade da província 0
     expect(moveTroops(r.s, grid, [t.id], 100, 100)).toEqual({ ok: true });
     expect(t.morale).toBe(1);
   });

@@ -99,11 +99,11 @@ function flee(s: GameState, pm: ProvinceMap, grid: MoveGrid, t: Troop): void {
   let best = -1, bd = Infinity;
   s.owner.forEach((o, id) => {
     const p = pm.provinces[id];
-    if (o !== t.owner || !p.sites[0]) return;
+    if (o !== t.owner || !p.lots.length) return;
     const d = dist(t, p.center);
     if (d < bd) { bd = d; best = id; }
   });
-  const site = best < 0 ? null : pm.provinces[best].sites[0];
+  const site = best < 0 ? null : pm.provinces[best].city;
   const path = site && findCellPath(grid, cellAt(grid, t.x, t.y), cellAt(grid, site.x, site.y));
   if (!path) { t.soldiers = 0; return; }
   t.path = path;

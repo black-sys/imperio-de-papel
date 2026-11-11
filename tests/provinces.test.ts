@@ -93,21 +93,6 @@ describe('atributos', { timeout: 60000 }, () => {
     const avg = (b: number) => { const l = pm.provinces.filter(p => p.biome === b); return l.reduce((a, p) => a + p.forest, 0) / l.length; };
     expect(avg(4)).toBeGreaterThan(avg(8) + 0.3); // floresta temperada vs deserto
   });
-  test('vagas 3–6 e um local seco por vaga, dentro da província e afastados', () => {
-    const { map, pm } = get(860), S = map.size;
-    for (const p of pm.provinces) {
-      expect(p.slots).toBeGreaterThanOrEqual(3); expect(p.slots).toBeLessThanOrEqual(6);
-      expect(p.sites.length).toBe(p.slots);
-      for (const s of p.sites) {
-        const c = Math.floor(s.y / 4) * S + Math.floor(s.x / 4);
-        expect(pm.cellProvince[c]).toBe(p.id);
-        expect(map.water[c]).toBe(0);
-        expect(map.river[c]).toBe(0);
-      }
-      for (let i = 0; i < p.sites.length; i++) for (let j = i + 1; j < p.sites.length; j++)
-        expect(Math.hypot(p.sites[i].x - p.sites[j].x, p.sites[i].y - p.sites[j].y)).toBeGreaterThanOrEqual(4);
-    }
-  });
   test('nomes únicos, não vazios e determinísticos', () => {
     const { map, pm } = get(860);
     const names = pm.provinces.map(p => p.name);
@@ -130,18 +115,17 @@ describe('atributos', { timeout: 60000 }, () => {
 });
 
 describe('correções da revisão', { timeout: 120000 }, () => {
-  test.each([8, 9, 123])('semente %i: nenhuma província só de lago (todas com terra e 3+ locais)', seed => {
+  test.each([8, 9, 123])('semente %i: nenhuma província só de lago (todas com terra; com vizinhas, ao menos um lote)', seed => {
     const { map, pm } = get(seed);
     const dry = new Int32Array(pm.provinces.length);
     pm.cellProvince.forEach((p, i) => { if (p >= 0 && map.water[i] === 0) dry[p]++; });
     expect(pm.provinces.filter(p => dry[p.id] === 0).map(p => p.id)).toEqual([]);
     // ilhas isoladas (sem vizinhas, não colonizáveis) podem ficar sem chão firme para construir
-    expect(pm.provinces.filter(p => p.sites.length < 3 && p.neighbors.length > 0).map(p => p.id)).toEqual([]);
-    for (const p of pm.provinces) expect(p.sites.length).toBe(p.slots);
+    expect(pm.provinces.filter(p => p.lots.length < 1 && p.neighbors.length > 0).map(p => p.id)).toEqual([]);
   });
   test('capitais sugeridas nunca ficam vazias (sem vizinhos/recursos, cai para as melhores)', async () => {
     const { suggestCapitals } = await import('../src/worldgen/provinces');
-    const lone = [0, 1, 2].map(id => ({ id, name: `L${id}`, center: { x: id * 900, y: 0 }, cells: 100, neighbors: [], coastal: true, biome: 5, fertility: 1, forest: 0, rock: 0, slots: 3, sites: [] }));
+    const lone = [0, 1, 2].map(id => ({ id, name: `L${id}`, center: { x: id * 900, y: 0 }, cells: 100, neighbors: [], coastal: true, biome: 5, fertility: 1, forest: 0, rock: 0, city: { x: 0, y: 0 }, lots: [], veins: [] }));
     expect(suggestCapitals(lone as never).length).toBeGreaterThanOrEqual(1);
   });
 });
@@ -156,7 +140,7 @@ describe('locais de construção na terra local', { timeout: 180000 }, () => {
       return cache.get(k)!.water[(y & 63) * 64 + (x & 63)];
     };
     const bad: string[] = [];
-    for (const p of pm.provinces) for (const s of p.sites)
+    for (const p of pm.provinces) for (const s of p.lots.length ? [p.city, ...p.lots] : [])
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
         if (water(s.x + dx, s.y + dy)) { bad.push(`${p.name} (${s.x},${s.y})`); dy = dx = 9; }
     expect(bad).toEqual([]);
@@ -181,7 +165,7 @@ describe('cidade, lotes e veios', { timeout: 240000 }, () => {
     let withVein = 0;
     const kinds = new Set<string>(), bad: string[] = [];
     for (const p of pm.provinces) {
-      if (!p.lots.length && !p.sites.length) continue; // ilhota sem chão firme
+      if (!p.lots.length) continue; // ilhota sem chão firme
       if (pm.cellProvince[cellOf(p.city)] !== p.id || wet(p.city.x, p.city.y)) bad.push(`cidade ${p.name}`);
       expect(p.lots.length).toBeLessThanOrEqual(4);
       for (const l of p.lots) {
