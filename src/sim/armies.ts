@@ -8,6 +8,7 @@ import { AI, ARMY, BATTLE, REFILL, TROOPS, TROOP_CAP, type TroopType } from './b
 import { aiStep } from './ai';
 import { aiWarRoll } from './war';
 import { aiDiplomacy } from './diplomacy';
+import { aiStability } from './stability';
 import { cellAt, type MoveGrid } from './movegrid';
 import { activeLevel, logFor, type Army, type Battalion, type GameState } from './state';
 
@@ -52,7 +53,7 @@ export function troopStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: num
   fortressStep(s, pm);
   // IA: uma vez por mês por nação, cada uma numa fase diferente do mês (o custo se espalha)
   const perMonth = Math.round(1 / BATTLE.step), k = Math.round(s.clock / BATTLE.step) % perMonth;
-  for (const n of s.nations) if (n.alive && n.ai && k === (n.id * AI.phaseSteps) % perMonth) { aiStep(s, pm, grid, n.id); aiWarRoll(s, pm, n.id); aiDiplomacy(s, pm, n.id); }
+  for (const n of s.nations) if (n.alive && n.ai && k === (n.id * AI.phaseSteps) % perMonth) { aiStep(s, pm, grid, n.id); aiWarRoll(s, pm, n.id); aiDiplomacy(s, pm, n.id); aiStability(s, pm, grid, n.id); }
 }
 
 /** Anda de centro em centro de célula no passo do batalhão mais lento; a célula de chegada dita o custo do trecho (rio 3×, difícil 2×). */

@@ -57,7 +57,7 @@ describe('IA em guerra', () => {
   });
 });
 
-const totals = { trades: 0, peaces: 0 };
+const totals = { trades: 0, peaces: 0, revolts: 0 };
 describe.sequential('partida inteira', { timeout: 600000 }, () => {
   test.each([860, 1, 2, 7])('semente %i: 5 nações por 600 meses sem exceção; guerras e eliminações acontecem', seed => {
     const map = generateWorld(seed), real = generateProvinces(map), g = makeMoveGrid(map);
@@ -66,26 +66,31 @@ describe.sequential('partida inteira', { timeout: 600000 }, () => {
     startGame(s, real, real.suggestedCapitals[0], 'normal');
     s.nations[0].ai = true; // o jogador também joga sozinho
     setSpeed(s, 1);
-    let firstWar = -1, firstOut = -1, trades = 0, peaces = 0, seen = 0;
+    let firstWar = -1, firstOut = -1, trades = 0, peaces = 0, seen = 0, revolts = 0, worst = 0;
+    const counted = new Set<number>(), streak: number[] = [];
     for (let m = 1; m <= 600; m++) {
       tick(s, real, 10, g);
       for (const e of s.events.slice(Math.max(0, s.events.length - (s.eventCount - seen)))) if (e.text.startsWith('Paz entre')) peaces++;
       seen = s.eventCount;
       if (s.pacts.some(p => p.kind === 'trade')) trades++;
+      revolts += s.revolts.filter(r => !counted.has(r.army) && counted.add(r.army)).length;
+      for (const n of s.nations) { streak[n.id] = n.alive && s.revolts.some(r => s.owner[r.province] === n.id) ? (streak[n.id] ?? 0) + 1 : 0; worst = Math.max(worst, streak[n.id]); }
       if (firstWar < 0 && s.nations.some(n => n.atWar.length)) firstWar = m;
       if (firstOut < 0 && s.nations.some(n => !n.alive)) firstOut = m;
     }
-    console.log(`semente ${seed}: pazes ${peaces}, meses com comércio ${trades}, 1ª guerra ${firstWar}, 1ª eliminação ${firstOut}, vivas ${s.nations.filter(n => n.alive).length}, províncias ${s.nations.map(n => s.owner.filter(o => o === n.id).length).join('/')}`);
+    console.log(`semente ${seed}: revoltas ${revolts} (pior sequência ${worst} meses), pazes ${peaces}, meses com comércio ${trades}, 1ª guerra ${firstWar}, 1ª eliminação ${firstOut}, vivas ${s.nations.filter(n => n.alive).length}, províncias ${s.nations.map(n => s.owner.filter(o => o === n.id).length).join('/')}`);
     // a IA só declara a vizinhos de fronteira, e pactos de não agressão e relações cordiais seguram a guerra
     expect(firstWar).toBeGreaterThanOrEqual(24);
     expect(firstWar).toBeLessThanOrEqual(400);
     expect(firstOut).toBeGreaterThan(0);
     expect(firstOut).toBeLessThanOrEqual(500);
     for (const n of s.nations) if (n.alive) expect(n.res.money).toBeGreaterThan(-50);
-    totals.trades += trades; totals.peaces += peaces;
+    totals.trades += trades; totals.peaces += peaces; totals.revolts += revolts;
+    expect(worst).toBeLessThanOrEqual(120); // nenhuma nação em revolta sem parar
   });
   test('na média das sementes há comércio e ao menos uma paz', () => {
     expect(totals.trades).toBeGreaterThan(0);
     expect(totals.peaces).toBeGreaterThan(0);
+    expect(totals.revolts).toBeGreaterThan(0);
   });
 });

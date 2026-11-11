@@ -178,3 +178,28 @@ export function repress(s: GameState, pm: ProvinceMap, grid: MoveGrid, armyId: n
   logFor(s, n, `${a.name} reprimiu ${pm.provinces[p].name}`);
   return { ok: true };
 }
+
+/**
+ * Decisão mensal da IA sobre a ordem interna: Pão e circo com média < 45 e dinheiro para 6 meses; Racionamento na fome;
+ * Militarista: Lei marcial e repressão (< 25) onde tem exército parado; Industrial: Jornada reduzida com greve; revoga
+ * o que não precisa mais quando a média passa de 60 (Racionamento quando os grãos voltam).
+ */
+export function aiStability(s: GameState, pm: ProvinceMap, grid: MoveGrid, n: number): void {
+  const x = s.nations[n];
+  if (!x?.alive) return;
+  const own = s.owner.map((o, id) => (o === n && s.city[id] ? id : -1)).filter(id => id >= 0);
+  if (!own.length) return;
+  const avg = own.reduce((k, id) => k + s.stability[id], 0) / own.length, has = (l: LawKind) => x.laws.includes(l);
+  if (x.grainShort && !has('ration')) decree(s, n, 'ration');
+  if (!x.grainShort && has('ration') && x.res.grain > 0) repeal(s, n, 'ration');
+  if (avg > 60) { for (const l of ['bread', 'martial', 'shorter'] as const) if (has(l)) repeal(s, n, l); return; }
+  if (avg < 45 && !has('bread') && x.res.money >= LAWS.bread.cost + 6 * LAWS.bread.perCity * own.length) decree(s, n, 'bread');
+  if (x.bent === 'industrial' && !has('shorter') && s.strikes.some(k => s.owner[k.province] === n)) decree(s, n, 'shorter');
+  if (x.bent === 'militarist') {
+    if (avg < 45 && !has('martial')) decree(s, n, 'martial');
+    for (const a of s.armies.filter(a => a.owner === n && !a.path.length)) {
+      const p = provinceAt(pm, grid, a.x, a.y);
+      if (p >= 0 && s.owner[p] === n && s.stability[p] < 25) repress(s, pm, grid, a.id, n);
+    }
+  }
+}

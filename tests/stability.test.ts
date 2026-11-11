@@ -2,13 +2,16 @@ import { describe, expect, test } from 'vitest';
 import { chooseCapital } from '../src/sim/commands';
 import { fall } from '../src/sim/conquest';
 import { runMonth } from '../src/sim/economy';
-import { decree, headline, repeal, repress, stabilityMonth, stabilityTarget } from '../src/sim/stability';
+import { aiStability, decree, headline, repeal, repress, stabilityMonth, stabilityTarget } from '../src/sim/stability';
+import { aiStep } from '../src/sim/ai';
 import { spawnArmy, men } from '../src/sim/armies';
 import { eliminate } from '../src/sim/conquest';
 import { cityTax } from '../src/sim/economy';
 import { found, newGame, type GameState } from '../src/sim/state';
 import { declareWar } from '../src/sim/war';
 import { makeRouteWorld } from './troopworld';
+import { STAB } from '../src/sim/balance';
+const B = STAB.base; // alvo base
 
 const { pm, grid } = makeRouteWorld(); // R0, R1, R2 em faixa
 /** Jogador com capital em R0 e R1 (cidade N1, ligada); rival (nação 1) em R2. */
@@ -26,9 +29,9 @@ const target = (s: GameState, id = 1) => stabilityTarget(s, pm, id).target;
 describe('alvo', () => {
   test('base em paz: 60 + 5; cada fator isolado', () => {
     const s = world();
-    expect(target(s)).toBe(65);
+    expect(target(s)).toBe(B + 5);
     expect(stabilityTarget(s, pm, 1).factors).toEqual([['Paz', 5]]);
-    const f = (change: (s: GameState) => void) => { const t = world(); change(t); return target(t) - 65; };
+    const f = (change: (s: GameState) => void) => { const t = world(); change(t); return target(t) - (B + 5); };
     expect(f(s => { s.nations[0].grainShort = true; })).toBe(-25);
     expect(f(s => { s.lots[1][0] = { type: 'steelworks', level: 2, remaining: 0 }; })).toBe(-10);
     expect(f(s => { s.city[1] = { level: 2, remaining: 0 }; })).toBe(-5);
@@ -38,16 +41,16 @@ describe('alvo', () => {
     expect(f(s => { s.lots[1][0] = { type: 'garrison', level: 2, remaining: 0 }; })).toBe(15);
     expect(f(s => { s.lots[1][0] = { type: 'market', level: 2, remaining: 0 }; })).toBe(10);
     expect(f(s => { s.month = 10; s.resentment[1] = 20; })).toBe(-5);
-    expect(target(s, 0) - 65).toBe(10 - 5); // capital (+10) N2 (−5)
+    expect(target(s, 0) - (B + 5)).toBe(10 - 5); // capital (+10) N2 (−5)
   });
   test('guerra: −5 por guerra e −1 por 12 meses da mais antiga (sem o +5 da paz)', () => {
     const s = world();
     declareWar(s, 0, 1, pm);
-    expect(target(s)).toBe(55);
+    expect(target(s)).toBe(B - 5);
     s.month = 36;
-    expect(target(s)).toBe(52);
+    expect(target(s)).toBe(B - 8);
     s.month = 400;
-    expect(target(s)).toBe(40); // guerra longa limitada a −15
+    expect(target(s)).toBe(B - 20); // guerra longa limitada a −15
   });
   test('limitado a 0–100', () => {
     const s = world();
@@ -62,7 +65,7 @@ describe('variação', () => {
     const s = world();
     expect([s.stability[0], s.stability[1]]).toEqual([70, 70]);
     stabilityMonth(s, pm);
-    expect(s.stability[1]).toBeCloseTo(69.5, 9);
+    expect(s.stability[1]).toBeCloseTo(70 + (B + 5 - 70) * 0.1, 9);
     fall(s, pm, 1, 1);
     expect(s.stability[1]).toBe(30);
     expect(s.conquered[1]).toBe(s.month);
@@ -71,7 +74,7 @@ describe('variação', () => {
     const s = world();
     s.stability[1] = 30; s.resentment[1] = 99;
     stabilityMonth(s, pm);
-    expect(s.stability[1]).toBeCloseTo(30 + (60 - 30) * 0.1 * 0.5, 9);
+    expect(s.stability[1]).toBeCloseTo(30 + (B - 30) * 0.1 * 0.5, 9);
   });
 });
 
@@ -187,7 +190,7 @@ describe('leis', () => {
     const s = world();
     s.nations[0].res.money = 500;
     decree(s, 0, 'bread');
-    expect(stabilityTarget(s, pm, 1).target).toBe(75);
+    expect(stabilityTarget(s, pm, 1).target).toBe(B + 15);
     const m = s.nations[0].res.money;
     stabilityMonth(s, pm);
     expect(m - s.nations[0].res.money).toBe(4); // 2 cidades
@@ -201,7 +204,7 @@ describe('leis', () => {
     decree(r, 0, 'ration');
     const grain = (x: GameState) => runMonth(x, pm, false, 0).lines.grain.find(l => l[0] === 'Cidades')![1];
     expect(grain(r)).toBeCloseTo(grain(base) * 0.5, 9);
-    expect(stabilityTarget(r, pm, 1).target).toBe(60);
+    expect(stabilityTarget(r, pm, 1).target).toBe(B);
     r.nations[0].grainShort = true; base.nations[0].grainShort = true;
     expect(stabilityTarget(r, pm, 1).target - stabilityTarget(base, pm, 1).target).toBe(25 - 5); // fome não pesa com estoque
     const f = world();
@@ -215,9 +218,9 @@ describe('leis', () => {
     m.nations[0].res.money = 999;
     decree(m, 0, 'martial');
     expect(cityTax(m, pm, 1)).toBeCloseTo(tax * 0.8, 9);
-    expect(stabilityTarget(m, pm, 1).target).toBe(65);
+    expect(stabilityTarget(m, pm, 1).target).toBe(B + 5);
     spawnArmy(m, 0, ['line'], 190, 32); // parado em R1
-    expect(stabilityTarget(m, pm, 1).target).toBe(80);
+    expect(stabilityTarget(m, pm, 1).target).toBe(B + 20);
   });
   test('nação eliminada com Pão e circo: nada é cobrado', () => {
     const s = world();
@@ -251,5 +254,32 @@ describe('reprimir', () => {
     a.x = 190; a.y = 32; s.stability[1] = 10;
     s.battles.push({ x: 190, y: 32, start: 0, armyIds: [a.id], sides: [{ owner: 0, initial: 40, morale: 1 }] });
     expect(repress(s, pm, grid, a.id)).toEqual({ ok: false, reason: 'Exército em batalha' });
+  });
+});
+
+describe('a IA', () => {
+  test('decreta Pão e circo com média baixa e dinheiro; revoga quando melhora', () => {
+    const s = world();
+    s.nations[1].res.money = 500; s.stability[2] = 30;
+    aiStability(s, pm, grid, 1);
+    expect(s.nations[1].laws).toContain('bread');
+    s.stability[2] = 80;
+    aiStability(s, pm, grid, 1);
+    expect(s.nations[1].laws).not.toContain('bread');
+  });
+  test('Racionamento na fome', () => {
+    const s = world();
+    s.nations[1].grainShort = true;
+    aiStability(s, pm, grid, 1);
+    expect(s.nations[1].laws).toContain('ration');
+  });
+  test('manda exército contra rebeldes na própria província', () => {
+    const s = world();
+    const mine = spawnArmy(s, 1, ['line', 'line', 'line', 'line'], 300, 100);
+    const rebels = spawnArmy(s, -1, ['line'], 340, 40, -1, 'Rebeldes de R2');
+    s.revolts.push({ province: 2, since: 0, army: rebels.id });
+    aiStep(s, pm, grid, 1);
+    const c = mine.path.at(-1)!;
+    expect(Math.hypot((c % grid.size) * 4 + 2 - 340, Math.floor(c / grid.size) * 4 + 2 - 40)).toBeLessThan(20);
   });
 });

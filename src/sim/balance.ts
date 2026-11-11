@@ -117,7 +117,7 @@ export const AI_DIPLO = {
 
 // ---- estabilidade (ciclo 6) ----
 export const STAB = {
-  start: 70, conquered: 30, base: 60, approach: 0.1,
+  start: 70, conquered: 30, base: 50, approach: 0.1,
   mod: { famine: -25, war: -5, longWarPer12: -1, longWarMax: -15, factory: -5, city2: -5, city3: -10, disconnected: -15, conquered: -20, conqueredMonths: 60,
     garrison: 10, garrisonPerLevel: 5, market: 5, capital: 10, peace: 5, bread: 10, ration: -5, martial: 15, resentment: -5 },
 };
