@@ -100,7 +100,8 @@ export function recomputeConnected(s: GameState): void {
 }
 
 /** A cada passo fixo das tropas: cortes, ligação com a capital e entrega de depósitos. */
-export function updateRoutes(s: GameState, pm: ProvinceMap, _grid: MoveGrid): void {
+export function updateRoutes(s: GameState, pm: ProvinceMap, grid: MoveGrid): void {
+  markCuts(s, pm, grid);
   const before = s.connected;
   recomputeConnected(s);
   s.connected.forEach((on, id) => {
@@ -112,4 +113,28 @@ export function updateRoutes(s: GameState, pm: ProvinceMap, _grid: MoveGrid): vo
       logEvent(s, `Carga de ${pm.provinces[id].name} chegou ao estoque`);
     }
   });
+}
+
+/** Rota cortada: tropa hostil (fortaleza ou outro reino) a ≤ cutTiles de alguma célula dela, ou passa por província de outro reino. */
+function markCuts(s: GameState, pm: ProvinceMap, grid: MoveGrid): void {
+  if (!s.routes.length) return;
+  const index = routeIndex(s), cut = new Set<number>(), S = grid.size, r = Math.ceil((ROUTE.cutTiles + CELL) / CELL);
+  for (const t of s.troops) {
+    if (t.owner === 0) continue;
+    const c = cellAt(grid, t.x, t.y);
+    if (c < 0) continue;
+    const cx = c % S, cy = Math.floor(c / S);
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      const x = cx + dx, y = cy + dy;
+      if (x < 0 || y < 0 || x >= S || y >= S) continue;
+      const ids = index.get(y * S + x);
+      if (ids && Math.hypot(x * CELL + CELL / 2 - t.x, y * CELL + CELL / 2 - t.y) <= ROUTE.cutTiles) for (const id of ids) cut.add(id);
+    }
+  }
+  for (const route of s.routes) {
+    const now = cut.has(route.id) || route.path.some(c => { const p = pm.cellProvince[c]; return p >= 0 && s.owner[p] !== 0 && s.owner[p] !== -1; });
+    if (now === route.cut) continue;
+    route.cut = now;
+    if (route.remaining <= 0) logEvent(s, `Rota ${pm.provinces[route.a].name}–${pm.provinces[route.b].name} ${now ? 'cortada' : 'religada'}`);
+  }
 }

@@ -2,7 +2,12 @@ import { describe, expect, test } from 'vitest';
 import { DEPOT_MONTHS, ROUTE } from '../src/sim/balance';
 import { cityTax, runMonth } from '../src/sim/economy';
 import { chooseCapital, setSpeed } from '../src/sim/commands';
-import { buildRoute, checkRoute, planRoute, removeRoute } from '../src/sim/routes';
+import { placeFortresses } from '../src/sim/fortress';
+import { makeMoveGrid } from '../src/sim/movegrid';
+import { buildRoute, checkRoute, planRoute, removeRoute, updateRoutes } from '../src/sim/routes';
+import { spawnTroop } from '../src/sim/troops';
+import { generateWorld } from '../src/worldgen/global/world';
+import { generateProvinces } from '../src/worldgen/provinces';
 import { found, newGame, type GameState } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
 import { makeRouteWorld } from './troopworld';
@@ -119,5 +124,67 @@ describe('depósito e entrega', () => {
     removeRoute(s, s.routes[0].id);
     run(s, 0.05);
     expect(s.events.at(-1)!.text).toBe('R1 desligada da capital');
+  });
+});
+
+describe('cortes', () => {
+  /** Rota 0–1 pronta; devolve uma célula do meio dela em tiles. */
+  const withRoute = () => {
+    const s = game();
+    buildRoute(s, pm, grid, 0, 1);
+    run(s, 4);
+    const r = s.routes[0], c = r.path[Math.floor(r.path.length / 2)];
+    return { s, r, x: (c % grid.size) * 4 + 2, y: Math.floor(c / grid.size) * 4 + 2 };
+  };
+  test('tropa hostil a 6 tiles corta; a 7 não; ir embora religa', () => {
+    const { s, r, x, y } = withRoute();
+    const t = spawnTroop(s, 1, 'line', x, y + 7);
+    t.x = x; t.y = y + 7.5; // 7.5 tiles do centro da célula da rota
+    run(s, 0.05);
+    expect(r.cut).toBe(false);
+    t.y = y + 5.9;
+    run(s, 0.05);
+    expect(r.cut).toBe(true);
+    expect(s.connected[1]).toBe(false);
+    expect(s.events.some(e => e.text === 'Rota R0–R1 cortada')).toBe(true);
+    t.y = y + 60;
+    run(s, 0.05);
+    expect(r.cut).toBe(false);
+    expect(s.connected[1]).toBe(true);
+    expect(s.events.some(e => e.text === 'Rota R0–R1 religada')).toBe(true);
+  });
+  test('corte na 0–1 desliga também a 2, ligada por 1–2', () => {
+    const { s, x, y } = withRoute();
+    buildRoute(s, pm, grid, 1, 2);
+    run(s, 4);
+    expect(s.connected[2]).toBe(true);
+    spawnTroop(s, -1, 'line', x, y, 9); // fortaleza também corta
+    run(s, 0.05);
+    expect(s.connected).toEqual([true, false, false]);
+  });
+  test('o traçado desvia de fortaleza quando há alternativa', () => {
+    const s = game(), direct = planRoute(s, pm, grid, 0, 1);
+    if (!direct.ok) throw new Error(direct.reason);
+    const mid = direct.path[Math.floor(direct.path.length / 2)], fx = (mid % grid.size) * 4 + 2, fy = Math.floor(mid / grid.size) * 4 + 2;
+    spawnTroop(s, -1, 'line', fx, fy, 9);
+    const p = planRoute(s, pm, grid, 0, 1);
+    if (!p.ok) throw new Error(p.reason);
+    expect(p.path.every(c => Math.hypot((c % grid.size) * 4 + 2 - fx, Math.floor(c / grid.size) * 4 + 2 - fy) > 6)).toBe(true);
+  });
+  test('desempenho: updateRoutes com ~200 tropas de fortaleza e 30 rotas < 1 ms', { timeout: 60000 }, () => {
+    const map = generateWorld(860), real = generateProvinces(map), g = makeMoveGrid(map), s = newGame(real);
+    placeFortresses(s, real, 860);
+    chooseCapital(s, real, real.suggestedCapitals[0]);
+    s.res = { ...rich, money: 1e9, wood: 1e9 };
+    const own = [real.suggestedCapitals[0]];
+    for (const p of real.provinces) if (own.length < 31 && p.lots.length && !s.fortresses.some(f => f.province === p.id) && p.id !== own[0]) { found(s, p.id); own.push(p.id); }
+    for (let i = 1; i < own.length; i++) buildRoute(s, real, g, own[i - 1], own[i]);
+    for (const r of s.routes) r.remaining = 0;
+    expect(s.routes.length).toBeGreaterThanOrEqual(25);
+    expect(s.troops.length).toBeGreaterThanOrEqual(150);
+    updateRoutes(s, real, g);
+    const t = performance.now();
+    for (let i = 0; i < 50; i++) updateRoutes(s, real, g);
+    expect((performance.now() - t) / 50).toBeLessThan(1);
   });
 });
