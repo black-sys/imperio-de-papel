@@ -150,7 +150,7 @@ describe('reforço pela linha', () => {
     s.lots[0][0] = { type: 'garrison', level: 3, remaining: 0 };
     s.lots[0][1] = { type: 'garrison', level: 3, remaining: 0 }; // teto 8 + 4 (a segunda guarnição conta no teto)
     s.recruiting.push({ province: 0, lot: 0, type: 'cavalry', remaining: 0.01 });
-    setSpeed(s, 1); tick(s, pm, 0.1, null); // conclui o treino (sem passo de tropas)
+    setSpeed(s, 1); tick(s, pm, 0.2, null); // conclui o treino (um passo fixo, sem passo de tropas)
     expect(a.battalions.length).toBe(9);
     expect(s.events.some(e => e.text === `Batalhão de cavalaria chegou ao ${a.name} pela linha`)).toBe(true);
   });

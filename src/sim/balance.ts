@@ -94,3 +94,10 @@ export const DIFFICULTY = { easy: 0.7, normal: 1, hard: 1.3 }; // renda dos riva
 export const MAX_RIVALS = 4;
 export const WAR = { militarist: 0.15, expansionist: 0.08, strongMult: 2, strongRatio: 1.5, graceMonths: 24 };
 export const OCCUPY = { base: 1, garrison: [0, 2, 3, 4], capital: 3 }; // meses para a província ocupada cair
+// pesos da IA por inclinação: fração das províncias com Guarnição; margem de força (batalhões) para atacar
+export const AI_BENT = {
+  militarist: { garrisonShare: 2 / 3, margin: 1.5 },
+  expansionist: { garrisonShare: 1 / 2, margin: 2 },
+  industrial: { garrisonShare: 1 / 3, margin: 3 },
+};
+export const AI = { defendRatio: 0.8, recomposeBelow: 0.5, phaseSteps: 10 }; // phaseSteps: passos de tropa entre as nações no mês

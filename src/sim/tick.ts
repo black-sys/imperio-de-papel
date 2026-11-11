@@ -11,12 +11,16 @@ const EPS = 1e-9;
 
 /** Avança o tempo real `dtSeconds` na velocidade atual; paga a renda em cada virada de mês atravessada. */
 export function tick(s: GameState, pm: ProvinceMap, dtSeconds: number, grid: MoveGrid | null): void {
-  let months = (dtSeconds * s.speed) / MONTH_SECONDS;
-  // tropas e batalhas em passos fixos: o resultado não depende da velocidade nem da taxa de quadros
-  if (grid) for (s.stepAcc += months; s.stepAcc >= BATTLE.step - EPS; s.stepAcc -= BATTLE.step) {
-    troopStep(s, pm, grid, BATTLE.step);
+  // tudo em passos fixos (tropas, IA, obras, virada do mês): o resultado não depende da velocidade nem da taxa de quadros
+  for (s.stepAcc += (dtSeconds * s.speed) / MONTH_SECONDS; s.stepAcc >= BATTLE.step - EPS; s.stepAcc -= BATTLE.step) {
+    if (grid) troopStep(s, pm, grid, BATTLE.step);
     s.clock = Math.round((s.clock + BATTLE.step) * 1e6) / 1e6;
+    economyStep(s, pm, BATTLE.step);
   }
+}
+
+/** Obras, treino e colonização andam `months`; em cada virada de mês, a conta de cada nação. */
+function economyStep(s: GameState, pm: ProvinceMap, months: number): void {
   while (months > EPS) {
     const toBoundary = Math.floor(s.month + EPS) + 1 - s.month;
     const boundary = months >= toBoundary - EPS;
