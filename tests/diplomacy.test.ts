@@ -197,6 +197,7 @@ describe('paz', () => {
     expect(s.lots[1][0]).toEqual({ type: 'market', level: 2, remaining: 0 });
     expect([s.nations[0].res.money - m0, m1 - s.nations[1].res.money]).toEqual([20, 20]);
     expect(texts(s)).toContain('Paz entre a Nação de R0 e a Nação de R1');
+    expect(texts(s)).toContain('R1 cedida pela Nação de R1');
   });
   test('carta de paz aceita depois que a ocupação acabou: recusada, nada muda', () => {
     const s = atWar();

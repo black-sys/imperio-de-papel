@@ -63,8 +63,8 @@ export function fall(s: GameState, pm: ProvinceMap, province: number, n: number,
   s.occupations = s.occupations.filter(e => e.province !== province);
   s.connected[province] = false;
   s.owner[province] = n;
-  if (n === 0 && s.nations[prev]) logEvent(s, `${name} tomada da ${s.nations[prev].name}`);
-  if (prev === 0) logEvent(s, `${name} perdida para a ${s.nations[n].name}`);
+  if (n === 0 && s.nations[prev]) logEvent(s, damage ? `${name} tomada da ${s.nations[prev].name}` : `${name} cedida pela ${s.nations[prev].name}`);
+  if (prev === 0) logEvent(s, damage ? `${name} perdida para a ${s.nations[n].name}` : `${name} cedida à ${s.nations[n].name}`);
   if (s.nations[prev]?.alive && s.nations[prev].capital === province) eliminate(s, pm, prev, n);
 }
 
