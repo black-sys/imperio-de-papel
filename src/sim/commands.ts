@@ -36,6 +36,7 @@ export function chooseCapital(s: GameState, pm: ProvinceMap, id: number): Result
   if (!validProvince(pm, id)) return no('Província inválida');
   s.capital = id; s.owner[id] = 0;
   s.city[id] = { level: 2, remaining: 0 };
+  s.connected[id] = true; // a capital é sempre ligada
   s.res = startingStock(pm, id);
   logEvent(s, `Capital fundada em ${pm.provinces[id].name}`);
   return OK;

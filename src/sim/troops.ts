@@ -2,6 +2,7 @@ import type { ProvinceMap } from '../worldgen/provinces';
 import { CELL } from '../worldgen/constants';
 import { battleStep } from './battle';
 import { fortressStep } from './fortress';
+import { updateRoutes } from './routes';
 import { REFILL, TROOPS, TROOP_CAP, type TroopType } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
 import { activeLevel, type GameState, type Troop } from './state';
@@ -14,7 +15,7 @@ export function troopCap(s: GameState): number {
 }
 
 export function spawnTroop(s: GameState, owner: number, type: TroopType, x: number, y: number, home = -1): Troop {
-  const t: Troop = { id: s.nextTroopId++, owner, type, soldiers: TROOPS[type].soldiers, x, y, path: [], morale: 1, routedUntil: 0, home };
+  const t: Troop = { id: s.nextTroopId++, owner, type, soldiers: TROOPS[type].soldiers, x, y, path: [], morale: 1, routedUntil: 0, home, supply: null, supplied: true };
   s.troops.push(t);
   return t;
 }
@@ -25,6 +26,7 @@ export const inBattle = (s: GameState, id: number) => s.battles.some(b => b.troo
 /** Um passo fixo da simulação de tropas (`dt` em meses). */
 export function troopStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: number): void {
   for (const t of s.troops) march(t, grid, dt);
+  updateRoutes(s, pm, grid);
   battleStep(s, pm, grid, dt);
   for (const t of s.troops) refill(s, pm, grid, t, dt);
   fortressStep(s, pm);

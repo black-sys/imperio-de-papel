@@ -12,7 +12,11 @@ export interface Troop {
   morale: number; // 0–1, espelha a moral do lado na batalha
   routedUntil: number; // em fuga (sem obedecer) até este `clock`
   home: number;
+  supply: { path: number[]; from: number; at: number } | null; // linha de suprimento: células da cidade `from` até a tropa; `at` = clock do traçado
+  supplied: boolean; // abastecida neste passo
 }
+/** Rota entre as cidades das províncias `a` e `b`. `remaining` > 0 = em obra; `cut` = cortada por tropa hostil ou território inimigo. */
+export interface Route { id: number; a: number; b: number; path: number[]; remaining: number; cut: boolean }
 /** Cidade: `remaining` > 0 = subindo para `level` (vale o nível anterior até lá). */
 export interface CityState { level: number; remaining: number }
 export interface Battle { x: number; y: number; start: number; troopIds: number[]; sides: { owner: number; initial: number; morale: number }[] }
@@ -37,6 +41,10 @@ export interface GameState {
   recruiting: { province: number; lot: number; type: TroopType; remaining: number }[];
   fortresses: { province: number; garrison: TroopType[]; lastCombat: number }[]; // `garrison` = força total, para regenerar
   battles: Battle[];
+  routes: Route[];
+  nextRouteId: number;
+  depot: Res[]; // por província: carga guardada enquanto a cidade está desligada da capital
+  connected: boolean[]; // por província: ligada à capital por rotas prontas e não cortadas
   clock: number; // meses já simulados em passos fixos (datas de tropas e batalhas)
   stepAcc: number; // sobra de tempo ainda não simulada
 }
@@ -45,7 +53,8 @@ export function newGame(pm: ProvinceMap): GameState {
   return {
     month: 0, speed: 0, res: zeroRes(), capital: -1, colonizing: [], events: [], eventCount: 0,
     troops: [], nextTroopId: 1, recruiting: [], fortresses: [], battles: [], clock: 0, stepAcc: 0,
-    grainShort: false, stallWarned: {},
+    grainShort: false, stallWarned: {}, routes: [], nextRouteId: 1,
+    depot: pm.provinces.map(() => zeroRes()), connected: pm.provinces.map(() => false),
     owner: pm.provinces.map(() => -1),
     city: pm.provinces.map(() => null),
     lots: pm.provinces.map(p => new Array<Building | null>(p.lots.length).fill(null)),
@@ -70,10 +79,12 @@ export function logEvent(s: GameState, text: string): void {
   if (s.events.length > 50) s.events.shift();
 }
 
-/** A província passa ao jogador com cidade nível 1 e lugares vazios. */
+/** A província passa ao jogador com cidade nível 1, lugares vazios e desligada da capital (até ganhar rota). */
 export function found(s: GameState, id: number): void {
   s.owner[id] = 0;
   s.city[id] = { level: 1, remaining: 0 };
   s.lots[id] = s.lots[id].map(() => null);
   s.veins[id] = s.veins[id].map(() => null);
+  s.connected[id] = false;
+  s.depot[id] = zeroRes();
 }

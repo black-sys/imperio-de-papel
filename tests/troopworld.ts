@@ -38,3 +38,27 @@ export const game = (level = 1): GameState => {
 };
 /** Avança `months` na velocidade dada, em ticks de 0.1 s. */
 export const run = (s: GameState, months: number, speed = 1) => { setSpeed(s, speed); for (let i = 0; i < Math.round((months * 100) / speed); i++) tick(s, world.pm, 0.1, world.grid); };
+
+/**
+ * Mundo de rotas: 96×32 células (384×128 tiles), três províncias em faixa (x < 32, 32–63, ≥ 64 células); lago no meio da
+ * província 1 (células x 44–50, y 10–20); rio (custo 3) na coluna x = 70; cidades em (60, 64), (190, 32), (320, 64).
+ */
+export function makeRouteWorld(): { pm: ProvinceMap; grid: MoveGrid } {
+  const W = 96, H = 32, size = W; // grade quadrada 96² (linhas além de 32 são água)
+  const cost = new Uint8Array(size * size), cover = new Uint8Array(size * size), cellProvince = new Int16Array(size * size).fill(-1);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * size + x;
+    cost[i] = x === 70 ? 3 : 1;
+    cellProvince[i] = x < 32 ? 0 : x < 64 ? 1 : 2;
+    if (x >= 44 && x <= 50 && y >= 10 && y <= 20) { cost[i] = 0; cellProvince[i] = -1; }
+  }
+  const city = [{ x: 60, y: 64 }, { x: 190, y: 32 }, { x: 320, y: 64 }];
+  const prov = (id: number): Province => ({
+    id, name: `R${id}`, center: city[id], cells: 900, neighbors: id === 0 ? [1] : id === 1 ? [0, 2] : [1], coastal: false, biome: Biome.Grassland,
+    fertility: 1, forest: 1, rock: 1, city: city[id],
+    lots: [0, 1, 2, 3].map(k => ({ x: city[id].x + 8, y: city[id].y + (k - 1.5) * 6 })),
+    veins: [{ kind: 'grain', richness: 1, x: city[id].x - 20, y: city[id].y + 30 }, { kind: 'wood', richness: 1, x: city[id].x + 20, y: city[id].y + 30 },
+      { kind: 'coal', richness: 1, x: city[id].x - 20, y: city[id].y - 30 }, { kind: 'iron', richness: 1, x: city[id].x + 20, y: city[id].y - 30 }],
+  });
+  return { grid: { size, cost, cover, land: labelLand(size, cost) }, pm: { cellProvince, suggestedCapitals: [0], provinces: [0, 1, 2].map(prov) } };
+}

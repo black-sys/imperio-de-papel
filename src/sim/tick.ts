@@ -51,6 +51,13 @@ function advance(s: GameState, pm: ProvinceMap, step: number): void {
     c.remaining = 0;
     logEvent(s, `Cidade de ${pm.provinces[id].name} chegou ao nível ${c.level}`);
   });
+  for (const r of s.routes) {
+    if (r.remaining <= 0) continue;
+    r.remaining -= step;
+    if (r.remaining > EPS) continue;
+    r.remaining = 0;
+    logEvent(s, `Rota ${pm.provinces[r.a].name}–${pm.provinces[r.b].name} pronta`);
+  }
   for (const r of [...s.recruiting]) {
     r.remaining -= step;
     if (r.remaining > EPS) continue;
