@@ -49,7 +49,7 @@ const RES_ORDER = ['money', 'grain', 'wood', 'coal', 'iron', 'steel', 'arms'] as
 let resBuilt = false;
 
 /** Barra superior: os sete recursos (valor, variação no mês, dica com origem e destino), tropas, data e velocidade. */
-export function setTopbar(t: { res: Res; report: MonthReport; month: number; speed: number; troops: string } | null): void {
+export function setTopbar(t: { res: Res; report: MonthReport; month: number; speed: number; troops: string; depot: Res } | null): void {
   $('topbar').style.display = t ? 'flex' : 'none';
   if (!t) return;
   if (!resBuilt) {
@@ -62,7 +62,8 @@ export function setTopbar(t: { res: Res; report: MonthReport; month: number; spe
     inc.textContent = `${sign(net)}/mês`;
     inc.classList.toggle('neg', net < -0.05);
     const lines = t.report.lines[k].map(([label, v]) => `${sign(v)} ${label.toLowerCase()}`).join(', ');
-    $(`s-${k}`).title = `${RES_NAMES[k][0].toUpperCase()}${RES_NAMES[k].slice(1)}: ${lines || 'nada entra nem sai'}`;
+    const held = t.depot[k] >= 0.5 ? ` · guardado em cidades desligadas: ${fmt(t.depot[k])}` : '';
+    $(`s-${k}`).title = `${RES_NAMES[k][0].toUpperCase()}${RES_NAMES[k].slice(1)}: ${lines || 'nada entra nem sai'}${held}`;
   }
   $('troops').textContent = t.troops;
   $('date').textContent = formatDate(t.month);

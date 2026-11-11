@@ -1,4 +1,4 @@
-import { BUILDINGS, CITY, RES_NAMES, TROOPS, type BuildingType, type TroopType } from '../sim/balance';
+import { BUILDINGS, CITY, DEPOT_MONTHS, RES_NAMES, SUPPLY, TROOPS, type BuildingType, type TroopType } from '../sim/balance';
 import { checkBuild, checkColonize, checkRecruit, checkUpgrade, checkUpgradeCity, type Place, type Result } from '../sim/commands';
 import { buildCost, cityTax, colonizeCost, recruitCost, runMonth } from '../sim/economy';
 import { activeLevel, cityLevel, type GameState } from '../sim/state';
@@ -16,6 +16,10 @@ export interface PanelActions {
   recruit(id: number, lot: number, type: TroopType): void;
   foundCapital(id: number): void;
   close(): void;
+  startRoute(id: number): void;
+  removeRoute(routeId: number): void;
+  supply(troopId: number): void;
+  dropSupply(troopId: number): void;
 }
 /** Lugar para onde o painel rola ao abrir (clique num lote ou veio no mapa). */
 export type PanelFocus = { lot: number } | { vein: number } | null;
@@ -42,7 +46,7 @@ export function veinsAround(pm: ProvinceMap, id: number): string {
 export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: number, act: PanelActions, troops: number[] = [], focus: PanelFocus = null): void {
   const picked = s ? s.troops.filter(t => troops.includes(t.id)) : [];
   if (!s || !pm || (id < 0 && picked.length === 0)) { el.style.display = 'none'; lastHtml = ''; lastFocus = ''; return; }
-  if (picked.length) return show(troopsHtml(s, picked), id, act, '');
+  if (picked.length) return show(troopsHtml(s, pm, picked), id, act, '');
   const p = pm.provinces[id], mine = s.owner[id] === 0 && !!s.city[id], fort = s.fortresses.find(f => f.province === id);
   let html = `<button class="x" data-a="close">✕</button><h2>${esc(p.name)}</h2>
     <div class="sub">${s.capital === id ? 'Sua capital' : mine ? 'Seu reino' : fort ? 'Fortaleza neutra' : 'Neutra'} · ${BIOME_NAMES[p.biome]}${p.coastal ? ' · costeira' : ''}</div>
@@ -69,6 +73,16 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
     const up = c.level < 3 && c.remaining === 0 ? button('upc', 'Melhorar cidade', checkUpgradeCity(s, pm, id), ` <small>${costText({ ...CITY.cost[c.level + 1], months: CITY.months[c.level + 1] })}</small>`) : '';
     html += `<h3>Cidade</h3><div class="slot"><b>${['', 'Vila', 'Cidade', 'Metrópole'][lvl]} ${stars(lvl)}</b>${cityWork}
       <div class="sub">Impostos ${RES_ICON.money}${cityTax(s, pm, id).toFixed(1)}/mês · consome ${RES_ICON.grain}${CITY.grain[lvl]}/mês</div><div class="act">${up}</div></div>`;
+    // ligação com a capital e rotas
+    const dep = (Object.keys(RES_ICON) as (keyof typeof RES_ICON)[]).filter(k => s.depot[id][k] >= 0.5).map(k => `${RES_ICON[k]}${Math.floor(s.depot[id][k])}`).join(' ');
+    html += s.connected[id] ? `<div class="sub">🔗 Ligada à capital</div>`
+      : `<div class="why">⛓ Desligada da capital${dep ? `: depósito ${dep}` : ''} (teto ${DEPOT_MONTHS} meses)</div>`;
+    const name = (p: number) => esc(pm.provinces[p].name);
+    const rows = s.routes.filter(r => r.a === id || r.b === id).map(r => {
+      const other = r.a === id ? r.b : r.a, state = r.remaining > 0 ? `em obra ${r.remaining.toFixed(1)} meses` : r.cut ? '<span class="why">cortada</span>' : 'pronta';
+      return `<div class="slot">→ ${name(other)} · ${state} <button data-a="rr:${r.id}">Remover</button></div>`;
+    }).join('');
+    html += `<h3>Rotas</h3>${rows || '<p class="sub">Nenhuma rota.</p>'}<div class="act"><button data-a="route">Traçar rota (R)</button></div>`;
     // lotes
     html += `<h3>Lotes</h3>`;
     s.lots[id].forEach((b, lot) => {
@@ -119,10 +133,14 @@ function veinsHtml(s: GameState, pm: ProvinceMap, id: number, build: boolean): s
   return html;
 }
 
-function troopsHtml(s: GameState, troops: GameState['troops']): string {
+function troopsHtml(s: GameState, pm: ProvinceMap, troops: GameState['troops']): string {
   const rows = troops.map(t => {
     const state = s.clock < t.routedUntil ? 'em fuga' : inBattle(s, t.id) ? 'em batalha' : t.path.length ? 'marchando' : 'parada';
-    return `<div class="slot"><b>${TROOP_ICON[t.type]} ${TROOPS[t.type].name}</b> ${Math.ceil(t.soldiers)}/${TROOPS[t.type].soldiers}<div class="sub">moral ${Math.round(t.morale * 100)}% · ${state}</div></div>`;
+    const sup = t.supply ? (t.supply.cut ? '<span class="why">linha de suprimento cortada</span>' : `⛽ linha de suprimento de ${esc(pm.provinces[t.supply.from].name)}`)
+      : t.supplied ? 'abastecida' : `<span class="why">sem suprimento (perde ${SUPPLY.attrition} homem/mês)</span>`;
+    const lineCost = SUPPLY.lineMoney; // o comprimento só se sabe ao traçar
+    const btn = t.supply ? `<button data-a="ds:${t.id}">Cortar linha</button>` : `<button data-a="sp:${t.id}">Abastecer <small>${RES_ICON.money}${lineCost}+/mês</small></button>`;
+    return `<div class="slot"><b>${TROOP_ICON[t.type]} ${TROOPS[t.type].name}</b> ${Math.ceil(t.soldiers)}/${TROOPS[t.type].soldiers}<div class="sub">moral ${Math.round(t.morale * 100)}% · ${state} · ${sup}</div><div class="act">${btn}</div></div>`;
   });
   return `<button class="x" data-a="close">✕</button><h2>${troops.length === 1 ? 'Tropa' : `${troops.length} tropas`}</h2>
     <div class="sub">Clique direito no terreno ou no mapa para mandar</div>${rows.join('')}`;
@@ -147,6 +165,10 @@ function show(html: string, id: number, act: PanelActions, focus: string): void 
     else if (a === 'found') act.foundCapital(id);
     else if (a === 'colonize') act.colonize(id);
     else if (a === 'upc') act.upgradeCity(id);
+    else if (a === 'route') act.startRoute(id);
+    else if (a.startsWith('rr:')) act.removeRoute(Number(a.slice(3)));
+    else if (a.startsWith('sp:')) act.supply(Number(a.slice(3)));
+    else if (a.startsWith('ds:')) act.dropSupply(Number(a.slice(3)));
     else if (a.startsWith('up:')) { const [, k, i] = a.split(':'); act.upgrade(id, parsePlace(k, i)); }
     else if (a.startsWith('r:')) { const [, lot, t] = a.split(':'); act.recruit(id, Number(lot), t as TroopType); }
     else if (a.startsWith('b:')) { const [, k, i, t] = a.split(':'); act.build(id, parsePlace(k, i), t as BuildingType); }

@@ -9,8 +9,12 @@ import { CITY_R, FORT_DETAIL, FORT_R, GOLD, LOT_DETAIL, VEIN_DETAIL, INK, NEUTRA
 import { toScreen, type View } from './view';
 
 export const TROOP_ICON: Record<TroopType, string> = { line: '🎖', artillery: '💣', cavalry: '🐎' };
-export interface MarkerOpts { selectedTroops: Set<number>; selectedProvince: number; pins: { x: number; y: number }[]; grid: MoveGrid | null }
+export interface MarkerOpts {
+  selectedTroops: Set<number>; selectedProvince: number; pins: { x: number; y: number }[]; grid: MoveGrid | null;
+  preview?: { path: number[]; ok: boolean } | null; // prévia da rota sendo traçada
+}
 
+const CUT = '#b3261e', SUPPLY_INK = '#c9a227';
 const color = (owner: number) => (owner >= 0 ? REALM_COLORS[owner] ?? REALM_COLORS[0] : NEUTRAL);
 const onScreen = (v: View, px: number, py: number, m = 40) => px > -m && py > -m && px < v.w + m && py < v.h + m;
 
@@ -29,6 +33,10 @@ export function markersKey(s: GameState, pm: ProvinceMap, v: View, o: MarkerOpts
   for (const c of s.colonizing) parts.push(`c${c.province}:${Math.ceil(c.remaining)}`);
   if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) parts.push(`f${f.province}:${s.troops.filter(t => t.home === f.province).length}`);
   for (const b of s.battles) parts.push(`w${Math.round(b.x)},${Math.round(b.y)}:${b.sides.map(x => Math.round(x.morale * 20)).join('/')}`);
+  for (const r of s.routes) parts.push(`r${r.id}:${r.remaining > 0 ? 'o' : ''}${r.cut ? 'x' : ''}`);
+  parts.push(`k${s.connected.map(c => (c ? 1 : 0)).join('')}`);
+  for (const t of s.troops) if (t.owner === 0) parts.push(`s${t.id}:${t.supplied ? 1 : 0}${t.supply ? `${t.supply.path.length},${t.supply.path.at(-1)},${t.supply.cut ? 1 : 0}` : ''}`);
+  if (o.preview) parts.push(`p${o.preview.path.length},${o.preview.path.at(-1)},${o.preview.ok ? 1 : 0}`);
   return parts.join('|');
 }
 
@@ -56,6 +64,8 @@ function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number
 export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: ProvinceMap, v: View, o: MarkerOpts): void {
   const P = (x: number, y: number) => toScreen(v, x, y);
   ctx.save();
+  // rotas entre cidades (como rotas náuticas), ligações veio→cidade, linhas de suprimento e prévia
+  if (o.grid) drawNetwork(ctx, s, pm, v, o.grid, o.preview ?? null);
   // rotas das selecionadas
   if (o.grid) {
     const S = o.grid.size;
@@ -109,6 +119,10 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     ctx.fillStyle = color(s.owner[id]); ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.setLineDash(s.city[id]!.remaining > 0 ? [4, 2] : []);
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
     if (s.capital === id) { ctx.strokeStyle = PAPER; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r - 3, 0, Math.PI * 2); ctx.stroke(); }
+    if (s.owner[id] === 0 && !s.connected[id]) { // desligada da capital: aro tracejado vermelho e ✕
+      ctx.strokeStyle = CUT; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      label(ctx, '✕', x + r + 4, y - r - 2, 10);
+    }
     ctx.fillStyle = PAPER;
     for (let i = 0; i < level; i++) { ctx.beginPath(); ctx.arc(x - (level - 1) * 3.5 + i * 7, y, 2.3, 0, Math.PI * 2); ctx.fill(); }
   }
@@ -146,6 +160,8 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     else { ctx.arc(x, y, 4, 0, Math.PI * 2); ctx.fill(); }
     if (o.selectedTroops.has(t.id)) { ctx.strokeStyle = GOLD; ctx.lineWidth = 3; ctx.strokeRect(x - w / 2 - 4, y - h / 2 - 4, w + 8, h + 8); }
     label(ctx, String(Math.ceil(t.soldiers)), x, y + h / 2 + 9);
+    if (t.owner === 0 && !t.supplied) { ctx.fillStyle = CUT; ctx.fillRect(x - 10, y + h / 2 + 15, 20, 3); } // sem suprimento
+    if (t.owner === 0 && t.supply && !t.supply.cut) label(ctx, '⛽', x + w / 2 + 7, y - h / 2, 10);
   }
   // batalhas
   for (const b of s.battles) {
@@ -166,4 +182,59 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     ctx.fillStyle = PAPER; ctx.font = 'bold 13px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('♜', x, y + 1);
   }
   ctx.restore();
+}
+
+/** Pontos de tela do caminho de células (um a cada `every`, mais o último). */
+function pathPoints(path: number[], grid: MoveGrid, v: View, every: number, from?: { x: number; y: number }): [number, number][] {
+  const S = grid.size, pts: [number, number][] = from ? [toScreen(v, from.x, from.y)] : [];
+  path.forEach((c, i) => { if (i % every === every - 1 || i === path.length - 1) pts.push(toScreen(v, (c % S) * CELL + CELL / 2, Math.floor(c / S) * CELL + CELL / 2)); });
+  return pts;
+}
+function stroke(ctx: CanvasRenderingContext2D, pts: [number, number][]): void {
+  if (pts.length < 2) return;
+  ctx.beginPath(); ctx.moveTo(...pts[0]);
+  for (const p of pts.slice(1)) ctx.lineTo(...p);
+  ctx.stroke();
+}
+
+function drawNetwork(ctx: CanvasRenderingContext2D, s: GameState, pm: ProvinceMap, v: View, grid: MoveGrid, preview: { path: number[]; ok: boolean } | null): void {
+  const every = v.scale >= 1 ? 2 : 4, S = grid.size;
+  ctx.lineCap = 'round';
+  // ligações veio → cidade (de perto, só veios construídos das suas províncias)
+  if (v.scale >= 1) {
+    ctx.strokeStyle = 'rgba(62,42,24,0.45)'; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
+    s.veins.forEach((list, id) => {
+      if (s.owner[id] !== 0) return;
+      list.forEach((b, i) => { if (b) { const a = pm.provinces[id].veins[i], c = pm.provinces[id].city; stroke(ctx, [toScreen(v, a.x, a.y), toScreen(v, c.x, c.y)]); } });
+    });
+  }
+  // rotas entre cidades
+  for (const r of s.routes) {
+    const pts = pathPoints(r.path, grid, v, every, pm.provinces[r.a].city);
+    ctx.lineWidth = v.scale >= 0.5 ? 2.5 : 1.5;
+    ctx.strokeStyle = r.cut ? CUT : color(s.owner[r.a]);
+    ctx.globalAlpha = r.remaining > 0 ? 0.45 : 0.9;
+    ctx.setLineDash(r.remaining > 0 ? [2, 5] : [8, 5]);
+    stroke(ctx, pts);
+    ctx.globalAlpha = 1;
+    if (r.cut) { // ✕ no ponto da rota mais perto de uma tropa hostil
+      let best = r.path[Math.floor(r.path.length / 2)], bd = Infinity;
+      for (const t of s.troops) if (t.owner !== 0) for (const c of r.path) { const d = Math.hypot((c % S) * CELL - t.x, Math.floor(c / S) * CELL - t.y); if (d < bd) { bd = d; best = c; } }
+      const [x, y] = toScreen(v, (best % S) * CELL + CELL / 2, Math.floor(best / S) * CELL + CELL / 2);
+      ctx.setLineDash([]); ctx.strokeStyle = CUT; ctx.lineWidth = 3;
+      stroke(ctx, [[x - 6, y - 6], [x + 6, y + 6]]); stroke(ctx, [[x + 6, y - 6], [x - 6, y + 6]]);
+    }
+  }
+  // linhas de suprimento até as tropas
+  ctx.lineWidth = 2; ctx.setLineDash([1, 5]);
+  for (const t of s.troops) if (t.owner === 0 && t.supply) {
+    ctx.strokeStyle = t.supply.cut ? CUT : SUPPLY_INK;
+    stroke(ctx, pathPoints(t.supply.path, grid, v, every, pm.provinces[t.supply.from].city));
+  }
+  // prévia da rota sendo traçada
+  if (preview) {
+    ctx.strokeStyle = preview.ok ? 'rgba(62,42,24,0.85)' : CUT; ctx.lineWidth = 2.5; ctx.setLineDash([8, 5]);
+    stroke(ctx, pathPoints(preview.path, grid, v, every));
+  }
+  ctx.setLineDash([]); ctx.lineCap = 'butt';
 }

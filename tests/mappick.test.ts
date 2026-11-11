@@ -97,3 +97,21 @@ test('markersKey muda quando um veio ou lote recebe prédio', () => {
   s.lots[0][0] = { type: 'steelworks', level: 1, remaining: 4 };
   expect(markersKey(s, pm, view, o)).not.toBe(k1);
 });
+
+test('markersKey muda com rota construída, pronta, cortada e linha de suprimento', () => {
+  const s = game(1, true), o = opts(), k0 = markersKey(s, pm, view, o);
+  expect(markersKey(s, pm, view, o)).toBe(k0);
+  s.routes[0].remaining = 2; // em obra
+  const k1 = markersKey(s, pm, view, o);
+  expect(k1).not.toBe(k0);
+  s.routes[0].remaining = 0; s.routes[0].cut = true;
+  const k2 = markersKey(s, pm, view, o);
+  expect(k2).not.toBe(k1);
+  s.connected[1] = false;
+  const k3 = markersKey(s, pm, view, o);
+  expect(k3).not.toBe(k2);
+  const t = spawnTroop(s, 0, 'line', 100, 100);
+  const k4 = markersKey(s, pm, view, o);
+  t.supply = { path: [10, 11], from: 0, at: 0, cut: false };
+  expect(markersKey(s, pm, view, o)).not.toBe(k4);
+});
