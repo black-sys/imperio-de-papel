@@ -58,3 +58,6 @@ export function troopsInRect(s: GameState, v: View, x0: number, y0: number, x1: 
   const [ax, bx] = [Math.min(x0, x1), Math.max(x0, x1)], [ay, by] = [Math.min(y0, y1), Math.max(y0, y1)];
   return s.troops.filter(t => { if (t.owner !== 0) return false; const [px, py] = toScreen(v, t.x, t.y); return px >= ax && px <= bx && py >= ay && py <= by; }).map(t => t.id);
 }
+
+/** Alvo do modo de traçar rota: só a província sob o ponteiro (tropas e marcadores não atrapalham o clique na cidade). */
+export const routeTargetAt = (pm: ProvinceMap, v: View, sx: number, sy: number): number => provinceAtTile(pm, ...toWorld(v, sx, sy));

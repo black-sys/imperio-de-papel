@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { markersKey } from '../src/client/map/markers';
-import { cityAt, pickAt, provinceAtTile, troopsInRect } from '../src/client/map/pick';
+import { cityAt, pickAt, provinceAtTile, routeTargetAt, troopsInRect } from '../src/client/map/pick';
 import { toScreen, type View } from '../src/client/map/view';
 import { addFortress } from '../src/sim/fortress';
 import { spawnTroop } from '../src/sim/troops';
@@ -114,4 +114,12 @@ test('markersKey muda com rota construída, pronta, cortada e linha de supriment
   const k4 = markersKey(s, pm, view, o);
   t.supply = { path: [10, 11], from: 0, at: 0, cut: false };
   expect(markersKey(s, pm, view, o)).not.toBe(k4);
+});
+
+test('no modo de traçar rota, o alvo é a província sob o ponteiro, mesmo com tropa em cima da cidade', () => {
+  const s = game();
+  spawnTroop(s, 0, 'line', 60, 80); // em cima da cidade da província 0
+  expect(pickAt(s, pm, view, ...scr(60, 80))?.kind).toBe('troop');
+  expect(routeTargetAt(pm, view, ...scr(60, 80))).toBe(0);
+  expect(routeTargetAt(pm, { ...view, cx: -900 }, 10, 10)).toBe(-1);
 });

@@ -56,7 +56,7 @@ function advance(s: GameState, pm: ProvinceMap, step: number): void {
     r.remaining -= step;
     if (r.remaining > EPS) continue;
     r.remaining = 0;
-    logEvent(s, `Rota ${pm.provinces[r.a].name}–${pm.provinces[r.b].name} pronta`);
+    logEvent(s, `Rota ${pm.provinces[r.a].name}–${pm.provinces[r.b].name} pronta${r.cut ? ', mas cortada' : ''}`);
   }
   for (const r of [...s.recruiting]) {
     r.remaining -= step;

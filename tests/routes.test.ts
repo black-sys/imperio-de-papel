@@ -121,8 +121,7 @@ describe('depósito e entrega', () => {
     expect(s.depot[1].coal).toBe(0);
     expect(s.res.coal).toBeGreaterThan(coal + 3.9 - 1e-9); // os 4 guardados (mais o que os meses de obra renderam no depósito)
     expect(s.events.some(e => e.text === 'Carga de R1 chegou ao estoque')).toBe(true);
-    removeRoute(s, s.routes[0].id);
-    run(s, 0.05);
+    removeRoute(s, s.routes[0].id, pm);
     expect(s.events.at(-1)!.text).toBe('R1 desligada da capital');
   });
 });
@@ -186,5 +185,29 @@ describe('cortes', () => {
     const t = performance.now();
     for (let i = 0; i < 50; i++) updateRoutes(s, real, g);
     expect((performance.now() - t) / 50).toBeLessThan(1);
+  });
+});
+
+describe('correções da revisão', () => {
+  test('remover a rota desliga na hora, mesmo com o jogo pausado', () => {
+    const s = game();
+    buildRoute(s, pm, grid, 0, 1);
+    run(s, 4);
+    expect(s.connected[1]).toBe(true);
+    removeRoute(s, s.routes[0].id);
+    expect(s.connected[1]).toBe(false);
+  });
+  test('rota que passa perto de fortaleza sem desvio: o plano avisa; ao terminar, aviso de cortada', () => {
+    const s = game(), direct = planRoute(s, pm, grid, 1, 2);
+    if (!direct.ok) throw new Error(direct.reason);
+    expect(direct.threatened).toBe(false);
+    // fortaleza em cima da cidade de destino: não há como chegar sem passar a ≤ 6 tiles dela
+    spawnTroop(s, -1, 'line', 320, 64, 9);
+    const p = planRoute(s, pm, grid, 1, 2);
+    if (!p.ok) throw new Error(p.reason);
+    expect(p.threatened).toBe(true);
+    buildRoute(s, pm, grid, 1, 2);
+    run(s, 4);
+    expect(s.events.some(e => e.text === 'Rota R1–R2 pronta, mas cortada')).toBe(true);
   });
 });

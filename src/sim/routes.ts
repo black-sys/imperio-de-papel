@@ -40,7 +40,7 @@ const mineCity = (s: GameState, id: number) => s.owner[id] === 0 && !!s.city[id]
 
 /** Caminho, custo e tempo de uma rota entre as cidades de `a` e `b`, ou o motivo da recusa. */
 export function planRoute(s: GameState, pm: ProvinceMap, grid: MoveGrid, a: number, b: number):
-  { ok: true; path: number[]; cost: Partial<Res>; months: number } | { ok: false; reason: string } {
+  { ok: true; path: number[]; cost: Partial<Res>; months: number; threatened: boolean } | { ok: false; reason: string } {
   if (a === b || !mineCity(s, a) || !mineCity(s, b)) return no('Escolha duas cidades suas');
   if (s.routes.some(r => (r.a === a && r.b === b) || (r.a === b && r.b === a))) return no('Já existe uma rota entre essas cidades');
   const from = cityCell(pm, grid, a), to = cityCell(pm, grid, b);
@@ -48,7 +48,9 @@ export function planRoute(s: GameState, pm: ProvinceMap, grid: MoveGrid, a: numb
   if (!path) return no(findCellPath(grid, from, to) ? 'Atravessa território de outro reino' : 'Não há caminho por terra');
   let tiles = 0, money = 0, wood = 0;
   for (const c of path) { const k = grid.cost[c] >= 2 ? ROUTE.hardMult : 1; tiles += CELL; money += CELL * ROUTE.money * k; wood += CELL * ROUTE.wood * k; }
-  return { ok: true, path, cost: { money, wood }, months: Math.max(ROUTE.minMonths, tiles / ROUTE.tilesPerMonth) };
+  // sem desvio possível, o caminho pode passar a ≤ cutTiles de uma fortaleza: nasceria cortado (a interface avisa)
+  const threat = threatMask(s, grid);
+  return { ok: true, path, cost: { money, wood }, months: Math.max(ROUTE.minMonths, tiles / ROUTE.tilesPerMonth), threatened: path.some(c => threat[c] === 1) };
 }
 
 export function checkRoute(s: GameState, pm: ProvinceMap, grid: MoveGrid, a: number, b: number): Result {
@@ -69,16 +71,20 @@ export function buildRoute(s: GameState, pm: ProvinceMap, grid: MoveGrid, a: num
   return { ok: true };
 }
 
-export function removeRoute(s: GameState, id: number): Result {
+export function removeRoute(s: GameState, id: number, pm?: ProvinceMap): Result {
   const i = s.routes.findIndex(r => r.id === id);
   if (i < 0) return no('Rota inexistente');
   s.routes.splice(i, 1);
+  recomputeConnected(s, pm); // na hora, mesmo com o jogo pausado (painel e mapa não mostram ligação que já não existe)
   return { ok: true };
 }
 
-/** Ligada = alcançável a partir da capital por rotas prontas e não cortadas. */
-export function recomputeConnected(s: GameState): void {
-  const on = s.owner.map(() => false);
+/**
+ * Ligada = alcançável a partir da capital por rotas prontas e não cortadas. Com `pm`, avisa quem se desligou e entrega
+ * ao estoque o depósito de quem religou.
+ */
+export function recomputeConnected(s: GameState, pm?: ProvinceMap): void {
+  const before = s.connected, on = s.owner.map(() => false);
   if (s.capital >= 0) {
     on[s.capital] = true;
     const ready = (r: Route) => r.remaining <= 0 && !r.cut && s.owner[r.a] === 0 && s.owner[r.b] === 0;
@@ -92,22 +98,22 @@ export function recomputeConnected(s: GameState): void {
     }
   }
   s.connected = on;
-}
-
-/** A cada passo fixo das tropas: cortes, ligação com a capital e entrega de depósitos. */
-export function updateRoutes(s: GameState, pm: ProvinceMap, grid: MoveGrid): void {
-  markCuts(s, pm, grid);
-  const before = s.connected;
-  recomputeConnected(s);
-  s.connected.forEach((on, id) => {
-    if (on === before[id] || s.owner[id] !== 0 || id === s.capital) return;
-    if (!on) { logEvent(s, `${pm.provinces[id].name} desligada da capital`); return; }
+  if (!pm) return;
+  on.forEach((now, id) => {
+    if (now === before[id] || s.owner[id] !== 0 || id === s.capital) return;
+    if (!now) { logEvent(s, `${pm.provinces[id].name} desligada da capital`); return; }
     const d = s.depot[id];
     if (RES_KEYS.some(k => d[k] > 0)) {
       for (const k of RES_KEYS) { s.res[k] += d[k]; d[k] = 0; }
       logEvent(s, `Carga de ${pm.provinces[id].name} chegou ao estoque`);
     }
   });
+}
+
+/** A cada passo fixo das tropas: cortes, ligação com a capital e entrega de depósitos. */
+export function updateRoutes(s: GameState, pm: ProvinceMap, grid: MoveGrid): void {
+  markCuts(s, pm, grid);
+  recomputeConnected(s, pm);
 }
 
 /**

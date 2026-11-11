@@ -1,6 +1,6 @@
 import { initHud, initTopbar, setInfo, setProgress, setSeedField, setTopbar, showError } from './client/hud';
 import { MapRenderer } from './client/map/renderer';
-import { pickAt, provinceAtTile, troopsInRect } from './client/map/pick';
+import { pickAt, provinceAtTile, routeTargetAt, troopsInRect } from './client/map/pick';
 import { TileCache } from './client/map/tileCache';
 import { clampView, minScale, toWorld, zoomAt, type View } from './client/map/view';
 import { costText } from './client/labels';
@@ -84,7 +84,7 @@ const actions = {
   },
   close: () => { selected = -1; focus = null; selectedTroops.clear(); routeFrom = null; preview = null; },
   startRoute: (id: number) => { routeFrom = id; preview = null; toast('Clique noutra cidade sua · Esc cancela'); },
-  removeRoute: (routeId: number) => game && report(removeRoute(game, routeId)),
+  removeRoute: (routeId: number) => game && pm && report(removeRoute(game, routeId, pm)),
   supply: (troopId: number) => game && pm && moveGrid && report(supplyTroop(game, pm, moveGrid, troopId)),
   dropSupply: (troopId: number) => game && report(dropSupply(game, troopId)),
 };
@@ -157,7 +157,8 @@ canvas.addEventListener('pointerup', e => {
   if (b) return pickTroops(troopsInRect(game, view, b[0], b[1], b[2], b[3]), e.shiftKey);
   const hit = pickAt(game, pm, view, e.clientX, e.clientY, true, pins);
   if (routeFrom !== null) { // modo traçar rota: o clique numa cidade sua confirma; fora dela, sai do modo
-    if (hit && hit.kind !== 'troop' && game.owner[hit.province] === 0 && hit.province !== routeFrom && moveGrid) report(buildRoute(game, pm, moveGrid, routeFrom, hit.province));
+    const target = routeTargetAt(pm, view, e.clientX, e.clientY); // a mesma consulta da prévia: tropa ao lado da cidade não engole o clique
+    if (target >= 0 && game.owner[target] === 0 && target !== routeFrom && moveGrid) report(buildRoute(game, pm, moveGrid, routeFrom, target));
     routeFrom = null; preview = null;
     return;
   }
@@ -177,11 +178,11 @@ function tip(e: PointerEvent) {
   if (!pm || !game || now - tipAt < 100) return;
   tipAt = now;
   if (routeFrom !== null && moveGrid) { // prévia da rota até a cidade sob o mouse
-    const p = provinceAtTile(pm, ...toWorld(view, e.clientX, e.clientY));
+    const p = routeTargetAt(pm, view, e.clientX, e.clientY);
     if (p < 0 || p === routeFrom || game.owner[p] !== 0) { preview = null; return setTip('Clique noutra cidade sua · Esc cancela', e.clientX, e.clientY); }
     const plan = planRoute(game, pm, moveGrid, routeFrom, p);
     preview = plan.ok ? { path: plan.path, ok: true } : null;
-    return setTip(plan.ok ? `Rota até ${pm.provinces[p].name}: ${costText({ ...plan.cost, months: plan.months })}` : plan.reason, e.clientX, e.clientY);
+    return setTip(plan.ok ? `Rota até ${pm.provinces[p].name}: ${costText({ ...plan.cost, months: plan.months })}${plan.threatened ? ' · ⚠ passa perto de uma fortaleza: nascerá cortada' : ''}` : plan.reason, e.clientX, e.clientY);
   }
   // selo de capital sugerida: o que há por perto (é assim que se escolhe onde fundar)
   const pin = game.capital < 0 ? pins.find(q => { const [sx, sy] = [(q.x - view.cx) * view.scale + view.w / 2, (q.y - view.cy) * view.scale + view.h / 2]; return Math.hypot(sx - e.clientX, sy - e.clientY) <= 13; }) : undefined;
