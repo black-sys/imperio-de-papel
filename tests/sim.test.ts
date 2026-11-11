@@ -8,7 +8,7 @@ import { Biome } from '../src/worldgen/types';
 
 const prov = (id: number, neighbors: number[], o: Partial<Province> = {}): Province => ({
   id, name: `P${id}`, center: { x: id * 100, y: 0 }, cells: 1000, neighbors, coastal: false, biome: Biome.Grassland,
-  fertility: 1, forest: 1, rock: 1, slots: 4, sites: [{ x: 1, y: 1 }, { x: 9, y: 1 }, { x: 1, y: 9 }, { x: 9, y: 9 }], ...o,
+  fertility: 1, forest: 1, rock: 1, slots: 4, sites: [{ x: 1, y: 1 }, { x: 9, y: 1 }, { x: 1, y: 9 }, { x: 9, y: 9 }], city: { x: 1, y: 1 }, lots: [], veins: [], ...o,
 });
 // 0-1-2-3 em cadeia; 4 isolada; 2 é montanha (colonizar demora mais); 3 sem floresta nem rocha
 const pm: ProvinceMap = {

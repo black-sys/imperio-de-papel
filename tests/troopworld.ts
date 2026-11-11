@@ -21,6 +21,7 @@ export function makeTestWorld(): { pm: ProvinceMap; grid: MoveGrid } {
   const prov = (id: number, cx: number): Province => ({
     id, name: `P${id}`, center: { x: cx, y: 128 }, cells: 2000, neighbors: [1 - id], coastal: false, biome: Biome.Grassland,
     fertility: 1, forest: 1, rock: 1, slots: 4, sites: [{ x: cx, y: 80 }, { x: cx + 20, y: 80 }, { x: cx, y: 100 }, { x: cx + 20, y: 100 }],
+    city: { x: cx, y: 80 }, lots: [], veins: [],
   });
   return { grid: { size, cost, cover, land: labelLand(size, cost) }, pm: { cellProvince, suggestedCapitals: [0], provinces: [prov(0, 60), prov(1, 180)] } };
 }

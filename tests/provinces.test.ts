@@ -115,12 +115,12 @@ describe('atributos', { timeout: 60000 }, () => {
     expect(new Set(names).size).toBe(names.length);
     expect(generateProvinces(map).provinces.map(p => p.name)).toEqual(names);
   });
-  test.each([860, 1, 2])('semente %i: 5–8 capitais sugeridas, afastadas e acima da mediana', seed => {
+  test.each([860, 1, 2])('semente %i: 5–8 capitais sugeridas, afastadas e acima do percentil 30', seed => {
     const { pm } = get(seed);
     const caps = pm.suggestedCapitals;
     expect(caps.length).toBeGreaterThanOrEqual(5); expect(caps.length).toBeLessThanOrEqual(8);
     const score = (p: (typeof pm.provinces)[0]) => p.fertility + 0.6 * p.forest + 0.6 * p.rock;
-    const sorted = pm.provinces.map(score).sort((a, b) => a - b), median = sorted[Math.floor(sorted.length / 2)];
+    const sorted = pm.provinces.map(score).sort((a, b) => a - b), median = sorted[Math.floor(sorted.length * 0.3)]; // mediana quando dá; percentil 30 se faltar capital com os quatro recursos
     for (const c of caps) expect(score(pm.provinces[c])).toBeGreaterThanOrEqual(median);
     for (let i = 0; i < caps.length; i++) for (let j = i + 1; j < caps.length; j++) {
       const a = pm.provinces[caps[i]].center, b = pm.provinces[caps[j]].center;
@@ -160,5 +160,61 @@ describe('locais de construção na terra local', { timeout: 180000 }, () => {
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++)
         if (water(s.x + dx, s.y + dy)) { bad.push(`${p.name} (${s.x},${s.y})`); dy = dx = 9; }
     expect(bad).toEqual([]);
+  });
+});
+
+describe('cidade, lotes e veios', { timeout: 240000 }, () => {
+  const FOREST = new Set([3, 4, 9]), FERTILE = new Set([4, 5, 7]);
+  test('cidade, lotes e veios em chão seco e nos lugares certos', async () => {
+    const { generateChunk } = await import('../src/worldgen/chunk');
+    const { map, pm } = get(860), S = map.size, cache = new Map<string, ReturnType<typeof generateChunk>>();
+    const wet = (x: number, y: number) => {
+      for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+        const tx = Math.floor(x) + dx, ty = Math.floor(y) + dy, k = `${tx >> 6},${ty >> 6}`;
+        if (!cache.has(k)) cache.set(k, generateChunk(map, tx >> 6, ty >> 6));
+        if (cache.get(k)!.water[(ty & 63) * 64 + (tx & 63)]) return true;
+      }
+      return false;
+    };
+    const cellOf = (p: { x: number; y: number }) => Math.floor(p.y / 4) * S + Math.floor(p.x / 4);
+    const d = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+    let withVein = 0;
+    const kinds = new Set<string>(), bad: string[] = [];
+    for (const p of pm.provinces) {
+      if (!p.lots.length && !p.sites.length) continue; // ilhota sem chão firme
+      if (pm.cellProvince[cellOf(p.city)] !== p.id || wet(p.city.x, p.city.y)) bad.push(`cidade ${p.name}`);
+      expect(p.lots.length).toBeLessThanOrEqual(4);
+      for (const l of p.lots) {
+        if (d(l, p.city) > 10 || d(l, p.city) < 4 || wet(l.x, l.y)) bad.push(`lote ${p.name}`);
+        for (const m of p.lots) if (m !== l && d(l, m) < 4) bad.push(`lotes juntos ${p.name}`);
+      }
+      expect(p.veins.length).toBeLessThanOrEqual(4);
+      if (p.veins.length) withVein++;
+      for (const v of p.veins) {
+        kinds.add(v.kind);
+        const c = cellOf(v), b = map.biome[c];
+        if (d(v, p.city) < 20 || pm.cellProvince[c] !== p.id || wet(v.x, v.y)) bad.push(`veio ${p.name}`);
+        expect(v.richness).toBeGreaterThanOrEqual(0.5); expect(v.richness).toBeLessThanOrEqual(1.5);
+        if (v.kind === 'wood' && !FOREST.has(b)) bad.push(`madeira fora da floresta ${p.name}`);
+        if ((v.kind === 'coal' || v.kind === 'iron') && !(b === 10 || map.elevation[c] >= MOUNTAIN_LEVEL - 0.15)) bad.push(`mineral fora da montanha ${p.name}`);
+        if (v.kind === 'grain' && !FERTILE.has(b)) bad.push(`grãos fora da terra fértil ${p.name}`);
+        for (const w of p.veins) if (w !== v && d(v, w) < 12) bad.push(`veios juntos ${p.name}`);
+      }
+    }
+    expect(bad).toEqual([]);
+    expect(withVein / pm.provinces.length).toBeGreaterThanOrEqual(0.6);
+    expect([...kinds].sort()).toEqual(['coal', 'grain', 'iron', 'wood']);
+  });
+  test.each([860, 1, 2, 7])('semente %i: capitais sugeridas com os quatro recursos a até duas províncias', seed => {
+    const { pm } = get(seed);
+    for (const c of pm.suggestedCapitals) {
+      const p = pm.provinces[c], one = [p.id, ...p.neighbors], ids = new Set([...one, ...one.flatMap(i => pm.provinces[i].neighbors)]), around = [...ids].map(i => pm.provinces[i]);
+      const kinds = new Set(around.flatMap(q => q.veins.map(v => v.kind)));
+      expect([...kinds].sort()).toEqual(['coal', 'grain', 'iron', 'wood']);
+    }
+  });
+  test('determinístico', () => {
+    const { map, pm } = get(860);
+    expect(generateProvinces(map).provinces.map(p => p.veins)).toEqual(pm.provinces.map(p => p.veins));
   });
 });

@@ -17,7 +17,13 @@ export interface Province {
   rock: number;
   slots: number; // 3–6
   sites: { x: number; y: number }[]; // tiles, um por vaga
+  city: { x: number; y: number }; // tiles
+  lots: { x: number; y: number }[]; // até 4, junto da cidade (fábricas)
+  veins: Vein[]; // 0–4, longe da cidade (minas e campos)
 }
+
+export type VeinKind = 'grain' | 'wood' | 'coal' | 'iron';
+export interface Vein { kind: VeinKind; richness: number; x: number; y: number }
 
 export interface ProvinceMap {
   cellProvince: Int16Array; // −1 = mar
@@ -253,7 +259,7 @@ function describe(map: WorldMap, cp: Int16Array): Province[] {
   return Array.from({ length: count }, (_, p) => ({
     id: p, name: '', cells: cells[p], neighbors: [...nb[p]].sort((a, b) => a - b), coastal: coastal[p] === 1,
     center: { x: (center[p] % S) * CELL + CELL / 2, y: Math.floor(center[p] / S) * CELL + CELL / 2 },
-    biome: Biome.Grassland, fertility: 1, forest: 0, rock: 0, slots: 3, sites: [],
+    biome: Biome.Grassland, fertility: 1, forest: 0, rock: 0, slots: 3, sites: [], city: { x: 0, y: 0 }, lots: [], veins: [],
   }));
 }
 
@@ -325,7 +331,7 @@ function addAttributes(map: WorldMap, cp: Int16Array, provinces: Province[]): vo
     if (map.river[i]) riv[p]++;
   }
   const mean = provinces.reduce((a, p) => a + p.cells, 0) / count;
-  const rng = makeRng(subSeed(map.seed, 'nomes')), used = new Set<string>();
+  const rng = makeRng(subSeed(map.seed, 'nomes')), used = new Set<string>(), veinRng = makeRng(subSeed(map.seed, 'vein'));
   for (const p of provinces) {
     const dry = Math.max(1, biomeCount[p.id].reduce((a, b) => a + b, 0));
     p.biome = biomeCount[p.id].indexOf(Math.max(...biomeCount[p.id])) as Biome;
@@ -337,6 +343,9 @@ function addAttributes(map: WorldMap, cp: Int16Array, provinces: Province[]): vo
     if (mFrac > 0.4 || p.biome === Biome.Swamp) slots--;
     p.slots = Math.min(6, Math.max(3, slots));
     p.sites = pickSites(map, cellsOf[p.id], p);
+    p.city = p.sites[0] ?? { ...p.center };
+    p.lots = p.sites.length ? pickLots(map, cellsOf[p.id], p.city) : [];
+    p.veins = p.sites.length ? pickVeins(map, cellsOf[p.id], p, veinRng) : [];
     let name = '';
     do name = makeName(rng); while (used.has(name));
     used.add(name);
@@ -376,6 +385,63 @@ function pickSites(map: WorldMap, cells: number[], p: Province): { x: number; y:
 }
 
 
+const cellCenter = (S: number, i: number) => ({ x: (i % S) * CELL + CELL / 2, y: Math.floor(i / S) * CELL + CELL / 2 });
+const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/** Até 4 lotes de fábrica: secos, de 4 a 10 tiles da cidade, ≥ 4 tiles entre si. */
+function pickLots(map: WorldMap, cells: number[], city: { x: number; y: number }): { x: number; y: number }[] {
+  const S = map.size, out: { x: number; y: number }[] = [];
+  const cand = cells.filter(i => map.water[i] === 0 && !map.river[i]).map(i => cellCenter(S, i))
+    .filter(c => dist(c, city) >= 4 && dist(c, city) <= 10).sort((a, b) => dist(a, city) - dist(b, city) || a.x - b.x || a.y - b.y);
+  for (const c of cand) {
+    if (out.length >= 4) break;
+    if (out.some(o => dist(o, c) < 4) || !dryAround(map, c.x, c.y, 2)) continue;
+    out.push(c);
+  }
+  return out;
+}
+
+const HILL_LEVEL = MOUNTAIN_LEVEL - 0.15; // colinas: carvão e ferro também aparecem abaixo da linha das montanhas
+const VEIN_FOREST = new Set([Biome.Taiga, Biome.TemperateForest, Biome.Jungle]);
+const VEIN_FERTILE = new Set([Biome.TemperateForest, Biome.Grassland, Biome.Savanna]);
+const clampRich = (v: number) => Math.min(1.5, Math.max(0.5, v));
+
+/** Até 4 veios, longe da cidade (≥ 20 tiles), ≥ 12 entre si, secos e no terreno do recurso. */
+function pickVeins(map: WorldMap, cells: number[], p: Province, rng: () => number): Vein[] {
+  const S = map.size, hills = cells.filter(i => map.water[i] === 0 && map.elevation[i] >= HILL_LEVEL).length;
+  // toda província com colinas tem ao menos um mineral; a rocha estimada diz quantos
+  const want = { mineral: Math.max(Math.round(p.rock * 2.2), hills >= 3 ? 1 : 0), wood: Math.round(p.forest * 1.2), grain: Math.round(p.fertility * 1.2) };
+  // fila alternada mineral, madeira, grãos, cortada em 4
+  const queue: (keyof typeof want)[] = [];
+  while (queue.length < 4 && (want.mineral || want.wood || want.grain))
+    for (const k of ['mineral', 'wood', 'grain'] as const) if (want[k] && queue.length < 4) { queue.push(k); want[k]--; }
+  const dry = cells.filter(i => map.water[i] === 0 && !map.river[i] && dist(cellCenter(S, i), p.city) >= 20);
+  const fits = {
+    mineral: (i: number) => map.biome[i] === Biome.Mountain || map.elevation[i] >= HILL_LEVEL,
+    wood: (i: number) => VEIN_FOREST.has(map.biome[i]),
+    grain: (i: number) => VEIN_FERTILE.has(map.biome[i]),
+  };
+  const nearRiver = (i: number) => { const x = i % S, y = Math.floor(i / S); for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) { const j = (y + dy) * S + x + dx; if (j >= 0 && j < S * S && map.river[j]) return true; } return false; };
+  const out: Vein[] = [];
+  for (const k of queue) {
+    // sorteio determinístico entre as células que servem; grãos preferem beira de rio
+    const cand = dry.filter(fits[k]).map(i => [rng() + (k === 'grain' && nearRiver(i) ? -1 : 0), i] as const).sort((a, b) => a[0] - b[0]).map(e => e[1]);
+    let tries = 0;
+    for (const i of cand) {
+      if (tries++ > 40) break;
+      const c = cellCenter(S, i);
+      if (out.some(v => dist(v, c) < 12) || !dryAround(map, c.x, c.y, 2)) continue;
+      // o segundo mineral da província é o outro tipo: quem tem dois tem carvão e ferro
+      const prev = out.find(v => v.kind === 'coal' || v.kind === 'iron');
+      const kind: VeinKind = k !== 'mineral' ? k : prev ? (prev.kind === 'coal' ? 'iron' : 'coal') : rng() < 0.5 ? 'coal' : 'iron';
+      const factor = k === 'mineral' ? p.rock : k === 'wood' ? p.forest : p.fertility;
+      out.push({ kind, richness: +clampRich(0.6 + factor * 0.5 + (rng() - 0.5) * 0.4).toFixed(2), x: c.x, y: c.y });
+      break;
+    }
+  }
+  return out;
+}
+
 /**
  * O local e seus vizinhos (raio `clear` tiles) são secos pelas mesmas regras do chunk (água parada pelo canto mais alto, rios
  * suavizados e com meandro) — a célula global seca não basta: lagos e rios locais passam por células "secas".
@@ -409,19 +475,29 @@ function makeName(rng: () => number): string {
 /** 5–8 capitais sugeridas: acima da mediana de pontuação, longe umas das outras. Nunca vazio. */
 export function suggestCapitals(provinces: Province[]): number[] {
   const score = (p: Province) => p.fertility + 0.6 * p.forest + 0.6 * p.rock;
-  const sorted = provinces.map(score).sort((a, b) => a - b), median = sorted[Math.floor(sorted.length / 2)];
-  // capital precisa de madeira e pedra por perto (nela ou numa vizinha), senão trava a economia inicial
-  const near = (p: Province, f: (q: Province) => number) => Math.max(f(p), ...p.neighbors.map(n => f(provinces[n])));
-  const cand = provinces.filter(p => score(p) >= median && p.neighbors.length >= 3 && p.slots >= 3 &&
-    near(p, q => q.rock) >= 0.3 && near(p, q => q.forest) >= 0.3)
-    .sort((a, b) => score(b) - score(a) || a.id - b.id);
-  for (let d = 1100; d >= 400; d -= 100) {
-    const chosen: Province[] = [];
-    for (const p of cand) {
-      if (chosen.length >= 8) break;
-      if (chosen.every(c => Math.hypot(c.center.x - p.center.x, c.center.y - p.center.y) >= d)) chosen.push(p);
+  const sorted = provinces.map(score).sort((a, b) => a - b);
+  // capital precisa dos quatro recursos por perto (nela ou nas vizinhas): sem eles não há aço
+  const around = (p: Province, hops: number) => {
+    const seen = new Set([p.id]);
+    for (let h = 0, front = [p.id]; h < hops; h++) front = front.flatMap(i => provinces[i].neighbors).filter(n => !seen.has(n) && (seen.add(n), true));
+    return [...seen].map(i => provinces[i]);
+  };
+  const kindsNear = (p: Province, hops: number) => new Set(around(p, hops).flatMap(q => q.veins?.map(v => v.kind) ?? []));
+  let cand: Province[] = [];
+  // pontuação acima da mediana; se não houver 5 bem espalhadas, acima do percentil 30; se ainda faltar (minérios só
+  // perto das montanhas), os quatro recursos podem estar a duas províncias de distância
+  for (const [pct, hops] of [[0.5, 1], [0.3, 1], [0.3, 2]]) {
+    const min = sorted[Math.floor(sorted.length * pct)];
+    cand = provinces.filter(p => score(p) >= min && p.neighbors.length >= 3 && p.slots >= 3 && kindsNear(p, hops).size === 4)
+      .sort((a, b) => score(b) - score(a) || a.id - b.id);
+    for (let d = 1100; d >= 400; d -= 100) {
+      const chosen: Province[] = [];
+      for (const p of cand) {
+        if (chosen.length >= 8) break;
+        if (chosen.every(c => Math.hypot(c.center.x - p.center.x, c.center.y - p.center.y) >= d)) chosen.push(p);
+      }
+      if (chosen.length >= 5) return chosen.map(p => p.id);
     }
-    if (chosen.length >= 5) return chosen.map(p => p.id);
   }
   if (cand.length) return cand.slice(0, 5).map(p => p.id);
   // continente pequeno/ilhado: sem filtros, as melhores com local de construção (ou qualquer uma)
