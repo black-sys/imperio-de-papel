@@ -1,6 +1,7 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { CELL } from '../worldgen/constants';
 import { battleStep } from './battle';
+import { occupationStep } from './conquest';
 import { fortressStep } from './fortress';
 import { reinforceStep, updateRoutes, updateSupply } from './routes';
 import { ARMY, REFILL, TROOPS, TROOP_CAP, type TroopType } from './balance';
@@ -40,6 +41,7 @@ export function troopStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: num
   updateRoutes(s, pm, grid);
   updateSupply(s, pm, grid, dt);
   battleStep(s, pm, grid, dt);
+  occupationStep(s, pm, grid, dt);
   // excesso (reforço pela linha) se separa quando o exército sai da batalha e da fuga, mesmo que tenha fugido
   for (const a of [...s.armies]) if (a.owner >= 0 && a.battalions.length > ARMY.maxBattalions && s.clock >= a.routedUntil && !inBattle(s, a.id)) splitOverflow(s, a);
   reinforceStep(s, dt, pm);

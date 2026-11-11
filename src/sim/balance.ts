@@ -74,7 +74,7 @@ export const BATTLE = {
 };
 // fração das províncias com fortaleza; meses sem combate para recompor; tropas = 2 × (saltos até a capital sugerida − 1), até `max`
 // calibrado pelo teste de ritmo: com 1–4 tropas a 1ª fortaleza caía em ~55 meses e 11–15 delas em 100 meses
-export const FORTRESS = { share: 0.25, regenMonths: 3, max: 10 };
+export const FORTRESS = { share: 0.25, regenMonths: 3, max: 10, claimTiles: 20 }; // claimTiles: quem leva a província caída
 export const REFILL = { rate: 1, garrisonRate: 3, money: 2 }; // soldados/mês parado no reino (com Guarnição na província); dinheiro por soldado
 // cada tropa a mais (viva ou em treino) encarece a próxima, como a colonização: freia a conquista quando o ouro sobra
 // calibrado pelo teste de ritmo: 1.6 dá a 1ª fortaleza em 100–235 meses e 20 províncias em 390–480; com 2 a 1ª passa de 350
@@ -93,3 +93,4 @@ export const COLONIZE = { money: 70, growth: 1.39, wood: 50, woodGrowth: 1.15, m
 export const DIFFICULTY = { easy: 0.7, normal: 1, hard: 1.3 }; // renda dos rivais (o jogador é sempre 1)
 export const MAX_RIVALS = 4;
 export const WAR = { militarist: 0.15, expansionist: 0.08, strongMult: 2, strongRatio: 1.5, graceMonths: 24 };
+export const OCCUPY = { base: 1, garrison: [0, 2, 3, 4], capital: 3 }; // meses para a província ocupada cair

@@ -1,8 +1,8 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { makeRng, subSeed } from '../worldgen/rng';
 import { FORTRESS, TROOPS, type TroopType } from './balance';
-import { found, logEvent, type Army, type GameState } from './state';
-import { inBattle, spawnArmy } from './armies';
+import { found, logFor, type Army, type GameState } from './state';
+import { inBattle, men, spawnArmy } from './armies';
 
 
 /** Saltos no grafo de províncias até a capital sugerida mais próxima (Infinity se não há caminho por terra). */
@@ -45,8 +45,13 @@ export function fortressStep(s: GameState, pm: ProvinceMap): void {
     const army = byHome.get(f.province);
     if (!army) {
       s.fortresses.splice(s.fortresses.indexOf(f), 1);
-      found(s, f.province);
-      logEvent(s, `Fortaleza de ${pm.provinces[f.province].name} conquistada`);
+      // a província vai para a nação com mais homens em volta (empate: menor id); sem ninguém, fica neutra
+      const site = pm.provinces[f.province].city, around = new Map<number, number>();
+      for (const a of s.armies) if (a.owner >= 0 && Math.hypot(a.x - site.x, a.y - site.y) <= FORTRESS.claimTiles) around.set(a.owner, (around.get(a.owner) ?? 0) + men(a));
+      const [k] = [...around].sort((x, y) => y[1] - x[1] || x[0] - y[0])[0] ?? [-1];
+      if (k < 0) continue;
+      found(s, f.province, k);
+      logFor(s, k, `Fortaleza de ${pm.provinces[f.province].name} conquistada`);
     } else if (inBattle(s, army.id)) f.lastCombat = s.clock;
     else if (s.clock - f.lastCombat >= FORTRESS.regenMonths && (army.battalions.length < f.garrison.length || army.battalions.some(b => b.soldiers < TROOPS[b.type].soldiers))) {
       army.battalions = f.garrison.map(type => ({ type, soldiers: TROOPS[type].soldiers })); // recompõe no mesmo exército
