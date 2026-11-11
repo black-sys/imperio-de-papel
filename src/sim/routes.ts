@@ -1,9 +1,9 @@
 import { CELL } from '../worldgen/constants';
 import type { ProvinceMap } from '../worldgen/provinces';
 import { findCellPath } from './astar';
-import { BATTLE, RES_KEYS, RES_NAMES, ROUTE, SUPPLY, type Res } from './balance';
+import { BATTLE, REINFORCE, RES_KEYS, RES_NAMES, ROUTE, SUPPLY, TROOPS, type Res } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
-import { logEvent, type GameState, type Route } from './state';
+import { logEvent, type Army, type GameState, type Route } from './state';
 
 type Result = { ok: true } | { ok: false; reason: string };
 const no = (reason: string) => ({ ok: false as const, reason });
@@ -242,4 +242,35 @@ function coverageMask(s: GameState, pm: ProvinceMap, grid: MoveGrid): Uint8Array
   for (const r of live) for (const c of r.path) { const p = cellCenter(grid, c); paint(p.x, p.y); }
   coverCache.set(s, { sig, mask });
   return mask;
+}
+
+// ---- reforço pela linha de suprimento ----
+
+/** Província de onde chega reforço para o exército, ou null: linha de pé, cidade ligada com Guarnição pronta e exército em batalha. */
+export function reinforcing(s: GameState, a: Army): number | null {
+  const l = a.supply;
+  if (a.owner !== 0 || !l || l.cut || !s.connected[l.from] || !s.battles.some(b => b.armyIds.includes(a.id))) return null;
+  return s.lots[l.from].some(b => b?.type === 'garrison' && b.remaining <= 0 && b.level > 0) ? l.from : null;
+}
+
+/** Repõe homens dos exércitos reforçados, pagando por homem do estoque; faltando recurso repõe o que der e avisa. */
+export function reinforceStep(s: GameState, dt: number, pm?: ProvinceMap): void {
+  const per: [keyof Res, number][] = [['money', REINFORCE.money], ['grain', REINFORCE.grain], ['arms', REINFORCE.arms]];
+  for (const a of s.armies) {
+    const from = reinforcing(s, a);
+    if (from === null) continue;
+    let short: keyof Res | null = null;
+    for (const b of a.battalions) {
+      let add = Math.min(TROOPS[b.type].soldiers - b.soldiers, REINFORCE.rate * dt);
+      if (add <= 1e-9) continue;
+      for (const [k, cost] of per) if (s.res[k] < add * cost) { add = Math.max(0, s.res[k] / cost); short = k; }
+      for (const [k, cost] of per) s.res[k] -= add * cost;
+      b.soldiers += add;
+    }
+    const key = `r${a.id}`;
+    if (short && s.clock - (s.stallWarned[key] ?? -Infinity) >= SUPPLY.warnMonths) {
+      s.stallWarned[key] = s.clock;
+      logEvent(s, `Reforço de ${pm ? pm.provinces[from].name : `R${from}`} parado: faltam ${RES_NAMES[short]}`);
+    }
+  }
 }

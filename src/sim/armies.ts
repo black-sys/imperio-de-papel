@@ -2,7 +2,7 @@ import type { ProvinceMap } from '../worldgen/provinces';
 import { CELL } from '../worldgen/constants';
 import { battleStep } from './battle';
 import { fortressStep } from './fortress';
-import { updateRoutes, updateSupply } from './routes';
+import { reinforceStep, updateRoutes, updateSupply } from './routes';
 import { ARMY, REFILL, TROOPS, TROOP_CAP, type TroopType } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
 import { activeLevel, logEvent, type Army, type Battalion, type GameState } from './state';
@@ -40,6 +40,7 @@ export function troopStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: num
   updateRoutes(s, pm, grid);
   updateSupply(s, pm, grid, dt);
   battleStep(s, pm, grid, dt);
+  reinforceStep(s, dt, pm);
   for (const a of s.armies) refill(s, pm, grid, a, dt);
   fortressStep(s, pm);
 }

@@ -1,8 +1,8 @@
 import { describe, expect, test } from 'vitest';
-import { SUPPLY } from '../src/sim/balance';
+import { REINFORCE, SUPPLY } from '../src/sim/balance';
 import { chooseCapital, setSpeed } from '../src/sim/commands';
 import { runMonth } from '../src/sim/economy';
-import { buildRoute, checkSupply, dropSupply, supplyArmy } from '../src/sim/routes';
+import { buildRoute, checkSupply, dropSupply, reinforceStep, reinforcing, supplyArmy } from '../src/sim/routes';
 import { found, newGame, type GameState } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
 import { spawnArmy, men } from '../src/sim/armies';
@@ -100,5 +100,58 @@ describe('linha de suprimento', () => {
     const s = game(), t = spawnArmy(s, 0, ['line'], 300, 100);
     supplyArmy(s, pm, grid, t.id);
     expect(JSON.parse(JSON.stringify(s))).toEqual(s);
+  });
+});
+
+describe('reforço pela linha', () => {
+  /** Exército longe, com linha da capital (Guarnição pronta) e numa batalha registrada. */
+  const setup = () => {
+    const s = game();
+    s.lots[0][0] = { type: 'garrison', level: 1, remaining: 0 };
+    const a = spawnArmy(s, 0, ['line', 'line'], 300, 100);
+    supplyArmy(s, pm, grid, a.id);
+    a.battalions[0].soldiers = 10; a.battalions[1].soldiers = 19;
+    s.battles.push({ x: 302, y: 100, start: 0, armyIds: [a.id], sides: [{ owner: 0, initial: 29, morale: 1 }] });
+    return { s, a };
+  };
+  test('repõe 3 homens/mês por batalhão, pagando do estoque', () => {
+    const { s, a } = setup(), before = { ...s.res };
+    expect(reinforcing(s, a)).toBe(0);
+    reinforceStep(s, 1);
+    expect(a.battalions.map(b => b.soldiers)).toEqual([13, 20]); // o segundo só tinha 1 a repor
+    expect(before.money - s.res.money).toBeCloseTo(4 * REINFORCE.money, 9);
+    expect(before.arms - s.res.arms).toBeCloseTo(4 * REINFORCE.arms, 9);
+    expect(before.grain - s.res.grain).toBeCloseTo(4 * REINFORCE.grain, 9);
+  });
+  test('sem armas, para com aviso; volta quando há armas', () => {
+    const { s, a } = setup();
+    s.res.arms = 0.5; // dá para 1 homem
+    reinforceStep(s, 1);
+    expect(a.battalions[0].soldiers + a.battalions[1].soldiers).toBeCloseTo(30, 9);
+    expect(s.res.arms).toBeGreaterThanOrEqual(0);
+    expect(s.events.at(-1)!.text).toBe('Reforço de R0 parado: faltam armas');
+    s.res.arms = 100;
+    reinforceStep(s, 1);
+    expect(a.battalions[0].soldiers).toBeGreaterThan(11);
+  });
+  test('sem reforço: linha cortada, cidade desligada, sem Guarnição ou fora de batalha', () => {
+    const { s, a } = setup();
+    a.supply!.cut = true;
+    expect(reinforcing(s, a)).toBeNull();
+    a.supply!.cut = false; s.lots[0][0] = null;
+    expect(reinforcing(s, a)).toBeNull();
+    s.lots[0][0] = { type: 'garrison', level: 1, remaining: 0 }; s.battles = [];
+    expect(reinforcing(s, a)).toBeNull();
+  });
+  test('batalhão treinado na origem durante a batalha chega pela linha, mesmo passando de 8', () => {
+    const { s, a } = setup();
+    a.battalions = Array.from({ length: 8 }, () => ({ type: 'line' as const, soldiers: 20 }));
+    s.res = { money: 1e6, grain: 1e6, wood: 1e6, coal: 1e6, iron: 1e6, steel: 1e6, arms: 1e6 };
+    s.lots[0][0] = { type: 'garrison', level: 3, remaining: 0 };
+    s.lots[0][1] = { type: 'garrison', level: 3, remaining: 0 }; // teto 8 + 4 (a segunda guarnição conta no teto)
+    s.recruiting.push({ province: 0, lot: 0, type: 'cavalry', remaining: 0.01 });
+    setSpeed(s, 1); tick(s, pm, 0.1, null); // conclui o treino (sem passo de tropas)
+    expect(a.battalions.length).toBe(9);
+    expect(s.events.some(e => e.text === `Batalhão de cavalaria chegou ao ${a.name} pela linha`)).toBe(true);
   });
 });

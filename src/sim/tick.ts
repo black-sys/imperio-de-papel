@@ -3,6 +3,7 @@ import { BATTLE, BUILDINGS, MONTH_SECONDS, TROOPS, type TroopType } from './bala
 import type { MoveGrid } from './movegrid';
 import { ARMY } from './balance';
 import { inBattle, spawnArmy, troopStep } from './armies';
+import { reinforcing } from './routes';
 import { runMonth } from './economy';
 import { found, logEvent, type Building, type GameState } from './state';
 
@@ -71,6 +72,13 @@ function advance(s: GameState, pm: ProvinceMap, step: number): void {
     if (r.remaining > EPS) continue;
     s.recruiting.splice(s.recruiting.indexOf(r), 1);
     const p = pm.provinces[r.province], site = p.lots[r.lot] ?? p.city;
+    // exército em batalha reforçado por esta cidade recebe o batalhão pela linha (mesmo passando de 8)
+    const line = s.armies.find(a => reinforcing(s, a) === r.province);
+    if (line) {
+      line.battalions.push({ type: r.type, soldiers: TROOPS[r.type].soldiers });
+      logEvent(s, `Batalhão de ${TROOPS[r.type].name.toLowerCase()} chegou ao ${line.name} pela linha`);
+      continue;
+    }
     // entra num exército seu parado perto da cidade ou do prédio (com espaço); senão forma um novo ao lado do prédio
     const near = s.armies.find(a => a.owner === 0 && !a.path.length && s.clock >= a.routedUntil && !inBattle(s, a.id) &&
       a.battalions.length < ARMY.maxBattalions && Math.min(Math.hypot(a.x - p.city.x, a.y - p.city.y), Math.hypot(a.x - site.x, a.y - site.y)) <= 2 * ARMY.joinTiles);
