@@ -1,7 +1,7 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { makeRng, subSeed } from '../worldgen/rng';
 import { DIPLO, WAR } from './balance';
-import { alliesOf, endPact, pactBetween, relate, relation } from './diplomacy';
+import { alliesOf, endPact, pactBetween, relate, relation, warKey } from './diplomacy';
 import { logEvent, type GameState } from './state';
 
 type Result = { ok: true } | { ok: false; reason: string };
@@ -34,12 +34,14 @@ export function declareWar(s: GameState, n: number, target: number, pm?: Provinc
   relate(s, n, target, DIPLO.events.war);
   a.atWar.push(target);
   b.atWar.push(n);
+  s.warSince[warKey(n, target)] = s.month;
   logEvent(s, `A ${a.name} declarou guerra à ${b.name}`);
   // aliança defensiva: os aliados do alvo entram contra quem declarou (sem arrastar os aliados deles)
   for (const ally of alliesOf(s, target)) {
     const c = s.nations[ally];
     if (!c?.alive || ally === n || c.atWar.includes(n)) continue;
     c.atWar.push(n); a.atWar.push(ally);
+    s.warSince[warKey(n, ally)] = s.month;
     const t = pactBetween(s, n, ally, 'trade');
     if (t) endPact(s, t);
     logEvent(s, `A ${c.name} entra na guerra ao lado da ${b.name}`);

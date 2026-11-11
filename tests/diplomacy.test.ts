@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest';
 import { chooseCapital } from '../src/sim/commands';
-import { addPact, pactBetween, relate, relation, relationLabel } from '../src/sim/diplomacy';
+import { addPact, advantage, answerLetter, checkPropose, evaluate, leaveAlliance, pactBetween, propose, relate, relation, relationLabel, sign } from '../src/sim/diplomacy';
 import { fall } from '../src/sim/conquest';
 import { spawnArmy } from '../src/sim/armies';
 import { newGame, type Bent, type GameState } from '../src/sim/state';
@@ -129,4 +129,121 @@ test('JSON com relações e pactos', () => {
   addPact(s, 'trade', 1, 2, 60, { aGives: ['iron', 10], bGives: ['money', 25] });
   relate(s, 0, 2, -12);
   expect(JSON.parse(JSON.stringify(s))).toEqual(s);
+});
+
+describe('propostas', () => {
+  test('recusas de checkPropose', () => {
+    const s = trio();
+    expect(checkPropose(s, pm, 0, 0, { kind: 'alliance' })).toEqual({ ok: false, reason: 'Nação inválida' });
+    expect(checkPropose(s, pm, 0, 7, { kind: 'alliance' })).toEqual({ ok: false, reason: 'Nação inválida' });
+    expect(checkPropose(s, pm, 0, 1, { kind: 'peace', cede: [], money: 0, payer: 0 })).toEqual({ ok: false, reason: 'Só há paz para quem está em guerra' });
+    addPact(s, 'trade', 0, 1, 60, { aGives: ['iron', 1], bGives: ['money', 2] });
+    expect(checkPropose(s, pm, 0, 1, { kind: 'trade', give: ['iron', 5], get: ['money', 9] })).toEqual({ ok: false, reason: 'Já há um acordo de comércio' });
+    expect(checkPropose(s, pm, 0, 2, { kind: 'trade', give: ['gold' as never, 5], get: ['money', 9] })).toEqual({ ok: false, reason: 'Recurso inválido' });
+    expect(checkPropose(s, pm, 0, 2, { kind: 'trade', give: ['iron', 0], get: ['money', 9] })).toEqual({ ok: false, reason: 'Quantidade inválida' });
+    expect(checkPropose(s, pm, 0, 2, { kind: 'trade', give: ['iron', 1000], get: ['money', 9] })).toEqual({ ok: false, reason: 'Quantidade inválida' });
+    declareWar(s, 0, 2, pm);
+    expect(checkPropose(s, pm, 0, 2, { kind: 'nonaggression' })).toEqual({ ok: false, reason: 'Em guerra: proponha paz primeiro' });
+    expect(checkPropose(s, pm, 0, 2, { kind: 'peace', cede: [1], money: 0, payer: 0 })).toEqual({ ok: false, reason: 'Província não ocupada por quem a recebe' });
+    expect(checkPropose(s, pm, 0, 2, { kind: 'peace', cede: [], money: 1e9, payer: 0 })).toEqual({ ok: false, reason: 'Indenização acima do estoque' });
+  });
+  test('do jogador: pendência respondida depois; a mesma proposta duas vezes é recusada', () => {
+    const s = trio();
+    expect(propose(s, pm, 0, 1, { kind: 'nonaggression' })).toEqual({ ok: true });
+    expect(s.pending).toEqual([{ to: 1, proposal: { kind: 'nonaggression' }, answerAt: 1 }]);
+    expect(propose(s, pm, 0, 1, { kind: 'nonaggression' })).toEqual({ ok: false, reason: 'Proposta já enviada' });
+  });
+  test('ao jogador vira carta; entre rivais resolve na hora', () => {
+    const s = trio();
+    expect(propose(s, pm, 1, 0, { kind: 'nonaggression' })).toEqual({ ok: true });
+    expect(s.letters).toEqual([{ id: 1, from: 1, proposal: { kind: 'nonaggression' }, expires: 3 }]);
+    expect(texts(s)).toContain('Carta da Nação de R1: proposta de não agressão');
+    expect(propose(s, pm, 1, 2, { kind: 'nonaggression' })).toEqual({ ok: true }); // Industrial aceita com relação neutra
+    expect(pactBetween(s, 1, 2, 'nonaggression')!.until).toBe(60);
+    expect(answerLetter(s, pm, 1, true)).toEqual({ ok: true });
+    expect(pactBetween(s, 0, 1, 'nonaggression')).toBeDefined();
+    expect(s.letters).toEqual([]);
+    expect(answerLetter(s, pm, 1, true)).toEqual({ ok: false, reason: 'Carta inválida' });
+  });
+  test('desfazer aliança: −30', () => {
+    const s = trio();
+    expect(leaveAlliance(s, 0, 1)).toEqual({ ok: false, reason: 'Não há aliança' });
+    addPact(s, 'alliance', 0, 1, null);
+    expect(leaveAlliance(s, 0, 1)).toEqual({ ok: true });
+    expect(relation(s, 0, 1)).toBe(-30);
+    expect(pactBetween(s, 0, 1, 'alliance')).toBeUndefined();
+  });
+});
+
+describe('paz', () => {
+  const atWar = () => {
+    const s = trio();
+    s.nations[1].capital = 2; s.owner[2] = 1; // R1 e R2 da nação 1; R1 não é capital
+    s.lots[1][0] = { type: 'market', level: 2, remaining: 0 };
+    declareWar(s, 0, 1, pm);
+    declareWar(s, 2, 1, pm);
+    s.occupations.push({ province: 1, nation: 0, progress: 0.3 });
+    return s;
+  };
+  test('acaba só a guerra do par, cria trégua, cede sem dano e paga indenização', () => {
+    const s = atWar(), m0 = s.nations[0].res.money, m1 = s.nations[1].res.money;
+    expect(sign(s, pm, 0, 1, { kind: 'peace', cede: [1], money: 20, payer: 1 })).toEqual({ ok: true });
+    expect(s.nations[0].atWar).toEqual([]);
+    expect(s.nations[1].atWar).toEqual([2]);
+    expect(pactBetween(s, 0, 1, 'truce')!.until).toBe(60);
+    expect(s.owner[1]).toBe(0);
+    expect(s.lots[1][0]).toEqual({ type: 'market', level: 2, remaining: 0 });
+    expect([s.nations[0].res.money - m0, m1 - s.nations[1].res.money]).toEqual([20, 20]);
+    expect(texts(s)).toContain('Paz entre a Nação de R0 e a Nação de R1');
+  });
+  test('carta de paz aceita depois que a ocupação acabou: recusada, nada muda', () => {
+    const s = atWar();
+    // a nação 0 é o jogador (sem IA): a carta da nação 1 é dela
+    s.letters.push({ id: 9, from: 1, proposal: { kind: 'peace', cede: [1], money: 0, payer: 1 }, expires: 3 });
+    s.occupations = [];
+    expect(answerLetter(s, pm, 9, true)).toEqual({ ok: false, reason: 'Província não ocupada por quem a recebe' });
+    expect(s.owner[1]).toBe(1);
+    expect(s.nations[0].atWar).toContain(1);
+  });
+});
+
+describe('a IA avalia', () => {
+  const bats = (k: number) => Array.from({ length: k }, () => 'line' as const);
+  test('não agressão: Industrial aceita neutra; desconfiança; Militarista forte recusa', () => {
+    const s = trio('industrial');
+    expect(evaluate(s, pm, 1, 0, { kind: 'nonaggression' })).toEqual({ ok: true });
+    relate(s, 0, 1, -20);
+    expect(evaluate(s, pm, 1, 0, { kind: 'nonaggression' })).toEqual({ ok: false, reason: 'Não confiamos em vocês' });
+    const m = trio('militarist');
+    spawnArmy(m, 1, bats(3), 190, 32); spawnArmy(m, 0, bats(2), 60, 64);
+    expect(evaluate(m, pm, 1, 0, { kind: 'nonaggression' })).toEqual({ ok: false, reason: 'Não precisamos disso' });
+  });
+  test('comércio: 90% aceito, 85% recusado (Industrial aceita 85%); sem o recurso, recusa', () => {
+    const e = trio('expansionist'), i = trio('industrial');
+    // quem propõe dá dinheiro (que sobra a quem aceita: sem bônus de falta) e pede 10 ferro (valor 20)
+    expect(evaluate(e, pm, 1, 0, { kind: 'trade', give: ['money', 18], get: ['iron', 10] })).toEqual({ ok: true });
+    expect(evaluate(e, pm, 1, 0, { kind: 'trade', give: ['money', 17], get: ['iron', 10] })).toEqual({ ok: false, reason: 'Troca desvantajosa' });
+    expect(evaluate(i, pm, 1, 0, { kind: 'trade', give: ['money', 17], get: ['iron', 10] })).toEqual({ ok: true });
+    e.nations[1].res.steel = 0;
+    expect(evaluate(e, pm, 1, 0, { kind: 'trade', give: ['money', 99], get: ['steel', 10] })).toEqual({ ok: false, reason: 'Não temos esse recurso' });
+  });
+  test('aliança exige relação ≥ 40', () => {
+    const s = trio();
+    relate(s, 0, 1, 30);
+    expect(evaluate(s, pm, 1, 0, { kind: 'alliance' })).toEqual({ ok: false, reason: 'Ainda não somos tão próximos' });
+    relate(s, 0, 1, 20); declareWar(s, 2, 0, pm); declareWar(s, 2, 1, pm); // inimigo em comum
+    relate(s, 0, 1, 30);
+    expect(evaluate(s, pm, 1, 0, { kind: 'alliance' })).toEqual({ ok: true });
+  });
+  test('paz: quem perde aceita a branca; quem ganha recusa; o cansaço faz aceitar', () => {
+    const s = trio();
+    declareWar(s, 0, 1, pm);
+    spawnArmy(s, 0, bats(6), 60, 64); spawnArmy(s, 1, bats(2), 190, 32);
+    const white = { kind: 'peace' as const, cede: [], money: 0, payer: 0 };
+    expect(advantage(s, pm, 1, 0)).toBeLessThan(0);
+    expect(evaluate(s, pm, 1, 0, white)).toEqual({ ok: true });
+    expect(evaluate(s, pm, 0, 1, white)).toEqual({ ok: false, reason: 'Estamos vencendo' });
+    s.month = 60;
+    expect(evaluate(s, pm, 0, 1, white)).toEqual({ ok: true });
+  });
 });
