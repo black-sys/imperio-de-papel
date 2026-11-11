@@ -13,16 +13,18 @@ const no = (reason: string) => ({ ok: false as const, reason });
 const gridCache = new WeakMap<GameState, Map<number, { sig: number; cost: Uint8Array }>>();
 
 /** Custo de traçado por célula: água e território de outro reino bloqueiam; perto de fortaleza encarece (desvia sozinho). */
-export function routeGrid(s: GameState, pm: ProvinceMap, grid: MoveGrid, n = 0): Uint8Array {
+export function routeGrid(s: GameState, pm: ProvinceMap, grid: MoveGrid, n = 0, enemyOk = false): Uint8Array {
   let sig = 0;
   for (const o of s.owner) sig = (Math.imul(sig, 31) + o + 2) | 0;
   for (const t of s.armies) if (t.owner === -1) sig = (Math.imul(sig, 31) + (t.x | 0) * 4099 + (t.y | 0)) | 0;
   let per = gridCache.get(s);
   if (!per) gridCache.set(s, per = new Map());
-  const hit = per.get(n);
+  for (const x of s.nations) for (const w of x.atWar) sig = (Math.imul(sig, 31) + x.id * 8 + w + 1) | 0; // guerras mudam o que é passável
+  const key = n * 2 + (enemyOk ? 1 : 0), hit = per.get(key);
   if (hit && hit.sig === sig) return hit.cost;
   const cost = new Uint8Array(grid.cost);
-  for (let i = 0; i < cost.length; i++) { const p = pm.cellProvince[i]; if (p >= 0 && s.owner[p] !== n && s.owner[p] !== -1) cost[i] = 0; }
+  // território de outra nação bloqueia; com `enemyOk` (linhas de suprimento) a terra de quem está em guerra conosco não
+  for (let i = 0; i < cost.length; i++) { const p = pm.cellProvince[i]; if (p >= 0 && s.owner[p] !== n && s.owner[p] !== -1 && !(enemyOk && hostile(s, s.owner[p], n))) cost[i] = 0; }
   const r = Math.ceil(ROUTE.fortressAvoidTiles / CELL);
   for (const t of s.armies) {
     if (t.owner !== -1) continue;
@@ -36,7 +38,7 @@ export function routeGrid(s: GameState, pm: ProvinceMap, grid: MoveGrid, n = 0):
       if (cost[i]) cost[i] = Math.min(255, cost[i] * ROUTE.fortressAvoidCost);
     }
   }
-  per.set(n, { sig, cost });
+  per.set(key, { sig, cost });
   return cost;
 }
 
@@ -171,7 +173,8 @@ function markCuts(s: GameState, pm: ProvinceMap, grid: MoveGrid): void {
   for (const route of s.routes) {
     const n = route.owner;
     if (!threats.has(n)) threats.set(n, threatAt(s, grid, n));
-    const threat = threats.get(n)!, foreign = (c: number) => { const p = pm.cellProvince[c]; return p >= 0 && s.owner[p] !== n && s.owner[p] !== -1; };
+    // terra de nação em guerra corta; de nação em paz, não (como os exércitos dela)
+    const threat = threats.get(n)!, foreign = (c: number) => { const p = pm.cellProvince[c]; return p >= 0 && s.owner[p] >= 0 && hostile(s, s.owner[p], n); };
     const now = route.path.some(c => threat(c) || foreign(c));
     if (now === route.cut) continue;
     route.cut = now;
@@ -187,7 +190,7 @@ const cellCenter = (grid: MoveGrid, c: number) => ({ x: (c % grid.size) * CELL +
 function traceLine(s: GameState, pm: ProvinceMap, grid: MoveGrid, x: number, y: number, n: number): { path: number[]; from: number } | null {
   const cities = s.connected.map((on, id) => (on && s.owner[id] === n && s.city[id] ? id : -1)).filter(id => id >= 0)
     .sort((a, b) => Math.hypot(pm.provinces[a].city.x - x, pm.provinces[a].city.y - y) - Math.hypot(pm.provinces[b].city.x - x, pm.provinces[b].city.y - y));
-  const to = cellAt(grid, x, y), cost = routeGrid(s, pm, grid, n);
+  const to = cellAt(grid, x, y), cost = routeGrid(s, pm, grid, n, true);
   for (const from of cities.slice(0, 3)) {
     const path = findCellPath({ ...grid, cost }, cellAt(grid, pm.provinces[from].city.x, pm.provinces[from].city.y), to);
     if (path) return { path, from };
@@ -227,17 +230,19 @@ export function updateSupply(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: 
   const threats = new Map<number, (c: number) => boolean>(); // uma consulta por nação no passo, não por exército
   for (const t of s.armies) {
     if (t.owner < 0) { t.supplied = true; continue; } // fortalezas sempre
-    const n = t.owner, cover = coverageMask(s, pm, grid, n); // fortalezas sempre; outros reinos ainda sem rede própria (ciclo 4)
+    const n = t.owner, cover = coverageMask(s, pm, grid, n);
     if (t.supply) {
       const end = cellCenter(grid, t.supply.path.at(-1) ?? 0);
+      let lost = false; // ficou para trás e não há como retraçar: a linha não chega (não abastece com o traçado velho)
       if (Math.hypot(end.x - t.x, end.y - t.y) > SUPPLY.repathTiles && s.clock - t.supply.at >= SUPPLY.repathMonths - 1e-9) {
         const line = traceLine(s, pm, grid, t.x, t.y, n);
         if (line) t.supply = { ...line, at: s.clock, cut: false };
+        else { lost = true; t.supply.at = s.clock; }
       }
       // inimigo lutando com a própria tropa não corta a linha: ignora o trecho final, a ≤ join tiles dela
       if (!threats.has(n)) threats.set(n, threatAt(s, grid, n));
       const threat = threats.get(n)!, away = (c: number) => { const p = cellCenter(grid, c); return Math.hypot(p.x - t.x, p.y - t.y) > BATTLE.join; };
-      t.supply.cut = !s.connected[t.supply.from] || t.supply.path.some(c => threat(c) && away(c));
+      t.supply.cut = lost || !s.connected[t.supply.from] || t.supply.path.some(c => threat(c) && away(c));
     }
     let ok = !!t.supply && !t.supply.cut;
     // dentro de província sua ligada à capital (defender a própria fronteira não desgasta)

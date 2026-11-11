@@ -159,3 +159,13 @@ test('markersKey muda quando a ocupação avança 0.1 mês e quando a província
 test('cores das nações: uma por nação na paleta da carta', () => {
   expect(REALM_COLORS).toEqual(['#a8342a', '#2f4f7f', '#2f5d3a', '#b0802a', '#6a3f7a']);
 });
+
+test('clique na fortaleza abre a fortaleza (a guarnição não é escolhida); rival na própria cidade não esconde a cidade', () => {
+  const s = game();
+  addFortress(s, pm, 1, ['line']);
+  const f = pm.provinces[1].city, [fx, fy] = toScreen(view, f.x, f.y);
+  expect(pickAt(s, pm, view, fx, fy, false)).toEqual({ kind: 'fortress', province: 1 });
+  const c = pm.provinces[0].city, [cx, cy] = toScreen(view, c.x, c.y);
+  spawnArmy(s, 1, ['line'], c.x, c.y);
+  expect(pickAt(s, pm, view, cx, cy, false)).toEqual({ kind: 'city', province: 0 });
+});

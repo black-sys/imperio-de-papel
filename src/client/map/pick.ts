@@ -29,17 +29,20 @@ export type Pick = { kind: 'army'; id: number } | { kind: 'city' | 'fortress' | 
 /** O que está sob o ponto da tela: tropa > cidade > fortaleza > província. */
 export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: number, mineOnly = true, pins: { x: number; y: number; province?: number }[] = []): Pick {
   const PAD = 14; // folga além do retângulo da tropa (acima fica o número)
-  let best: { id: number; d: number } | null = null;
+  // os seus exércitos vêm antes de tudo; os alheios, depois das cidades (rival parado na própria cidade não a esconde);
+  // guarnições de fortaleza nunca (não aparecem: ficam dentro do pentágono)
+  let mine: { id: number; d: number } | null = null, other: { id: number; d: number } | null = null;
   for (const t of s.armies) {
-    if (mineOnly && t.owner !== 0) continue;
+    if (t.owner === -1 || (mineOnly && t.owner !== 0)) continue;
     const [px, py] = toScreen(v, t.x, t.y), dx = Math.abs(px - sx), dy = Math.abs(py - sy);
     if (dx > TROOP_W / 2 + PAD || dy > TROOP_H / 2 + PAD) continue;
-    const d = dx + dy;
-    if (!best || d < best.d) best = { id: t.id, d };
+    const d = dx + dy, cur = t.owner === 0 ? mine : other;
+    if (!cur || d < cur.d) { if (t.owner === 0) mine = { id: t.id, d }; else other = { id: t.id, d }; }
   }
-  if (best) return { kind: 'army', id: best.id };
+  if (mine) return { kind: 'army', id: mine.id };
   const near = (x: number, y: number, r: number) => { const [px, py] = toScreen(v, x, y); return Math.hypot(px - sx, py - sy) <= r; };
   for (let id = 0; id < s.owner.length; id++) { const c = s.owner[id] >= 0 ? cityAt(s, pm, id) : null; if (c && near(c.x, c.y, CITY_R)) return { kind: 'city', province: id }; }
+  if (other) return { kind: 'army', id: other.id };
   // lotes só das suas cidades (de perto); veios de qualquer província (é assim que se escolhe o que colonizar)
   if (v.scale >= LOT_DETAIL) for (let id = 0; id < s.owner.length; id++) {
     if (s.owner[id] !== 0) continue;

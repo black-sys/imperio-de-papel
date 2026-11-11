@@ -4,7 +4,7 @@ import { newGame, type GameState } from '../src/sim/state';
 import { spawnArmy } from '../src/sim/armies';
 import { eliminate, fall, occupyMonths } from '../src/sim/conquest';
 import { addFortress, fortressStep } from '../src/sim/fortress';
-import { reinforceStep } from '../src/sim/routes';
+import { buildRoute, reinforceStep, supplyArmy } from '../src/sim/routes';
 import { declareWar } from '../src/sim/war';
 import { tick } from '../src/sim/tick';
 import { makeRouteWorld } from './troopworld';
@@ -166,4 +166,30 @@ test('JSON com ocupações', () => {
   const s = game();
   s.occupations.push({ province: 1, nation: 0, progress: 0.4 });
   expect(JSON.parse(JSON.stringify(s))).toEqual(s);
+});
+
+describe('revisão final', () => {
+  test('linha de suprimento alcança exército dentro do território inimigo em guerra', () => {
+    const s = game();
+    s.connected[0] = true;
+    const a = spawnArmy(s, 0, ['line'], 150, 100); // em R1, do rival
+    expect(supplyArmy(s, pm, grid, a.id)).toEqual({ ok: true });
+    const end = a.supply!.path.at(-1)!;
+    expect(Math.hypot((end % grid.size) * 4 + 2 - 150, Math.floor(end / grid.size) * 4 + 2 - 100)).toBeLessThan(8);
+  });
+  test('rota do jogador por terra de nação em paz não é cortada; em guerra é', () => {
+    const s = game(true);
+    // jogador com R0 e R2 ligadas por rota que atravessa R1 (do rival, em paz)
+    s.owner[2] = 0; s.city[2] = { level: 1, remaining: 0 }; s.nations[1].capital = 1;
+    s.routes = [];
+    s.owner[1] = -1;
+    expect(buildRoute(s, pm, grid, 0, 2)).toEqual({ ok: true });
+    s.routes[0].remaining = 0;
+    s.owner[1] = 1;
+    run(s, 0.05);
+    expect(s.routes[0].cut).toBe(false);
+    declareWar(s, 0, 1);
+    run(s, 0.05);
+    expect(s.routes[0].cut).toBe(true);
+  });
 });
