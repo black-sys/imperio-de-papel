@@ -80,7 +80,7 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
       }
       const stall = rep.stalled.find(x => x.province === id && x.lot === lot), def = BUILDINGS[b.type], made = rep.produced[`${id}:${lot}`] ?? 0;
       const status = b.remaining > 0 ? ` <small>(obra: ${b.remaining.toFixed(1)} meses)</small>`
-        : stall ? ` <small class="why">${made > 0 ? `Produzindo ${made} de ${def.out[activeLevel(b)]}` : 'Parada'}: falta ${esc(RES_NAMES[stall.missing])}</small>` : '';
+        : stall ? ` <small class="why">${made > 0 ? `Produzindo ${made} de ${def.out[activeLevel(b)]}` : 'Parada'}: ${stall.missing === 'route' ? 'sem rota até a capital' : `falta ${esc(RES_NAMES[stall.missing])}`}</small>` : '';
       let train = '';
       if (b.type === 'garrison' && activeLevel(b) > 0) {
         const q = s.recruiting.find(r => r.province === id && r.lot === lot);

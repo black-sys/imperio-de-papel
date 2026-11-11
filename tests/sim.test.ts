@@ -111,7 +111,7 @@ describe('virada do mês', () => {
   test('produção por lote vem da conta nacional (duas siderúrgicas, ferro para uma só)', () => {
     const s = game();
     s.res = { ...rich, iron: 4, coal: 100 };
-    s.owner[1] = 0; s.city[1] = { level: 2, remaining: 0 };
+    s.owner[1] = 0; s.city[1] = { level: 2, remaining: 0 }; s.connected[1] = true; // com rota até a capital
     s.lots[0][0] = ready('steelworks'); s.lots[1][0] = ready('steelworks');
     const r = runMonth(s, pm, false);
     expect(r.produced['0:0']).toBe(2);

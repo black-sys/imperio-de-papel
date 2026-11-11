@@ -1,9 +1,9 @@
 import { CELL } from '../worldgen/constants';
 import type { ProvinceMap } from '../worldgen/provinces';
 import { findCellPath } from './astar';
-import { RES_NAMES, ROUTE, type Res } from './balance';
+import { RES_KEYS, RES_NAMES, ROUTE, type Res } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
-import type { GameState, Route } from './state';
+import { logEvent, type GameState, type Route } from './state';
 
 type Result = { ok: true } | { ok: false; reason: string };
 const no = (reason: string) => ({ ok: false as const, reason });
@@ -100,6 +100,16 @@ export function recomputeConnected(s: GameState): void {
 }
 
 /** A cada passo fixo das tropas: cortes, ligação com a capital e entrega de depósitos. */
-export function updateRoutes(s: GameState, _pm: ProvinceMap, _grid: MoveGrid): void {
+export function updateRoutes(s: GameState, pm: ProvinceMap, _grid: MoveGrid): void {
+  const before = s.connected;
   recomputeConnected(s);
+  s.connected.forEach((on, id) => {
+    if (on === before[id] || s.owner[id] !== 0 || id === s.capital) return;
+    if (!on) { logEvent(s, `${pm.provinces[id].name} desligada da capital`); return; }
+    const d = s.depot[id];
+    if (RES_KEYS.some(k => d[k] > 0)) {
+      for (const k of RES_KEYS) { s.res[k] += d[k]; d[k] = 0; }
+      logEvent(s, `Carga de ${pm.provinces[id].name} chegou ao estoque`);
+    }
+  });
 }

@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { ROUTE } from '../src/sim/balance';
+import { DEPOT_MONTHS, ROUTE } from '../src/sim/balance';
+import { cityTax, runMonth } from '../src/sim/economy';
 import { chooseCapital, setSpeed } from '../src/sim/commands';
 import { buildRoute, checkRoute, planRoute, removeRoute } from '../src/sim/routes';
 import { found, newGame, type GameState } from '../src/sim/state';
@@ -76,5 +77,47 @@ describe('construir e ligar', () => {
     expect(s.connected).toEqual([true, false, false]);
     buildRoute(s, pm, grid, 0, 1);
     expect(JSON.parse(JSON.stringify(s))).toEqual(s);
+  });
+});
+
+describe('depósito e entrega', () => {
+  const ready = (type: 'farm' | 'coal_mine' | 'steelworks') => ({ type, level: 1, remaining: 0 });
+  test('desligada guarda a produção dos veios; o estoque nacional não a conta; impostos entram', () => {
+    const s = game();
+    s.veins[1][0] = ready('farm'); s.veins[1][2] = ready('coal_mine');
+    const r = runMonth(s, pm, false);
+    expect(r.depots[1]).toEqual({ grain: 4, coal: 2 });
+    expect(r.net.coal).toBeCloseTo(0, 9);
+    expect(r.lines.money.find(l => l[0] === 'Impostos')![1]).toBeCloseTo(cityTax(s, pm, 0) + cityTax(s, pm, 1) + cityTax(s, pm, 2), 9);
+    runMonth(s, pm, true);
+    expect(s.depot[1]).toMatchObject({ grain: 4, coal: 2 });
+  });
+  test('teto de 6 meses de produção', () => {
+    const s = game();
+    s.veins[1][2] = ready('coal_mine');
+    for (let i = 0; i < 10; i++) runMonth(s, pm, true);
+    expect(s.depot[1].coal).toBeCloseTo(2 * DEPOT_MONTHS, 9);
+  });
+  test('fábrica de cidade desligada para com o motivo "sem rota"', () => {
+    const s = game();
+    s.lots[1][0] = ready('steelworks');
+    const r = runMonth(s, pm, false);
+    expect(r.stalled).toEqual([{ province: 1, lot: 0, missing: 'route' }]);
+    expect(r.produced['1:0']).toBe(0);
+  });
+  test('ao religar, a carga vai para o estoque com aviso; ao desligar, aviso', () => {
+    const s = game();
+    s.veins[1][2] = ready('coal_mine');
+    runMonth(s, pm, true); runMonth(s, pm, true);
+    const coal = s.res.coal;
+    buildRoute(s, pm, grid, 0, 1);
+    run(s, 4);
+    expect(s.connected[1]).toBe(true);
+    expect(s.depot[1].coal).toBe(0);
+    expect(s.res.coal).toBeGreaterThan(coal + 3.9 - 1e-9); // os 4 guardados (mais o que os meses de obra renderam no depósito)
+    expect(s.events.some(e => e.text === 'Carga de R1 chegou ao estoque')).toBe(true);
+    removeRoute(s, s.routes[0].id);
+    run(s, 0.05);
+    expect(s.events.at(-1)!.text).toBe('R1 desligada da capital');
   });
 });
