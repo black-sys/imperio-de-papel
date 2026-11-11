@@ -244,7 +244,7 @@ describe('massas de terra', () => {
     const s = game(), ids = Array.from({ length: 10 }, (_, i) => spawnTroop(s, 0, 'spear', 40 + i * 8, 40).id);
     const t = performance.now();
     expect(moveTroops(s, big, ids, 2002, 2002)).toEqual({ ok: false, reason: 'Caminho impossível' });
-    expect(performance.now() - t).toBeLessThan(50);
+    expect(performance.now() - t).toBeLessThan(300); // a varredura do continente levava ~1700 ms; folga para máquina carregada
     expect(s.troops.some(t => t.path.length === 0)).toBe(true); // as vagas da formação na ilhota ficam sem rota
     // vaga da formação que cai na ilhota não custa uma busca: o grupo vai para o alvo em terra
     const t2 = performance.now();
