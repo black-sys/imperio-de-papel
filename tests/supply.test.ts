@@ -155,3 +155,31 @@ describe('reforço pela linha', () => {
     expect(s.events.some(e => e.text === `Batalhão de cavalaria chegou ao ${a.name} pela linha`)).toBe(true);
   });
 });
+
+describe('revisão final', () => {
+  test('exército com 9 batalhões que foge separa o excesso quando a fuga acaba', () => {
+    const s = game(), a = spawnArmy(s, 0, Array.from({ length: 9 }, () => 'line' as const), 300, 100);
+    a.morale = 0.2; a.routedUntil = 0.5;
+    run(s, 0.3);
+    expect(a.battalions.length).toBe(9); // ainda em fuga
+    run(s, 0.4);
+    expect(a.battalions.length).toBe(8);
+    expect(s.armies.filter(x => x.owner === 0).length).toBe(2);
+  });
+  test('guarnição de origem em melhoria continua mandando reforço', () => {
+    const s = game();
+    s.lots[0][0] = { type: 'garrison', level: 2, remaining: 3 }; // N1 → N2 em obra
+    const a = spawnArmy(s, 0, ['line'], 300, 100);
+    supplyArmy(s, pm, grid, a.id);
+    s.battles.push({ x: 302, y: 100, start: 0, armyIds: [a.id], sides: [{ owner: 0, initial: 20, morale: 1 }] });
+    expect(reinforcing(s, a)).toBe(0);
+  });
+});
+
+test('guarnição de fortaleza com 10 batalhões não se separa', async () => {
+  const { addFortress } = await import('../src/sim/fortress');
+  const s = game();
+  addFortress(s, pm, 1, Array.from({ length: 10 }, () => 'line' as const));
+  run(s, 0.1);
+  expect(s.armies.filter(a => a.owner === -1).map(a => a.battalions.length)).toEqual([10]);
+});

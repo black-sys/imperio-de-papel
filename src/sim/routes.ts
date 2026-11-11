@@ -3,7 +3,7 @@ import type { ProvinceMap } from '../worldgen/provinces';
 import { findCellPath } from './astar';
 import { BATTLE, REINFORCE, RES_KEYS, RES_NAMES, ROUTE, SUPPLY, TROOPS, type Res } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
-import { logEvent, type Army, type GameState, type Route } from './state';
+import { activeLevel, logEvent, type Army, type GameState, type Route } from './state';
 
 type Result = { ok: true } | { ok: false; reason: string };
 const no = (reason: string) => ({ ok: false as const, reason });
@@ -246,11 +246,11 @@ function coverageMask(s: GameState, pm: ProvinceMap, grid: MoveGrid): Uint8Array
 
 // ---- reforço pela linha de suprimento ----
 
-/** Província de onde chega reforço para o exército, ou null: linha de pé, cidade ligada com Guarnição pronta e exército em batalha. */
+/** Província de onde chega reforço para o exército, ou null: linha de pé, cidade ligada com Guarnição ativa e exército em batalha. */
 export function reinforcing(s: GameState, a: Army): number | null {
   const l = a.supply;
   if (a.owner !== 0 || !l || l.cut || !s.connected[l.from] || !s.battles.some(b => b.armyIds.includes(a.id))) return null;
-  return s.lots[l.from].some(b => b?.type === 'garrison' && b.remaining <= 0 && b.level > 0) ? l.from : null;
+  return s.lots[l.from].some(b => b?.type === 'garrison' && activeLevel(b) > 0) ? l.from : null;
 }
 
 /** Repõe homens dos exércitos reforçados, pagando por homem do estoque; faltando recurso repõe o que der e avisa. */

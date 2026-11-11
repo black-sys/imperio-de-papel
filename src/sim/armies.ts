@@ -40,6 +40,8 @@ export function troopStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: num
   updateRoutes(s, pm, grid);
   updateSupply(s, pm, grid, dt);
   battleStep(s, pm, grid, dt);
+  // excesso (reforço pela linha) se separa quando o exército sai da batalha e da fuga, mesmo que tenha fugido
+  for (const a of [...s.armies]) if (a.owner === 0 && a.battalions.length > ARMY.maxBattalions && s.clock >= a.routedUntil && !inBattle(s, a.id)) splitOverflow(s, a);
   reinforceStep(s, dt, pm);
   for (const a of s.armies) refill(s, pm, grid, a, dt);
   fortressStep(s, pm);
