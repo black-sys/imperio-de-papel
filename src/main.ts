@@ -3,10 +3,10 @@ import { MapRenderer } from './client/map/renderer';
 import { pickAt, provinceAtTile, troopsInRect } from './client/map/pick';
 import { TileCache } from './client/map/tileCache';
 import { clampView, minScale, toWorld, zoomAt, type View } from './client/map/view';
-import { renderPanel, setTip, toast } from './client/panel';
+import { renderPanel, setTip, toast, veinsAround, type PanelFocus } from './client/panel';
 import { WorldClient } from './client/worldClient';
-import { build, chooseCapital, colonize, moveTroops, recruit, setSpeed, upgrade, type Result } from './sim/commands';
-import { monthlyIncome } from './sim/economy';
+import { build, chooseCapital, colonize, moveTroops, recruit, setSpeed, upgrade, upgradeCity, type Place, type Result } from './sim/commands';
+import { runMonth } from './sim/economy';
 import { addFortress, placeFortresses } from './sim/fortress';
 import { makeMoveGrid, type MoveGrid } from './sim/movegrid';
 import { newGame, type GameState } from './sim/state';
@@ -28,7 +28,7 @@ let pm: ProvinceMap | null = null;
 let game: GameState | null = null;
 let moveGrid: MoveGrid | null = null;
 let pins: { x: number; y: number; province: number }[] = [];
-let lastSpeed = 1, seenEvents = 0, selected = -1;
+let lastSpeed = 1, seenEvents = 0, selected = -1, focus: PanelFocus = null;
 
 async function load(s: number) {
   seed = s;
@@ -64,8 +64,9 @@ function order(x: number, y: number): void {
 }
 const actions = {
   colonize: (id: number) => game && pm && report(colonize(game, pm, id)),
-  build: (id: number, slot: number, t: Parameters<typeof build>[4]) => game && pm && report(build(game, pm, id, slot, t)),
-  upgrade: (id: number, slot: number) => game && pm && report(upgrade(game, pm, id, slot)),
+  build: (id: number, place: Place, t: Parameters<typeof build>[4]) => game && pm && report(build(game, pm, id, place, t)),
+  upgrade: (id: number, place: Place) => game && pm && report(upgrade(game, pm, id, place)),
+  upgradeCity: (id: number) => game && pm && report(upgradeCity(game, pm, id)),
   recruit: (id: number, slot: number, t: Parameters<typeof recruit>[4]) => game && pm && report(recruit(game, pm, id, slot, t)),
   foundCapital: (id: number) => {
     if (!game || !pm) return;
@@ -77,7 +78,7 @@ const actions = {
     view = clampView({ ...view, cx: c.x, cy: c.y, scale: 1.5 });
     toast('Capital fundada. O tempo está pausado: espaço ou 1× para começar.');
   },
-  close: () => { selected = -1; selectedTroops.clear(); },
+  close: () => { selected = -1; focus = null; selectedTroops.clear(); },
 };
 
 function speed(v: number) {
@@ -150,6 +151,7 @@ canvas.addEventListener('pointerup', e => {
   if (e.shiftKey) return;
   selectedTroops.clear();
   selected = hit ? hit.province : -1;
+  focus = hit?.kind === 'lot' ? { lot: hit.lot } : hit?.kind === 'vein' ? { vein: hit.vein } : null;
 });
 canvas.addEventListener('pointercancel', () => { down = null; box = null; drag = null; });
 canvas.addEventListener('wheel', e => { e.preventDefault(); view = zoomAt(view, e.clientX, e.clientY, e.deltaY > 0 ? 1 / 1.15 : 1.15); }, { passive: false });
@@ -160,6 +162,9 @@ function tip(e: PointerEvent) {
   const now = performance.now();
   if (!pm || !game || now - tipAt < 100) return;
   tipAt = now;
+  // selo de capital sugerida: o que há por perto (é assim que se escolhe onde fundar)
+  const pin = game.capital < 0 ? pins.find(q => { const [sx, sy] = [(q.x - view.cx) * view.scale + view.w / 2, (q.y - view.cy) * view.scale + view.h / 2]; return Math.hypot(sx - e.clientX, sy - e.clientY) <= 13; }) : undefined;
+  if (pin) return setTip(`${pm.provinces[pin.province].name}: ${veinsAround(pm, pin.province)}`, e.clientX, e.clientY);
   const p = provinceAtTile(pm, ...toWorld(view, e.clientX, e.clientY));
   setTip(p < 0 ? null : `${pm.provinces[p].name} · ${game.owner[p] === 0 ? 'seu reino' : game.fortresses.some(f => f.province === p) ? 'fortaleza neutra' : 'neutra'}`, e.clientX, e.clientY);
 }
@@ -177,9 +182,9 @@ function frame(now: number) {
   if (pm && game) {
     if (game.capital >= 0) tick(game, pm, Math.min(dt, 1), moveGrid); // aba em segundo plano: no máximo 1 s por quadro
     for (const id of selectedTroops) if (!game.troops.some(t => t.id === id)) selectedTroops.delete(id); // mortas saem da seleção
-    setTopbar(game.capital >= 0 ? { res: game.res, income: monthlyIncome(game, pm), month: game.month, speed: game.speed,
+    setTopbar(game.capital >= 0 ? { res: game.res, report: runMonth(game, pm, false), month: game.month, speed: game.speed,
       troops: `${game.troops.filter(t => t.owner === 0).length + game.recruiting.length}/${troopCap(game)}` } : null);
-    renderPanel(game, pm, selected, actions, [...selectedTroops]);
+    renderPanel(game, pm, selected, actions, [...selectedTroops], focus);
     // eventos novos viram mensagens: compara com o total (o log só guarda os últimos 50)
     const fresh = game.eventCount - seenEvents;
     for (const ev of game.events.slice(Math.max(0, game.events.length - fresh))) toast(ev.text);

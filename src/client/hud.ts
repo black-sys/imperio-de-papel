@@ -1,3 +1,6 @@
+import { RES_NAMES, type Res } from '../sim/balance';
+import type { MonthReport } from '../sim/economy';
+import { RES_ICON } from './labels';
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 const STAGES: Record<string, string> = { forma: 'Formando o continente', placas: 'Erguendo montanhas', umidade: 'Soprando os ventos', 'erosão': 'Esculpindo vales', rios: 'Traçando rios', biomas: 'Distribuindo biomas', 'províncias': 'Traçando fronteiras' };
 
@@ -42,12 +45,24 @@ export function initTopbar(onSpeed: (v: number) => void): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>('#speeds button')) b.onclick = () => { onSpeed(Number(b.dataset.speed)); b.blur(); };
 }
 
-export function setTopbar(t: { res: { gold: number; wood: number; stone: number }; income: { gold: number; wood: number; stone: number }; month: number; speed: number; troops: string } | null): void {
+const RES_ORDER = ['money', 'grain', 'wood', 'coal', 'iron', 'steel', 'arms'] as const;
+let resBuilt = false;
+
+/** Barra superior: os sete recursos (valor, variação no mês, dica com origem e destino), tropas, data e velocidade. */
+export function setTopbar(t: { res: Res; report: MonthReport; month: number; speed: number; troops: string } | null): void {
   $('topbar').style.display = t ? 'flex' : 'none';
   if (!t) return;
-  for (const k of ['gold', 'wood', 'stone'] as const) {
+  if (!resBuilt) {
+    resBuilt = true;
+    $('res').innerHTML = RES_ORDER.map(k => `<span class="res" id="s-${k}">${RES_ICON[k]} <b id="r-${k}">0</b> <small id="i-${k}"></small></span>`).join('');
+  }
+  for (const k of RES_ORDER) {
+    const net = t.report.net[k], inc = $(`i-${k}`);
     $(`r-${k}`).textContent = fmt(t.res[k]);
-    $(`i-${k}`).textContent = `${sign(t.income[k])}/mês`;
+    inc.textContent = `${sign(net)}/mês`;
+    inc.classList.toggle('neg', net < -0.05);
+    const lines = t.report.lines[k].map(([label, v]) => `${sign(v)} ${label.toLowerCase()}`).join(', ');
+    $(`s-${k}`).title = `${RES_NAMES[k][0].toUpperCase()}${RES_NAMES[k].slice(1)}: ${lines || 'nada entra nem sai'}`;
   }
   $('troops').textContent = t.troops;
   $('date').textContent = formatDate(t.month);

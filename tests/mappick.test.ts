@@ -7,7 +7,7 @@ import { spawnTroop } from '../src/sim/troops';
 import { game, world } from './troopworld';
 
 const { pm } = world;
-const view: View = { cx: 128, cy: 128, scale: 2, w: 600, h: 600 };
+const view: View = { cx: 128, cy: 128, scale: 2.5, w: 700, h: 700 };
 const scr = (x: number, y: number) => toScreen(view, x, y);
 const opts = () => ({ selectedTroops: new Set<number>(), selectedProvince: -1, pins: [], grid: world.grid });
 
@@ -32,7 +32,7 @@ test('prioridade: tropa > cidade > fortaleza > província', () => {
   addFortress(s, pm, 1, ['line']);
   s.troops = []; // só o marcador da fortaleza conta aqui
   expect(pickAt(s, pm, view, ...scr(180, 80))).toEqual({ kind: 'fortress', province: 1 });
-  expect(pickAt(s, pm, view, ...scr(20, 200))).toEqual({ kind: 'province', province: 0 });
+  expect(pickAt(s, pm, view, ...scr(20, 150))).toEqual({ kind: 'province', province: 0 });
   expect(pickAt(s, pm, { ...view, cx: -500 }, 10, 10)).toBeNull();
 });
 
@@ -56,9 +56,9 @@ test('markersKey: muda só com o que aparece', () => {
   const s = game(), t = spawnTroop(s, 0, 'line', 100, 100), o = opts();
   const k0 = markersKey(s, pm, view, o);
   expect(markersKey(s, pm, view, o)).toBe(k0);
-  t.x += 0.2; // 0,4 px de tela
+  t.x += 0.12; // 0,3 px de tela
   expect(markersKey(s, pm, view, o)).toBe(k0);
-  t.x += 0.4; // agora passa de 1 px no total
+  t.x += 0.4; // agora passa de 1 px no total (1,3 px)
   expect(markersKey(s, pm, view, o)).not.toBe(k0);
   const k1 = markersKey(s, pm, view, o);
   o.selectedTroops.add(t.id);
@@ -77,4 +77,23 @@ test('selo da capital sugerida é alvo de clique, mesmo com o centro fora da pro
   const [sx, sy] = scr(30, 30);
   expect(pickAt(s, pm, view, sx + 8, sy, true, pins)).toEqual({ kind: 'province', province: 1 });
   expect(pickAt(s, pm, view, sx + 30, sy, true, pins)).toEqual({ kind: 'province', province: 0 });
+});
+
+test('lote e veio são alvos de clique (tropa > cidade > lote > veio > fortaleza > província)', () => {
+  const s = game(); // lote 0 da província 0 em (60, 100); veio 0 (grãos) em (20, 40)
+  expect(pickAt(s, pm, view, ...scr(60, 100))).toEqual({ kind: 'lot', province: 0, lot: 0 });
+  expect(pickAt(s, pm, view, ...scr(20, 40))).toEqual({ kind: 'vein', province: 0, vein: 0 });
+  const t = spawnTroop(s, 0, 'line', 60, 100);
+  expect(pickAt(s, pm, view, ...scr(60, 100))).toEqual({ kind: 'troop', id: t.id });
+  // veio de província neutra também abre o painel dela
+  expect(pickAt(s, pm, view, ...scr(140, 40))).toEqual({ kind: 'vein', province: 1, vein: 0 });
+});
+
+test('markersKey muda quando um veio ou lote recebe prédio', () => {
+  const s = game(), o = opts(), k0 = markersKey(s, pm, view, o);
+  s.veins[0][0] = { type: 'farm', level: 1, remaining: 2 };
+  const k1 = markersKey(s, pm, view, o);
+  expect(k1).not.toBe(k0);
+  s.lots[0][0] = { type: 'steelworks', level: 1, remaining: 4 };
+  expect(markersKey(s, pm, view, o)).not.toBe(k1);
 });
