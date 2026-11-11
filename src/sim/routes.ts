@@ -1,7 +1,7 @@
 import { CELL } from '../worldgen/constants';
 import type { ProvinceMap } from '../worldgen/provinces';
 import { findCellPath } from './astar';
-import { BATTLE, RES_KEYS, RES_NAMES, ROUTE, SUPPLY, TROOPS, type Res } from './balance';
+import { BATTLE, RES_KEYS, RES_NAMES, ROUTE, SUPPLY, type Res } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
 import { logEvent, type GameState, type Route } from './state';
 
@@ -13,13 +13,13 @@ const gridCache = new WeakMap<GameState, { sig: string; cost: Uint8Array }>();
 
 /** Custo de traçado por célula: água e território de outro reino bloqueiam; perto de fortaleza encarece (desvia sozinho). */
 export function routeGrid(s: GameState, pm: ProvinceMap, grid: MoveGrid, realm = 0): Uint8Array {
-  const sig = `${realm}|${s.owner.join(',')}|${s.troops.filter(t => t.owner === -1).map(t => `${t.x | 0},${t.y | 0}`).join(';')}`;
+  const sig = `${realm}|${s.owner.join(',')}|${s.armies.filter(t => t.owner === -1).map(t => `${t.x | 0},${t.y | 0}`).join(';')}`;
   const hit = gridCache.get(s);
   if (hit && hit.sig === sig) return hit.cost;
   const cost = new Uint8Array(grid.cost);
   for (let i = 0; i < cost.length; i++) { const p = pm.cellProvince[i]; if (p >= 0 && s.owner[p] !== realm && s.owner[p] !== -1) cost[i] = 0; }
   const r = Math.ceil(ROUTE.fortressAvoidTiles / CELL);
-  for (const t of s.troops) {
+  for (const t of s.armies) {
     if (t.owner !== -1) continue;
     const c = cellAt(grid, t.x, t.y);
     if (c < 0) continue;
@@ -123,11 +123,11 @@ export function updateRoutes(s: GameState, pm: ProvinceMap, grid: MoveGrid): voi
 const threatCache = new WeakMap<GameState, { sig: number; mask: Uint8Array }>();
 function threatMask(s: GameState, grid: MoveGrid): Uint8Array {
   let sig = 0;
-  for (const t of s.troops) if (t.owner !== 0) sig = (Math.imul(sig, 31) + ((t.x * 4) | 0) * 7919 + ((t.y * 4) | 0)) | 0;
+  for (const t of s.armies) if (t.owner !== 0) sig = (Math.imul(sig, 31) + ((t.x * 4) | 0) * 7919 + ((t.y * 4) | 0)) | 0;
   const hit = threatCache.get(s);
   if (hit && hit.sig === sig && hit.mask.length === grid.size * grid.size) return hit.mask;
   const S = grid.size, mask = new Uint8Array(S * S), r = Math.ceil((ROUTE.cutTiles + CELL) / CELL);
-  for (const t of s.troops) {
+  for (const t of s.armies) {
     if (t.owner === 0) continue;
     const c = cellAt(grid, t.x, t.y);
     if (c < 0) continue;
@@ -170,23 +170,23 @@ function traceLine(s: GameState, pm: ProvinceMap, grid: MoveGrid, x: number, y: 
 }
 
 export function checkSupply(s: GameState, pm: ProvinceMap, grid: MoveGrid, troopId: number): Result {
-  const t = s.troops.find(t => t.id === troopId && t.owner === 0);
-  if (!t) return no('Tropa inválida');
-  if (s.clock < t.routedUntil) return no('Tropa em fuga');
+  const t = s.armies.find(t => t.id === troopId && t.owner === 0);
+  if (!t) return no('Exército inválido');
+  if (s.clock < t.routedUntil) return no('Exército em fuga');
   if (t.supply) return no('Já tem linha de suprimento');
-  return traceLine(s, pm, grid, t.x, t.y) ? { ok: true } : no('Nenhuma cidade ligada alcança esta tropa');
+  return traceLine(s, pm, grid, t.x, t.y) ? { ok: true } : no('Nenhuma cidade ligada alcança este exército');
 }
 
-export function supplyTroop(s: GameState, pm: ProvinceMap, grid: MoveGrid, troopId: number): Result {
+export function supplyArmy(s: GameState, pm: ProvinceMap, grid: MoveGrid, troopId: number): Result {
   const chk = checkSupply(s, pm, grid, troopId);
   if (!chk.ok) return chk;
-  const t = s.troops.find(t => t.id === troopId)!, line = traceLine(s, pm, grid, t.x, t.y)!;
+  const t = s.armies.find(t => t.id === troopId)!, line = traceLine(s, pm, grid, t.x, t.y)!;
   t.supply = { ...line, at: s.clock, cut: false };
   return { ok: true };
 }
 
 export function dropSupply(s: GameState, troopId: number): Result {
-  const t = s.troops.find(t => t.id === troopId && t.owner === 0);
+  const t = s.armies.find(t => t.id === troopId && t.owner === 0);
   if (!t?.supply) return no('Sem linha de suprimento');
   t.supply = null;
   return { ok: true };
@@ -199,7 +199,7 @@ export function dropSupply(s: GameState, troopId: number): Result {
  */
 export function updateSupply(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: number): void {
   const cover = coverageMask(s, pm, grid);
-  for (const t of s.troops) {
+  for (const t of s.armies) {
     if (t.owner !== 0) { t.supplied = true; continue; } // fortalezas sempre; outros reinos ainda sem rede própria (ciclo 4)
     if (t.supply) {
       const end = cellCenter(grid, t.supply.path.at(-1) ?? 0);
@@ -217,9 +217,9 @@ export function updateSupply(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: 
     if (!ok) { const c = cellAt(grid, t.x, t.y), p = c < 0 ? -1 : pm.cellProvince[c]; ok = (p >= 0 && s.owner[p] === 0 && s.connected[p]) || (c >= 0 && cover[c] === 1); }
     t.supplied = ok;
     if (ok) continue;
-    t.soldiers -= SUPPLY.attrition * dt;
+    for (const b of t.battalions) b.soldiers -= SUPPLY.attrition * dt;
     const key = `t${t.id}`;
-    if (s.clock - (s.stallWarned[key] ?? -Infinity) >= SUPPLY.warnMonths) { s.stallWarned[key] = s.clock; logEvent(s, `${TROOPS[t.type].name} sem suprimento`); }
+    if (s.clock - (s.stallWarned[key] ?? -Infinity) >= SUPPLY.warnMonths) { s.stallWarned[key] = s.clock; logEvent(s, `${t.name} sem suprimento`); }
   }
 }
 

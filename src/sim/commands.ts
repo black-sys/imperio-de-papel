@@ -4,7 +4,7 @@ import { cellAt, type MoveGrid } from './movegrid';
 import { BATTLE, BUILDINGS, CITY, COLONIZE, MAX_LEVEL, QUOTA, RES_NAMES, SPEEDS, STEEL_TECH_MINES, TROOPS, type BuildingType, type Res, type TroopType } from './balance';
 import { buildCost, colonizeCost, recruitCost, startingStock } from './economy';
 import { activeLevel, cityLevel, logEvent, ownBuildings, type Building, type GameState } from './state';
-import { troopCap } from './troops';
+import { armyCap, battalionCount } from './armies';
 
 export type Result = { ok: true } | { ok: false; reason: string };
 /** Lugar de um prédio na província: um dos lotes junto da cidade ou um dos veios. */
@@ -163,7 +163,7 @@ export function checkRecruit(s: GameState, pm: ProvinceMap, id: number, lot: num
   if (!Object.hasOwn(TROOPS, type)) return no('Tropa desconhecida');
   if (activeLevel(b) < TROOPS[type].level) return no(`Requer Guarnição N${TROOPS[type].level}`);
   if (s.recruiting.some(r => r.province === id && r.lot === lot)) return no('Já está treinando uma tropa');
-  if (s.troops.filter(t => t.owner === 0).length + s.recruiting.length >= troopCap(s)) return no('Teto de tropas atingido');
+  if (battalionCount(s) + s.recruiting.length >= armyCap(s)) return no('Teto de batalhões atingido');
   return afford(s, recruitCost(s, type));
 }
 
@@ -175,16 +175,16 @@ export function recruit(s: GameState, pm: ProvinceMap, id: number, lot: number, 
   return OK;
 }
 
-/** Manda as tropas do jogador para (x, y) em tiles, em formação. As que podem andam; o motivo de alguma recusa volta. */
-export function moveTroops(s: GameState, grid: MoveGrid, ids: number[], x: number, y: number): Result {
-  const troops = s.troops.filter(t => t.owner === 0 && ids.includes(t.id));
-  if (troops.length === 0) return no('Nenhuma tropa selecionada');
+/** Manda os exércitos do jogador para (x, y) em tiles, em formação. Os que podem andam; o motivo de alguma recusa volta. */
+export function moveArmies(s: GameState, grid: MoveGrid, ids: number[], x: number, y: number): Result {
+  const troops = s.armies.filter(t => t.owner === 0 && ids.includes(t.id));
+  if (troops.length === 0) return no('Nenhum exército selecionado');
   const target = cellAt(grid, x, y);
   if (target < 0 || grid.cost[target] === 0) return no('Destino na água');
   const cols = Math.ceil(Math.sqrt(troops.length)), rows = Math.ceil(troops.length / cols);
   let result = OK;
   troops.forEach((t, i) => {
-    if (s.clock < t.routedUntil) { result = no('Tropa em fuga'); return; }
+    if (s.clock < t.routedUntil) { result = no('Exército em fuga'); return; }
     const spot = cellAt(grid, x + ((i % cols) - (cols - 1) / 2) * BATTLE.formation, y + (Math.floor(i / cols) - (rows - 1) / 2) * BATTLE.formation);
     const from = cellAt(grid, t.x, t.y), land = from < 0 ? 0 : grid.land[from];
     // outra massa de terra: não há caminho, nem adianta procurar (a busca varreria o continente inteiro)

@@ -5,7 +5,7 @@ import { chooseCapital, setSpeed } from '../src/sim/commands';
 import { placeFortresses } from '../src/sim/fortress';
 import { makeMoveGrid } from '../src/sim/movegrid';
 import { buildRoute, checkRoute, planRoute, removeRoute, updateRoutes } from '../src/sim/routes';
-import { spawnTroop } from '../src/sim/troops';
+import { spawnArmy } from '../src/sim/armies';
 import { generateWorld } from '../src/worldgen/global/world';
 import { generateProvinces } from '../src/worldgen/provinces';
 import { found, newGame, type GameState } from '../src/sim/state';
@@ -137,7 +137,7 @@ describe('cortes', () => {
   };
   test('tropa hostil a 6 tiles corta; a 7 não; ir embora religa', () => {
     const { s, r, x, y } = withRoute();
-    const t = spawnTroop(s, 1, 'line', x, y + 7);
+    const t = spawnArmy(s, 1, ['line'], x, y + 7);
     t.x = x; t.y = y + 7.5; // 7.5 tiles do centro da célula da rota
     run(s, 0.05);
     expect(r.cut).toBe(false);
@@ -157,7 +157,7 @@ describe('cortes', () => {
     buildRoute(s, pm, grid, 1, 2);
     run(s, 4);
     expect(s.connected[2]).toBe(true);
-    spawnTroop(s, -1, 'line', x, y, 9); // fortaleza também corta
+    spawnArmy(s, -1, ['line'], x, y, 9); // fortaleza também corta
     run(s, 0.05);
     expect(s.connected).toEqual([true, false, false]);
   });
@@ -165,7 +165,7 @@ describe('cortes', () => {
     const s = game(), direct = planRoute(s, pm, grid, 0, 1);
     if (!direct.ok) throw new Error(direct.reason);
     const mid = direct.path[Math.floor(direct.path.length / 2)], fx = (mid % grid.size) * 4 + 2, fy = Math.floor(mid / grid.size) * 4 + 2;
-    spawnTroop(s, -1, 'line', fx, fy, 9);
+    spawnArmy(s, -1, ['line'], fx, fy, 9);
     const p = planRoute(s, pm, grid, 0, 1);
     if (!p.ok) throw new Error(p.reason);
     expect(p.path.every(c => Math.hypot((c % grid.size) * 4 + 2 - fx, Math.floor(c / grid.size) * 4 + 2 - fy) > 6)).toBe(true);
@@ -180,7 +180,7 @@ describe('cortes', () => {
     for (let i = 1; i < own.length; i++) buildRoute(s, real, g, own[i - 1], own[i]);
     for (const r of s.routes) r.remaining = 0;
     expect(s.routes.length).toBeGreaterThanOrEqual(25);
-    expect(s.troops.length).toBeGreaterThanOrEqual(150);
+    expect(s.armies.reduce((n, a) => n + a.battalions.length, 0)).toBeGreaterThanOrEqual(150); // batalhões de fortaleza
     updateRoutes(s, real, g);
     const t = performance.now();
     for (let i = 0; i < 50; i++) updateRoutes(s, real, g);
@@ -202,7 +202,7 @@ describe('correções da revisão', () => {
     if (!direct.ok) throw new Error(direct.reason);
     expect(direct.threatened).toBe(false);
     // fortaleza em cima da cidade de destino: não há como chegar sem passar a ≤ 6 tiles dela
-    spawnTroop(s, -1, 'line', 320, 64, 9);
+    spawnArmy(s, -1, ['line'], 320, 64, 9);
     const p = planRoute(s, pm, grid, 1, 2);
     if (!p.ok) throw new Error(p.reason);
     expect(p.threatened).toBe(true);

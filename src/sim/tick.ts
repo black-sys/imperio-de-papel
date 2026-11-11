@@ -1,7 +1,8 @@
 import type { ProvinceMap } from '../worldgen/provinces';
-import { BATTLE, BUILDINGS, MONTH_SECONDS, TROOPS } from './balance';
+import { BATTLE, BUILDINGS, MONTH_SECONDS, TROOPS, type TroopType } from './balance';
 import type { MoveGrid } from './movegrid';
-import { spawnTroop, troopStep } from './troops';
+import { ARMY } from './balance';
+import { inBattle, spawnArmy, troopStep } from './armies';
 import { runMonth } from './economy';
 import { found, logEvent, type Building, type GameState } from './state';
 
@@ -25,10 +26,17 @@ export function tick(s: GameState, pm: ProvinceMap, dtSeconds: number, grid: Mov
     if (boundary) {
       runMonth(s, pm, true);
       if (s.res.money < 0) {
-        // sem dinheiro para pagar: a tropa mais cara debanda (empate: a mais nova)
-        const cost = (t: (typeof s.troops)[0]) => TROOPS[t.type].upkeep.money ?? 0;
-        const t = s.troops.filter(t => t.owner === 0).sort((a, b) => cost(b) - cost(a) || b.id - a.id)[0];
-        if (t) { s.troops.splice(s.troops.indexOf(t), 1); logEvent(s, `${TROOPS[t.type].name} dispersa por falta de dinheiro`); }
+        // sem dinheiro para pagar: o batalhão mais caro debanda (empate: o do exército mais novo)
+        const cost = (t: TroopType) => TROOPS[t].upkeep.money ?? 0;
+        let pick: { a: (typeof s.armies)[0]; i: number } | null = null;
+        for (const a of s.armies) if (a.owner === 0) a.battalions.forEach((b, i) => {
+          if (!pick || cost(b.type) > cost(pick.a.battalions[pick.i].type) || (cost(b.type) === cost(pick.a.battalions[pick.i].type) && a.id > pick.a.id)) pick = { a, i };
+        });
+        if (pick) {
+          const { a, i } = pick as { a: (typeof s.armies)[0]; i: number }, [b] = a.battalions.splice(i, 1);
+          if (!a.battalions.length) s.armies.splice(s.armies.indexOf(a), 1);
+          logEvent(s, `Batalhão de ${TROOPS[b.type].name.toLowerCase()} disperso por falta de dinheiro`);
+        }
       }
     }
   }
@@ -63,8 +71,13 @@ function advance(s: GameState, pm: ProvinceMap, step: number): void {
     if (r.remaining > EPS) continue;
     s.recruiting.splice(s.recruiting.indexOf(r), 1);
     const p = pm.provinces[r.province], site = p.lots[r.lot] ?? p.city;
-    spawnTroop(s, 0, r.type, site.x, site.y + 4); // ao lado do prédio, não em cima
-    logEvent(s, `${TROOPS[r.type].name} treinada em ${p.name}`);
+    // entra num exército seu parado perto da cidade ou do prédio (com espaço); senão forma um novo ao lado do prédio
+    const near = s.armies.find(a => a.owner === 0 && !a.path.length && s.clock >= a.routedUntil && !inBattle(s, a.id) &&
+      a.battalions.length < ARMY.maxBattalions && Math.min(Math.hypot(a.x - p.city.x, a.y - p.city.y), Math.hypot(a.x - site.x, a.y - site.y)) <= 2 * ARMY.joinTiles);
+    const bat = { type: r.type, soldiers: TROOPS[r.type].soldiers };
+    if (near) near.battalions.push(bat);
+    else spawnArmy(s, 0, [bat], site.x, site.y + 4, -1, `${++s.armyNumber}º Exército de ${pm.provinces[s.capital >= 0 ? s.capital : r.province].name}`);
+    logEvent(s, `${TROOPS[r.type].name} treinada em ${p.name}${near ? ` (${near.name})` : ''}`);
   }
   for (const c of [...s.colonizing]) {
     c.remaining -= step;

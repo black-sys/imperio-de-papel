@@ -1,20 +1,20 @@
 import { describe, expect, test } from 'vitest';
 import type { TroopType } from '../src/sim/balance';
-import { moveTroops } from '../src/sim/commands';
+import { moveArmies } from '../src/sim/commands';
 import type { GameState } from '../src/sim/state';
-import { spawnTroop } from '../src/sim/troops';
+import { spawnArmy, men } from '../src/sim/armies';
 import { game, run, world } from './troopworld';
 
 const { grid } = world;
 /** Jogador (dono 0) em (x, y) contra o dono 1 a 4 tiles a leste; roda até a batalha acabar. */
 function fight(mine: TroopType[], theirs: TroopType[], x = 200, y = 20, speed = 1, dx = 4) {
   const s = game(1, true), unit = speed === 1 ? 0.02 : 0.08;
-  const a = mine.map((t, i) => spawnTroop(s, 0, t, x, y + i * 4)), b = theirs.map((t, i) => spawnTroop(s, 1, t, x + dx, y + i * 4));
+  const a = mine.map((t, i) => spawnArmy(s, 0, [t], x, y + i * 4)), b = theirs.map((t, i) => spawnArmy(s, 1, [t], x + dx, y + i * 4));
   run(s, unit, speed);
   expect(s.battles.length).toBe(1);
   let months = unit;
   while (s.battles.length && months < 5) { run(s, unit, speed); months += unit; }
-  const alive = (ts: typeof a) => ts.filter(t => s.troops.includes(t) && s.clock >= t.routedUntil);
+  const alive = (ts: typeof a) => ts.filter(t => s.armies.includes(t) && s.clock >= t.routedUntil);
   return { s, a, b, months, mine: alive(a), theirs: alive(b) };
 }
 const texts = (s: GameState) => s.events.map(e => e.text);
@@ -32,17 +32,17 @@ describe('vantagens', () => {
     expect(r.theirs.length).toBe(0);
   });
   test('artilharia atira antes do contato; a infantaria não', () => {
-    const s = game(1, true), a = spawnTroop(s, 0, 'artillery', 200, 20), b = spawnTroop(s, 1, 'line', 204, 20);
+    const s = game(1, true), a = spawnArmy(s, 0, ['artillery'], 200, 20), b = spawnArmy(s, 1, ['line'], 204, 20);
     run(s, 0.08);
-    expect(b.soldiers).toBeLessThan(20);
-    expect(a.soldiers).toBe(12);
-    const s2 = game(1, true), c = spawnTroop(s2, 0, 'line', 200, 20), d = spawnTroop(s2, 1, 'line', 204, 20);
+    expect(men(b)).toBeLessThan(20);
+    expect(men(a)).toBe(12);
+    const s2 = game(1, true), c = spawnArmy(s2, 0, ['line'], 200, 20), d = spawnArmy(s2, 1, ['line'], 204, 20);
     run(s2, 0.08);
-    expect([c.soldiers, d.soldiers]).toEqual([20, 20]);
+    expect([men(c), men(d)]).toEqual([20, 20]);
   });
   test('artilharia é lenta: 100 tiles por mês', () => {
-    const s = game(2), t = spawnTroop(s, 0, 'artillery', 10, 102);
-    moveTroops(s, world.grid, [t.id], 50, 102);
+    const s = game(2), t = spawnArmy(s, 0, ['artillery'], 10, 102);
+    moveArmies(s, world.grid, [t.id], 50, 102);
     run(s, 0.3);
     expect(t.path.length).toBeGreaterThan(0); // 40 tiles levam 0.4 mês
     run(s, 0.15);
@@ -59,11 +59,11 @@ describe('terreno', () => {
   test('defensor na floresta perde menos', () => {
     const open = fight(['line'], ['line'], 100, 100), forest = fight(['line'], ['line'], 38, 100, 1, -4); // inimigo em x=34 (célula 8, floresta); jogador fora dela
     expect(grid.cover[25 * 64 + 8]).toBe(1);
-    expect(forest.b[0].soldiers).toBeGreaterThan(open.b[0].soldiers + 1);
+    expect(men(forest.b[0])).toBeGreaterThan(men(open.b[0]) + 1);
   });
   test('quem luta de dentro do rio causa menos dano', () => {
     const dry = fight(['line'], ['line'], 100, 100), river = fight(['line'], ['line'], 130, 100); // jogador na célula 32 (rio)
-    expect(river.b[0].soldiers).toBeGreaterThan(dry.b[0].soldiers + 1);
+    expect(men(river.b[0])).toBeGreaterThan(men(dry.b[0]) + 1);
   });
 });
 
@@ -75,51 +75,51 @@ describe('moral e fuga', () => {
   });
   test('o perdedor foge para a sua província e ignora ordens', () => {
     const r = fight(['line'], ['line', 'line'], 100, 100), t = r.a[0];
-    expect(r.s.troops).toContain(t);
+    expect(r.s.armies).toContain(t);
     expect(t.routedUntil).toBeGreaterThan(r.s.clock);
-    expect(t.soldiers).toBeGreaterThan(10); // moral quebra antes do extermínio
+    expect(men(t)).toBeGreaterThan(10); // moral quebra antes do extermínio
     expect(texts(r.s)).toContain('Derrota perto de P0');
-    expect(moveTroops(r.s, grid, [t.id], 100, 100)).toEqual({ ok: false, reason: 'Tropa em fuga' });
+    expect(moveArmies(r.s, grid, [t.id], 100, 100)).toEqual({ ok: false, reason: 'Exército em fuga' });
     run(r.s, 0.6);
     expect(Math.hypot(t.x - 60, t.y - 80)).toBeLessThan(4); // cidade da província 0
-    expect(moveTroops(r.s, grid, [t.id], 100, 100)).toEqual({ ok: true });
+    expect(moveArmies(r.s, grid, [t.id], 100, 100)).toEqual({ ok: true });
     expect(t.morale).toBe(1);
   });
   test('tropa com menos de 3 soldados se dispersa', () => {
-    const s = game(), t = spawnTroop(s, 0, 'line', 200, 20);
-    t.soldiers = 3.2;
-    spawnTroop(s, 1, 'line', 204, 20);
+    const s = game(), t = spawnArmy(s, 0, ['line'], 200, 20);
+    t.battalions[0].soldiers = 3.2;
+    spawnArmy(s, 1, ['line'], 204, 20);
     run(s, 0.2);
-    expect(s.troops).not.toContain(t);
-    expect(texts(s)).toContain('Infantaria de linha dispersa');
+    expect(s.armies).not.toContain(t);
+    expect(texts(s)).toContain('Batalhão de infantaria de linha perdido');
   });
   test('fortaleza (dono −1) não foge: luta até cair', () => {
-    const s = game(), f = spawnTroop(s, -1, 'line', 204, 20, 1);
-    for (let i = 0; i < 4; i++) spawnTroop(s, 0, 'line', 200, 12 + i * 4);
+    const s = game(), f = spawnArmy(s, -1, ['line'], 204, 20, 1);
+    for (let i = 0; i < 4; i++) spawnArmy(s, 0, ['line'], 200, 12 + i * 4);
     run(s, 2);
-    expect(s.troops).not.toContain(f);
+    expect(s.armies).not.toContain(f);
     expect(f.routedUntil).toBe(0);
     expect(s.battles).toEqual([]);
   });
   test('tropa com ordem sai da batalha ao se afastar', () => {
-    const s = game(1, true), t = spawnTroop(s, 0, 'line', 200, 20);
-    spawnTroop(s, -1, 'line', 204, 20, 1);
+    const s = game(1, true), t = spawnArmy(s, 0, ['line'], 200, 20);
+    spawnArmy(s, -1, ['line'], 204, 20, 1);
     run(s, 0.04);
     expect(s.battles.length).toBe(1);
-    expect(moveTroops(s, grid, [t.id], 240, 100)).toEqual({ ok: true });
+    expect(moveArmies(s, grid, [t.id], 240, 100)).toEqual({ ok: true });
     run(s, 0.3);
     expect(s.battles).toEqual([]);
     expect(t.routedUntil).toBe(0);
-    const left = t.soldiers;
+    const left = men(t);
     run(s, 0.2);
-    expect(t.soldiers).toBeGreaterThanOrEqual(left); // fora da batalha não perde mais ninguém (em território seu, repõe)
+    expect(men(t)).toBeGreaterThanOrEqual(left); // fora da batalha não perde mais ninguém (em território seu, repõe)
   });
   test('tropas vizinhas (até 20 tiles) entram na batalha; as distantes não', () => {
-    const s = game(), near = spawnTroop(s, 0, 'line', 190, 30), far = spawnTroop(s, 0, 'line', 150, 20);
-    spawnTroop(s, 0, 'line', 200, 20); spawnTroop(s, 1, 'line', 204, 20);
+    const s = game(), near = spawnArmy(s, 0, ['line'], 190, 30), far = spawnArmy(s, 0, ['line'], 150, 20);
+    spawnArmy(s, 0, ['line'], 200, 20); spawnArmy(s, 1, ['line'], 204, 20);
     run(s, 0.04);
-    expect(s.battles[0].troopIds).toContain(near.id);
-    expect(s.battles[0].troopIds).not.toContain(far.id);
+    expect(s.battles[0].armyIds).toContain(near.id);
+    expect(s.battles[0].armyIds).not.toContain(far.id);
   });
 });
 
@@ -127,14 +127,14 @@ describe('determinismo', () => {
   test('mesmo resultado a 1× e a 8×', () => {
     // mesmo tempo total nos dois (depois da batalha a reposição continua: comparar no mesmo instante)
     const go = (speed: number) => {
-      const s = game(1, true), ts = [spawnTroop(s, 0, 'line', 200, 20), spawnTroop(s, 0, 'artillery', 200, 24), spawnTroop(s, 1, 'cavalry', 204, 20), spawnTroop(s, 1, 'line', 204, 24)];
+      const s = game(1, true), ts = [spawnArmy(s, 0, ['line'], 200, 20), spawnArmy(s, 0, ['artillery'], 200, 24), spawnArmy(s, 1, ['cavalry'], 204, 20), spawnArmy(s, 1, ['line'], 204, 24)];
       run(s, 1.6, speed);
-      return ts.map(t => +t.soldiers.toFixed(6));
+      return ts.map(t => +men(t).toFixed(6));
     };
     expect(go(8)).toEqual(go(1));
   });
   test('batalha continua igual depois de ida e volta pelo JSON', () => {
-    const mk = () => { const s = game(); spawnTroop(s, 0, 'line', 200, 20); spawnTroop(s, 0, 'artillery', 200, 24); spawnTroop(s, 1, 'cavalry', 204, 20); run(s, 0.1); return s; };
+    const mk = () => { const s = game(); spawnArmy(s, 0, ['line'], 200, 20); spawnArmy(s, 0, ['artillery'], 200, 24); spawnArmy(s, 1, ['cavalry'], 204, 20); run(s, 0.1); return s; };
     const a = mk(), b = JSON.parse(JSON.stringify(mk())) as GameState;
     expect(b).toEqual(a);
     run(a, 1); run(b, 1);

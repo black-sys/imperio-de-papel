@@ -104,8 +104,8 @@ export function runMonth(s: GameState, pm: ProvinceMap, apply: boolean): MonthRe
   mine.forEach((m, id) => { if (m) add('grain', 'Cidades', -CITY.grain[cityLevel(s, id)]); });
   // manutenção
   mine.forEach((m, id) => { if (m) for (const b of s.lots[id]) if (b?.type === 'garrison' && activeLevel(b)) add('money', 'Guarnições', -GARRISON_UPKEEP); });
-  for (const t of s.troops) if (t.owner === 0) for (const [k, v] of Object.entries(TROOPS[t.type].upkeep) as [keyof Res, number][]) add(k, 'Tropas', -v);
-  for (const t of s.troops) if (t.owner === 0 && t.supply) add('money', 'Linhas de suprimento', -(SUPPLY.lineMoney + SUPPLY.linePerTile * t.supply.path.length * CELL));
+  for (const a of s.armies) if (a.owner === 0) for (const b of a.battalions) for (const [k, v] of Object.entries(TROOPS[b.type].upkeep) as [keyof Res, number][]) add(k, 'Tropas', -v);
+  for (const t of s.armies) if (t.owner === 0 && t.supply) add('money', 'Linhas de suprimento', -(SUPPLY.lineMoney + SUPPLY.linePerTile * t.supply.path.length * CELL));
   const grainShort = r.grain <= 0 && mine.some(Boolean);
   if (r.grain < 0) r.grain = 0;
   const net = zeroRes();
@@ -128,9 +128,10 @@ export function runMonth(s: GameState, pm: ProvinceMap, apply: boolean): MonthRe
 
 export const monthlyIncome = (s: GameState, pm: ProvinceMap): Res => runMonth(s, pm, false).net;
 
-/** Custo de treinar a próxima tropa: cresce com as que o reino já tem (vivas ou em treino). */
+/** Custo de treinar o próximo batalhão: cresce com os que o reino já tem (vivos ou em treino). */
 export function recruitCost(s: GameState, type: TroopType): Partial<Res> {
-  const k = TROOP_GROWTH ** (s.troops.filter(t => t.owner === 0).length + s.recruiting.length), c: Partial<Res> = {};
+  const n = s.armies.reduce((m, a) => m + (a.owner === 0 ? a.battalions.length : 0), 0);
+  const k = TROOP_GROWTH ** (n + s.recruiting.length), c: Partial<Res> = {};
   for (const [key, v] of Object.entries(TROOPS[type].cost) as [keyof Res, number][]) c[key] = v * k;
   return c;
 }

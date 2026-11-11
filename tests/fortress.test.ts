@@ -2,7 +2,7 @@ import { describe, expect, test } from 'vitest';
 import { checkColonize } from '../src/sim/commands';
 import { addFortress, capitalHops, placeFortresses } from '../src/sim/fortress';
 import { newGame } from '../src/sim/state';
-import { spawnTroop } from '../src/sim/troops';
+import { spawnArmy, men } from '../src/sim/armies';
 import { generateWorld } from '../src/worldgen/global/world';
 import { generateProvinces } from '../src/worldgen/provinces';
 import { game, run, world } from './troopworld';
@@ -32,10 +32,10 @@ describe('distribuição no mundo real', { timeout: 60000 }, () => {
       expect(f.garrison.length).toBe(Math.min(10, 2 * (hops[f.province] - 1)));
       expect(f.garrison.filter(t => t === 'artillery').length).toBe(Math.floor(f.garrison.length / 3));
       expect(f.garrison).not.toContain('cavalry');
-      const there = s.troops.filter(t => t.home === f.province);
-      expect(there.map(t => t.type).sort()).toEqual([...f.garrison].sort());
-      expect(there.every(t => t.owner === -1)).toBe(true);
-      expect(new Set(there.map(t => `${t.x},${t.y}`)).size).toBe(there.length); // não empilhadas
+      const there = s.armies.filter(t => t.home === f.province);
+      expect(there.length).toBe(1); // a guarnição é um exército só
+      expect(there[0].battalions.map(b => b.type).sort()).toEqual([...f.garrison].sort());
+      expect(there[0].owner).toBe(-1);
     }
     expect(size(h => h === 2)).toBe(2);
     expect(size(h => h >= 5)).toBeGreaterThan(size(h => h <= 3));
@@ -50,33 +50,45 @@ describe('conquista e regeneração', () => {
   test('derrotar a guarnição dá a província com Vila N1', () => {
     const s = game();
     addFortress(s, pm, 1, ['line']);
-    for (let i = 0; i < 3; i++) spawnTroop(s, 0, 'line', 180, 76 + i * 4); // no local da fortaleza
+    for (let i = 0; i < 3; i++) spawnArmy(s, 0, ['line'], 180, 76 + i * 4); // no local da fortaleza
     run(s, 2);
     expect(s.owner[1]).toBe(0);
     expect(s.city[1]).toEqual({ level: 1, remaining: 0 });
     expect(s.fortresses).toEqual([]);
-    expect(s.troops.every(t => t.owner === 0)).toBe(true);
+    expect(s.armies.every(t => t.owner === 0)).toBe(true);
     expect(texts(s)).toContain('Fortaleza de P1 conquistada');
   });
   test('sem combate há 3 meses, volta à força total; antes disso não', () => {
     const s = game();
     addFortress(s, pm, 1, ['line', 'line']);
-    spawnTroop(s, 0, 'line', 180, 80);
+    spawnArmy(s, 0, ['line'], 180, 80);
     run(s, 1);
-    const hurt = () => s.troops.filter(t => t.owner === -1).reduce((n, t) => n + t.soldiers, 0);
+    const hurt = () => s.armies.filter(t => t.owner === -1).reduce((n, t) => n + men(t), 0);
     expect(s.owner[1]).toBe(-1);
     expect(hurt()).toBeLessThan(40);
     run(s, 1.5);
     expect(hurt()).toBeLessThan(40);
     run(s, 1.5);
     expect(hurt()).toBe(40);
-    expect(s.troops.filter(t => t.owner === -1).length).toBe(2);
+    expect(s.armies.find(t => t.owner === -1)!.battalions.length).toBe(2);
   });
   test('tropa da fortaleza morta volta na regeneração', () => {
     const s = game();
     addFortress(s, pm, 1, ['line', 'line']);
-    s.troops.splice(s.troops.findIndex(t => t.owner === -1), 1);
+    s.armies.find(t => t.owner === -1)!.battalions.pop(); // um batalhão da guarnição caiu
     run(s, 3.1);
-    expect(s.troops.filter(t => t.home === 1).length).toBe(2);
+    expect(s.armies.find(t => t.home === 1)!.battalions.length).toBe(2);
   });
+});
+
+test('fortaleza: um exército só, que regenera no mesmo id', () => {
+  const s = game();
+  addFortress(s, pm, 1, ['line', 'line', 'artillery']);
+  const f = s.armies.find(a => a.owner === -1)!, id = f.id;
+  expect(f.battalions.map(b => b.type)).toEqual(['line', 'line', 'artillery']);
+  f.battalions.splice(0, 1); f.battalions[0].soldiers = 5;
+  run(s, 3.1);
+  const g = s.armies.find(a => a.owner === -1)!;
+  expect(g.id).toBe(id);
+  expect(g.battalions.map(b => [b.type, b.soldiers])).toEqual([['line', 20], ['line', 20], ['artillery', 12]]);
 });

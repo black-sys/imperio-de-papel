@@ -1,11 +1,9 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { makeRng, subSeed } from '../worldgen/rng';
 import { FORTRESS, TROOPS, type TroopType } from './balance';
-import { found, logEvent, type GameState, type Troop } from './state';
-import { inBattle, spawnTroop } from './troops';
+import { found, logEvent, type Army, type GameState } from './state';
+import { inBattle, spawnArmy } from './armies';
 
-// lugares da guarnição em volta do local, a 5 tiles (menos que BATTLE.contact: quem chega ao local entra em combate); tabela fixa: sim sem sin/cos
-const SPOTS = [[5, 0], [-5, 0], [0, 5], [0, -5], [4, 3], [-4, -3], [-3, 4], [3, -4], [4, -3], [-4, 3]];
 
 /** Saltos no grafo de províncias até a capital sugerida mais próxima (Infinity se não há caminho por terra). */
 export function capitalHops(pm: ProvinceMap): number[] {
@@ -16,9 +14,10 @@ export function capitalHops(pm: ProvinceMap): number[] {
   return hops;
 }
 
-function spawnGarrison(s: GameState, pm: ProvinceMap, province: number, garrison: TroopType[]): void {
+/** A guarnição da fortaleza é um exército neutro parado na cidade, com os batalhões da composição. */
+function spawnGarrison(s: GameState, pm: ProvinceMap, province: number, garrison: TroopType[]): Army {
   const site = pm.provinces[province].city;
-  garrison.forEach((type, i) => spawnTroop(s, -1, type, site.x + SPOTS[i % SPOTS.length][0], site.y + SPOTS[i % SPOTS.length][1], province));
+  return spawnArmy(s, -1, garrison, site.x, site.y, province);
 }
 
 export function addFortress(s: GameState, pm: ProvinceMap, province: number, garrison: TroopType[]): void {
@@ -40,18 +39,17 @@ export function placeFortresses(s: GameState, pm: ProvinceMap, seed: number): vo
 
 /** Combate recente, conquista e recomposição das fortalezas. */
 export function fortressStep(s: GameState, pm: ProvinceMap): void {
-  const byHome = new Map<number, Troop[]>();
-  for (const t of s.troops) if (t.owner === -1) byHome.set(t.home, [...(byHome.get(t.home) ?? []), t]);
+  const byHome = new Map<number, Army>();
+  for (const a of s.armies) if (a.owner === -1) byHome.set(a.home, a);
   for (const f of [...s.fortresses]) {
-    const alive = byHome.get(f.province) ?? [];
-    if (alive.length === 0) {
+    const army = byHome.get(f.province);
+    if (!army) {
       s.fortresses.splice(s.fortresses.indexOf(f), 1);
       found(s, f.province);
       logEvent(s, `Fortaleza de ${pm.provinces[f.province].name} conquistada`);
-    } else if (alive.some(t => inBattle(s, t.id))) f.lastCombat = s.clock;
-    else if (s.clock - f.lastCombat >= FORTRESS.regenMonths && (alive.length < f.garrison.length || alive.some(t => t.soldiers < TROOPS[t.type].soldiers))) {
-      s.troops = s.troops.filter(t => !alive.includes(t));
-      spawnGarrison(s, pm, f.province, f.garrison);
+    } else if (inBattle(s, army.id)) f.lastCombat = s.clock;
+    else if (s.clock - f.lastCombat >= FORTRESS.regenMonths && (army.battalions.length < f.garrison.length || army.battalions.some(b => b.soldiers < TROOPS[b.type].soldiers))) {
+      army.battalions = f.garrison.map(type => ({ type, soldiers: TROOPS[type].soldiers })); // recompõe no mesmo exército
     }
   }
 }

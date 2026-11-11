@@ -79,7 +79,11 @@ export const REFILL = { rate: 1, garrisonRate: 3, money: 2 }; // soldados/mês p
 // cada tropa a mais (viva ou em treino) encarece a próxima, como a colonização: freia a conquista quando o ouro sobra
 // calibrado pelo teste de ritmo: 1.6 dá a 1ª fortaleza em 100–235 meses e 20 províncias em 390–480; com 2 a 1ª passa de 350
 export const TROOP_GROWTH = 1.6;
-export const TROOP_CAP = [0, 2, 3, 4]; // tropas sustentadas por nível de Guarnição
+export const TROOP_CAP = [0, 2, 3, 4]; // batalhões sustentados por nível de Guarnição
+// exército: até maxBattalions batalhões; juntar a ≤ joinTiles; de perto (px/tile ≥ openScale) a peça se abre em fichas
+export const ARMY = { maxBattalions: 8, joinTiles: 10, openScale: 4 };
+// reforço pela linha de suprimento: homens/mês por batalhão e custo por homem
+export const REINFORCE = { rate: 3, money: 2, grain: 0.5, arms: 0.5 };
 
 // custo cresce exponencialmente com as províncias que você já tem (barato no começo, caro no império grande)
 // calibrado pelo teste de ritmo (jogador guloso): 1ª colonização ~4 meses, 20 províncias ~2 h a 1×
