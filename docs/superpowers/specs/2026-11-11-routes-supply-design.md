@@ -27,7 +27,8 @@ Cada veio construído se liga à cidade da própria província, sem custo. A cap
 ### Rotas entre cidades
 - Traçar: "Traçar rota" no painel da cidade (ou tecla R com ela selecionada) → clicar noutra cidade sua; prévia do
   caminho e do custo antes de confirmar.
-- Custo: ~1 dinheiro e 0,5 madeira por tile; trecho de rio ou montanha 3×. Obra: 1 mês a cada 100 tiles (em obra,
+- Custo: 0,4 dinheiro e 0,2 madeira por tile (calibrado: a 1 e 0,5 as rotas disputavam o dinheiro da colonização e as
+  20 províncias passavam de 4 h); trecho de rio ou montanha 3×. Obra: 1 mês a cada 100 tiles (em obra,
   aparece mas não liga).
 - Só entre duas cidades suas; pode passar por terra neutra, nunca por território de outro reino nem pela água; no
   máximo uma rota por par de cidades. Remover: sem reembolso.
@@ -44,7 +45,9 @@ Rota cortada enquanto houver tropa hostil (inclusive fortaleza) a ≤ 6 tiles de
 província de reino inimigo. Trecho em vermelho com ✕; aviso; religa sozinha quando o corte some.
 
 ### Suprimento das tropas
-- Abastecida: a ≤ 30 tiles de rota pronta e ligada ou de cidade ligada; funciona como hoje (repõe no seu território).
+- Abastecida: dentro de província sua ligada à capital, ou a ≤ 30 tiles de rota pronta e ligada ou de cidade ligada;
+  funciona como hoje (repõe no seu território). Outros reinos contam como abastecidos até terem rede (ciclo 4).
+- Inimigo a ≤ 20 tiles da tropa (lutando com ela) não corta a linha dela; só um corte no resto do caminho.
 - Sem suprimento: −1 homem/mês, moral inicial 80% na batalha, sem reposição.
 - Linha de suprimento: "Abastecer" no painel da tropa traça da cidade ligada mais próxima; abastece em qualquer lugar
   e dá +25% de ataque e defesa; custa 2 dinheiro/mês + 0,02 por tile; segue a tropa; cortável como rota; 1 por tropa.

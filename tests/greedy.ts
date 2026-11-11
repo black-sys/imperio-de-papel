@@ -2,6 +2,7 @@ import { BUILDINGS, TROOPS, type BuildingType } from '../src/sim/balance';
 import { build, chooseCapital, colonize, moveTroops, recruit, setSpeed, upgrade, upgradeCity, type Place } from '../src/sim/commands';
 import { colonizeCost, runMonth } from '../src/sim/economy';
 import { placeFortresses } from '../src/sim/fortress';
+import { buildRoute, supplyTroop } from '../src/sim/routes';
 import { makeMoveGrid } from '../src/sim/movegrid';
 import { cityLevel, newGame } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
@@ -40,6 +41,13 @@ export function greedy(pm: ProvinceMap, maxMonths = 3000, map?: WorldMap) {
       for (const id of mine()) for (const n of pm.provinces[id].neighbors) if (s.owner[n] === -1) targets.add(n);
       const best = [...targets].filter(t => !s.colonizing.some(c => c.province === t) && !s.fortresses.some(f => f.province === t)).sort((a, b) => score(b) - score(a))[0];
       if (best !== undefined && colonize(s, pm, best).ok) { did = true; if (firstColonize < 0) firstColonize = s.month; }
+      // 1b) rotas: cada cidade sua sem ligação nem rota em obra liga à cidade ligada mais próxima
+      if (grid) for (const id of mine()) {
+        if (s.connected[id] || s.routes.some(r => r.a === id || r.b === id)) continue;
+        const c = pm.provinces[id].city, dist = (q: number) => Math.hypot(pm.provinces[q].city.x - c.x, pm.provinces[q].city.y - c.y);
+        const to = mine().filter(q => q !== id && s.connected[q]).sort((a, b) => dist(a) - dist(b))[0];
+        if (to !== undefined && buildRoute(s, pm, grid, to, id).ok) did = true;
+      }
       // 2) veios: grãos primeiro se faltar comida, depois carvão e ferro, depois madeira
       const order: VeinKind[] = proj.net.grain <= 0.5 ? ['grain', 'coal', 'iron', 'wood'] : ['coal', 'iron', 'wood', 'grain'];
       // antes da 1ª colonização, guarda o dinheiro (só faz fazenda se faltar comida)
@@ -79,6 +87,7 @@ export function greedy(pm: ProvinceMap, maxMonths = 3000, map?: WorldMap) {
       if (target && ready.length >= 2 * target.garrison.length) {
         const site = pm.provinces[target.province].city;
         moveTroops(s, grid, ready.map(t => t.id), site.x, site.y);
+        for (const t of ready) if (!t.supply) supplyTroop(s, pm, grid, t.id); // abastece quem vai atacar
       }
     }
     // a virada deste mês produz aço? (siderúrgica pronta com carvão e ferro no estoque)

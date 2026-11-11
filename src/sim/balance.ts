@@ -43,7 +43,7 @@ export const CITY = {
   capitalWood: 2, // lenhadores da capital: sem isso, capital sem veio de madeira podia nunca mais colonizar
 };
 // rotas: custo por tile de caminho (rio/montanha × hardMult); obra; corte por tropa hostil; desvio de fortalezas no traçado
-export const ROUTE = { money: 1, wood: 0.5, hardMult: 3, tilesPerMonth: 100, minMonths: 0.5, cutTiles: 6, fortressAvoidTiles: 6, fortressAvoidCost: 6 };
+export const ROUTE = { money: 0.4, wood: 0.2, hardMult: 3, tilesPerMonth: 100, minMonths: 0.5, cutTiles: 6, fortressAvoidTiles: 6, fortressAvoidCost: 6 };
 // suprimento: alcance em tiles; desgaste (homens/mês); moral inicial sem suprimento; bônus da linha; custo da linha; retraçado
 export const SUPPLY = { range: 30, attrition: 1, unsuppliedMorale: 0.8, lineBonus: 1.25, lineMoney: 2, linePerTile: 0.02, repathTiles: 20, repathMonths: 1, warnMonths: 6 };
 export const DEPOT_MONTHS = 6; // teto do depósito de cidade desligada, em meses da sua produção
