@@ -142,6 +142,7 @@ describe('propostas', () => {
     expect(checkPropose(s, pm, 0, 1, { kind: 'trade', give: ['iron', 5], get: ['money', 9] })).toEqual({ ok: false, reason: 'Já há um acordo de comércio' });
     expect(checkPropose(s, pm, 0, 2, { kind: 'trade', give: ['gold' as never, 5], get: ['money', 9] })).toEqual({ ok: false, reason: 'Recurso inválido' });
     expect(checkPropose(s, pm, 0, 2, { kind: 'trade', give: ['iron', 0], get: ['money', 9] })).toEqual({ ok: false, reason: 'Quantidade inválida' });
+    expect(checkPropose(s, pm, 0, 2, { kind: 'trade', give: ['iron', 5], get: ['iron', 3] })).toEqual({ ok: false, reason: 'Recurso inválido' });
     expect(checkPropose(s, pm, 0, 2, { kind: 'trade', give: ['iron', 1000], get: ['money', 9] })).toEqual({ ok: false, reason: 'Quantidade inválida' });
     declareWar(s, 0, 2, pm);
     expect(checkPropose(s, pm, 0, 2, { kind: 'nonaggression' })).toEqual({ ok: false, reason: 'Em guerra: proponha paz primeiro' });

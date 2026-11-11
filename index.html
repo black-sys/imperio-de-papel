@@ -45,7 +45,7 @@
     #toasts div { background: #2b2118e6; color: #f1e6cf; padding: 6px 12px; border-radius: 6px; border: 1px solid #6b5536; }
     #tip { position: fixed; z-index: 4; display: none; pointer-events: none; background: #2b2118e6; color: #f1e6cf; padding: 3px 8px; border-radius: 4px; font-size: 12px; }
     #hud select { background: #f7eed8; color: inherit; border: 1px solid #6b5536; border-radius: 4px; padding: 3px 4px; }
-    #nations { background: #3d2f22; color: #f1e6cf; border: 1px solid #6b5536; padding: 3px 10px; border-radius: 4px; cursor: pointer; }
+    #letters, #nations { background: #3d2f22; color: #f1e6cf; border: 1px solid #6b5536; padding: 3px 10px; border-radius: 4px; cursor: pointer; }
     #panel .swatch { display: inline-block; width: 11px; height: 11px; border-radius: 2px; border: 1px solid #3e2a18; margin-right: 5px; vertical-align: -1px; }
     #panel a.go { color: inherit; cursor: pointer; text-decoration: underline dotted; }
     #end { position: fixed; z-index: 5; inset: 0; display: none; align-items: center; justify-content: center; background: #2b211888; }
@@ -81,7 +81,8 @@
   <div id="topbar">
     <span id="res"></span>
     <span class="res" title="Batalhões / teto das guarnições">⚔ <b id="troops">0/0</b></span>
-    <button id="nations" title="Nações do mapa: situação e guerra">Nações</button>
+    <button id="nations" title="Nações do mapa: relação, acordos e guerra">Nações</button>
+    <button id="letters" class="mail" title="Propostas das outras nações">✉ Cartas (0)</button>
     <span id="date"></span>
     <span id="speeds">
       <button data-speed="0" title="Pausa (espaço)">⏸</button><button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button>

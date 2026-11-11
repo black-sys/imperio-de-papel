@@ -3,6 +3,9 @@ import { checkBuild, checkColonize, checkRecruit, checkUpgrade, checkUpgradeCity
 import { buildCost, cityTax, colonizeCost, recruitCost, runMonth } from '../sim/economy';
 import { activeLevel, cityLevel, playerCapital, type Bent, type GameState } from '../sim/state';
 import { occupyMonths } from '../sim/conquest';
+import { checkPropose, KIND_LABEL, pactBetween, relation, relationLabel } from '../sim/diplomacy';
+import type { Proposal } from '../sim/state';
+import { RES_KEYS, type Res } from '../sim/balance';
 import { REALM_COLORS } from './map/pick';
 import { inBattle, men } from '../sim/armies';
 import { reinforcing } from '../sim/routes';
@@ -27,10 +30,13 @@ export interface PanelActions {
   merge(intoId: number, fromId: number): void;
   rename(armyId: number): void;
   declareWar(nation: number): void;
+  propose(to: number, p: Proposal): void;
+  answer(letter: number, accept: boolean): void;
+  leaveAlliance(nation: number): void;
   centerOn(province: number): void;
 }
 /** O que mais o painel pode mostrar: a lista de nações ou um exército alheio (só leitura). */
-export interface PanelExtra { nations?: boolean; inspect?: number }
+export interface PanelExtra { nations?: boolean; inspect?: number; letters?: boolean }
 /** Lugar para onde o painel rola ao abrir (clique num lote ou veio no mapa). */
 export type PanelFocus = { lot: number } | { vein: number } | null;
 
@@ -56,9 +62,10 @@ export function veinsAround(pm: ProvinceMap, id: number): string {
 export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: number, act: PanelActions, armies: number[] = [], focus: PanelFocus = null, extra: PanelExtra = {}): void {
   const picked = s ? s.armies.filter(t => armies.includes(t.id)) : [];
   const other = s?.armies.find(a => a.id === extra.inspect && a.owner !== 0);
-  if (!s || !pm || (id < 0 && picked.length === 0 && !other && !extra.nations)) { el.style.display = 'none'; lastHtml = ''; lastFocus = ''; return; }
+  if (!s || !pm || (id < 0 && picked.length === 0 && !other && !extra.nations && !extra.letters)) { el.style.display = 'none'; lastHtml = ''; lastFocus = ''; return; }
   if (picked.length) return show(armiesHtml(s, pm, picked), id, act, '');
   if (other) return show(foreignArmyHtml(s, other), id, act, '');
+  if (id < 0 && extra.letters) return show(lettersHtml(s, pm), id, act, '');
   if (id < 0) return show(nationsHtml(s, pm), id, act, '');
   const p = pm.provinces[id], mine = s.owner[id] === 0 && !!s.city[id], fort = s.fortresses.find(f => f.province === id), rival = s.owner[id] > 0 ? s.nations[s.owner[id]] : null;
   const owner = playerCapital(s) === id ? 'Sua capital' : mine ? 'Sua nação' : rival ? `${swatch(rival.id)}${esc(rival.name)}${rival.capital === id ? ' · capital' : ''}` : fort ? 'Fortaleza neutra' : 'Neutra';
@@ -153,6 +160,81 @@ function veinsHtml(s: GameState, pm: ProvinceMap, id: number, build: boolean): s
   return html;
 }
 
+// formulário de proposta aberto no painel (paz ou comércio) e o que já foi preenchido
+type Form = { kind: 'peace' | 'trade'; to: number; cede: number[]; money: number; theyPay: boolean; give: keyof Res; giveQty: number; get: keyof Res; getQty: number };
+let form: Form | null = null;
+const formProposal = (f: Form): Proposal => (f.kind === 'peace'
+  ? { kind: 'peace', cede: f.cede, money: f.money, payer: f.theyPay ? f.to : 0 }
+  : { kind: 'trade', give: [f.give, f.giveQty], get: [f.get, f.getQty] });
+const PACT_ICON: Record<string, string> = { truce: '🕊', nonaggression: '🕊', trade: '⚖', alliance: '🤝' };
+
+/** Relação, acordos em vigor e propostas possíveis com a nação `n` (do ponto de vista do jogador). */
+function diplomacyHtml(s: GameState, pm: ProvinceMap, n: number): string {
+  if (!s.nations[n].alive || !s.nations[0].alive) return '';
+  const rel = Math.round(relation(s, 0, n)), label = relationLabel(rel);
+  const pacts = s.pacts.filter(p => (p.a === 0 && p.b === n) || (p.a === n && p.b === 0)).map(p => {
+    const left = p.until === null ? '' : ` (${Math.max(0, Math.ceil(p.until - s.month))} meses)`;
+    const trade = p.trade ? `: damos ${tradeText(p.a === 0 ? p.trade.aGives : p.trade.bGives)} por ${tradeText(p.a === 0 ? p.trade.bGives : p.trade.aGives)}` : '';
+    return `${PACT_ICON[p.kind]} ${KIND_LABEL[p.kind]}${trade}${left}`;
+  });
+  const chk = (p: Proposal) => checkPropose(s, pm, 0, n, p);
+  const btn = (action: string, text: string, r: { ok: boolean; reason?: string }) => button(action, text, r.ok ? { ok: true } : { ok: false, reason: r.reason! });
+  const white: Proposal = { kind: 'peace', cede: [], money: 0, payer: 0 };
+  let html = `<div class="sub">Relação ${label} · ${rel > 0 ? '+' : ''}${rel}${pacts.length ? ` · ${pacts.join(' · ')}` : ''}</div><div class="act">`;
+  // em guerra só cabe a paz; em paz, os acordos
+  if (s.nations[0].atWar.includes(n)) html += btn(`pf:${n}`, 'Propor paz…', chk(white));
+  else {
+    html += btn(`pp:${n}:nonaggression`, 'Não agressão', chk({ kind: 'nonaggression' }));
+    html += btn(`tf:${n}`, 'Comércio…', chk({ kind: 'trade', give: ['money', 1], get: ['grain', 1] }));
+    html += btn(`pp:${n}:alliance`, 'Aliança', chk({ kind: 'alliance' }));
+  }
+  if (pactBetween(s, 0, n, 'alliance')) html += `<button data-a="lv:${n}">Desfazer aliança</button>`;
+  html += warButton(s, n) + '</div>';
+  if (form?.to === n) html += form.kind === 'peace' ? peaceForm(s, pm, n, form) : tradeForm(s, pm, n, form);
+  return html;
+}
+const tradeText = ([k, q]: [keyof Res, number]) => `${RES_ICON[k]}${q} ${RES_NAMES[k]}`;
+
+function peaceForm(s: GameState, pm: ProvinceMap, n: number, f: Form): string {
+  const occ = s.occupations.filter(e => (e.nation === 0 && s.owner[e.province] === n) || (e.nation === n && s.owner[e.province] === 0));
+  const rows = occ.map(e => `<label class="slot" style="display:block"><input type="checkbox" data-f="cede:${e.province}" ${f.cede.includes(e.province) ? 'checked' : ''}>
+    ${esc(pm.provinces[e.province].name)} ${e.nation === 0 ? 'passa a você' : 'passa a eles'}</label>`).join('') || '<p class="sub">Nenhuma província ocupada: paz sem cessões.</p>';
+  const r = checkPropose(s, pm, 0, n, formProposal(f));
+  return `<h3>Proposta de paz</h3>${rows}
+    <div class="slot">Indenização <input data-f="money" type="number" min="0" value="${f.money}" style="width:70px">
+    <select data-f="payer"><option value="they" ${f.theyPay ? 'selected' : ''}>eles pagam</option><option value="we" ${f.theyPay ? '' : 'selected'}>nós pagamos</option></select></div>
+    <div class="act">${button('fs', 'Enviar', r)}<button data-a="pf:${n}">Cancelar</button></div>`;
+}
+
+function tradeForm(s: GameState, pm: ProvinceMap, n: number, f: Form): string {
+  const opts = (sel: keyof Res) => RES_KEYS.map(k => `<option value="${k}" ${k === sel ? 'selected' : ''}>${RES_NAMES[k]}</option>`).join('');
+  const net = runMonth(s, pm, false).net, theirs = s.nations[n].res;
+  const r = checkPropose(s, pm, 0, n, formProposal(f));
+  return `<h3>Proposta de comércio (5 anos)</h3>
+    <div class="slot">Damos <select data-f="give">${opts(f.give)}</select> <input data-f="giveQty" type="number" min="1" max="999" value="${f.giveQty}" style="width:56px"> /mês
+      <div class="sub">nossa produção: ${net[f.give] >= 0 ? '+' : ''}${net[f.give].toFixed(1)}/mês</div></div>
+    <div class="slot">Recebemos <select data-f="get">${opts(f.get)}</select> <input data-f="getQty" type="number" min="1" max="999" value="${f.getQty}" style="width:56px"> /mês
+      <div class="sub">estoque deles: ${Math.floor(theirs[f.get])}</div></div>
+    <div class="act">${button('fs', 'Enviar', r)}<button data-a="tf:${n}">Cancelar</button></div>`;
+}
+
+/** Caixa de cartas do jogador. */
+function lettersHtml(s: GameState, pm: ProvinceMap): string {
+  const text = (from: number, p: Proposal) => {
+    if (p.kind === 'peace') {
+      const cede = p.cede.map(id => esc(pm.provinces[id].name)).join(', ');
+      const pay = p.money ? `${p.payer === from ? 'paga' : 'pede'} ${p.money} de dinheiro` : '';
+      return `propõe paz${cede || pay ? ': ' : ' branca'}${[cede && `cede ${cede}`, pay].filter(Boolean).join(' e ')}`;
+    }
+    if (p.kind === 'trade') return `propõe comércio: ${tradeText(p.give)} por ${tradeText(p.get)} ao mês, por 5 anos`;
+    return p.kind === 'nonaggression' ? 'propõe um pacto de não agressão por 5 anos' : 'propõe uma aliança defensiva';
+  };
+  const rows = s.letters.map(l => `<div class="slot">${swatch(l.from)}<b>${esc(s.nations[l.from].name)}</b> ${text(l.from, l.proposal)}
+    <div class="sub">expira em ${Math.max(0, Math.ceil(l.expires - s.month))} meses</div>
+    <div class="act"><button data-a="ly:${l.id}">Aceitar</button><button data-a="ln:${l.id}">Recusar</button></div></div>`).join('');
+  return `<button class="x" data-a="close">✕</button><h2>Cartas</h2>${rows || '<p class="sub">Nenhuma carta.</p>'}`;
+}
+
 const BENT: Record<Bent, string> = { militarist: 'Militarista', expansionist: 'Expansionista', industrial: 'Industrial' };
 const swatch = (n: number) => `<span class="swatch" style="background:${REALM_COLORS[n] ?? REALM_COLORS[0]}"></span>`;
 /** Situação de uma nação vista pelo jogador. */
@@ -171,7 +253,7 @@ function nationsHtml(s: GameState, pm: ProvinceMap): string {
     const prov = s.owner.filter(o => o === n.id).length, bats = s.armies.reduce((k, a) => k + (a.owner === n.id ? a.battalions.length : 0), 0);
     const name = n.alive ? `<a class="go" data-a="cn:${n.capital}">${esc(n.name)}</a>` : esc(n.name);
     return `<div class="slot">${swatch(n.id)}<b>${name}</b>${n.id === 0 ? ' (você)' : ` · ${BENT[n.bent]}`}
-      <div class="sub">${prov} províncias · ${bats} batalhões · ${situation(s, n.id)}</div><div class="act">${warButton(s, n.id)}</div></div>`;
+      <div class="sub">${prov} províncias · ${bats} batalhões · ${situation(s, n.id)}</div>${n.id === 0 ? '' : diplomacyHtml(s, pm, n.id)}</div>`;
   }).join('');
   void pm;
   return `<button class="x" data-a="close">✕</button><h2>Nações</h2>${rows}`;
@@ -185,7 +267,7 @@ function rivalHtml(s: GameState, pm: ProvinceMap, id: number, n: number): string
     <h3>Cidade</h3><div class="slot">${['', 'Vila', 'Cidade', 'Metrópole'][lvl]} ${stars(lvl)}</div>
     <h3>Prédios</h3><div class="slot">${names.join(', ') || 'nenhum'}</div>
     <h3>Exércitos perto da cidade</h3><div class="slot">${here.map(a => `${esc(a.name)}: ${Math.ceil(men(a))} homens, ${a.battalions.length} batalhões`).join('<br>') || 'nenhum'}</div>
-    <div class="act">${warButton(s, n)}</div>`;
+    ${diplomacyHtml(s, pm, n)}`;
 }
 
 /** Ocupação em andamento na província: quem ocupa e quanto falta. */
@@ -249,6 +331,16 @@ function show(html: string, id: number, act: PanelActions, focus: string): void 
   if (focus !== lastFocus) { lastFocus = focus; if (focus) document.getElementById(focus)?.scrollIntoView({ block: 'nearest' }); }
   // pointerdown (não click): o painel é refeito várias vezes por segundo com o tempo correndo e um click
   // que começa num botão e termina no botão novo se perderia
+  // os campos dos formulários guardam o que foi digitado (o painel se refaz com o tempo correndo)
+  el.oninput = e => {
+    const f = (e.target as HTMLElement).dataset.f, v = (e.target as HTMLInputElement | HTMLSelectElement).value;
+    if (!f || !form) return;
+    if (f === 'money') form.money = Math.max(0, Math.floor(Number(v) || 0));
+    else if (f === 'payer') form.theyPay = v === 'they';
+    else if (f === 'give' || f === 'get') form[f] = v as keyof Res;
+    else if (f === 'giveQty' || f === 'getQty') form[f] = Math.floor(Number(v) || 0);
+    else if (f.startsWith('cede:')) { const id = Number(f.slice(5)); form.cede = (e.target as HTMLInputElement).checked ? [...form.cede, id] : form.cede.filter(x => x !== id); }
+  };
   el.onpointerdown = e => {
     if (e.button !== 0) return;
     const a = ((e.target as HTMLElement).closest('button, input, a') as HTMLElement | null)?.dataset.a;
@@ -261,6 +353,12 @@ function show(html: string, id: number, act: PanelActions, focus: string): void 
     else if (a === 'route') act.startRoute(id);
     else if (a.startsWith('rr:')) act.removeRoute(Number(a.slice(3)));
     else if (a.startsWith('dw:')) act.declareWar(Number(a.slice(3)));
+    else if (a.startsWith('pp:')) { const [, n, kind] = a.split(':'); act.propose(Number(n), { kind } as Proposal); }
+    else if (a.startsWith('lv:')) act.leaveAlliance(Number(a.slice(3)));
+    else if (a.startsWith('ly:')) act.answer(Number(a.slice(3)), true);
+    else if (a.startsWith('ln:')) act.answer(Number(a.slice(3)), false);
+    else if (a.startsWith('pf:') || a.startsWith('tf:')) { const n = Number(a.slice(3)); form = form?.to === n && form.kind === (a[0] === 'p' ? 'peace' : 'trade') ? null : { kind: a[0] === 'p' ? 'peace' : 'trade', to: n, cede: [], money: 0, theyPay: true, give: 'iron', giveQty: 10, get: 'money', getQty: 20 }; }
+    else if (a === 'fs' && form) { act.propose(form.to, formProposal(form)); form = null; }
     else if (a.startsWith('cn:')) act.centerOn(Number(a.slice(3)));
     else if (a.startsWith('ck:')) { const k = a.slice(3); if (checked.has(k)) checked.delete(k); else checked.add(k); }
     else if (a.startsWith('sl:')) { const [, armyId, list] = a.split(':'); act.split(Number(armyId), list ? list.split(',').map(Number) : []); for (const k of [...checked]) if (k.startsWith(`${armyId}:`)) checked.delete(k); }

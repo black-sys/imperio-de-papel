@@ -8,6 +8,7 @@ import { renderPanel, setTip, toast, veinsAround, type PanelFocus } from './clie
 import { WorldClient } from './client/worldClient';
 import { build, chooseCapital, colonize, moveArmies, recruit, setSpeed, startGame, training, upgrade, upgradeCity, type Place, type Result } from './sim/commands';
 import { declareWar } from './sim/war';
+import { answerLetter, leaveAlliance, pactBetween, propose } from './sim/diplomacy';
 import { runMonth } from './sim/economy';
 import { addFortress, placeFortresses } from './sim/fortress';
 import { buildRoute, dropSupply, planRoute, removeRoute, supplyArmy } from './sim/routes';
@@ -32,7 +33,7 @@ let game: GameState | null = null;
 let moveGrid: MoveGrid | null = null;
 let pins: { x: number; y: number; province: number }[] = [];
 let lastSpeed = 1, seenEvents = 0, selected = -1, focus: PanelFocus = null;
-let nationsOpen = false, inspect = -1, endShown = false; // lista de nações; exército alheio em leitura; tela de fim já mostrada
+let nationsOpen = false, lettersOpen = false, inspect = -1, endShown = false; // lista de nações; exército alheio em leitura; tela de fim já mostrada
 // modo traçar rota: cidade de origem e a prévia sob o mouse
 let routeFrom: number | null = null, preview: { path: number[]; ok: boolean } | null = null, previewAt = 0;
 
@@ -86,11 +87,21 @@ const actions = {
     view = clampView({ ...view, cx: c.x, cy: c.y, scale: 1.5 });
     toast('Capital fundada. O tempo está pausado: espaço ou 1× para começar.');
   },
-  close: () => { selected = -1; focus = null; selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; inspect = -1; },
+  close: () => { selected = -1; focus = null; selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; lettersOpen = false; inspect = -1; },
   declareWar: (n: number) => {
     const target = game?.nations[n];
-    if (game && pm && target && confirm(`Declarar guerra à ${target.name}? A guerra não tem volta.`)) report(declareWar(game, 0, n, pm));
+    const pact = game && (pactBetween(game, 0, n, 'nonaggression') ? 'um pacto de não agressão' : pactBetween(game, 0, n, 'truce') ? 'uma trégua' : '');
+    const warn = pact ? `\n\nHá ${pact}: declarar é traição, e todas as nações vão lembrar.` : '';
+    if (game && pm && target && confirm(`Declarar guerra à ${target.name}?${warn}`)) report(declareWar(game, 0, n, pm));
   },
+  propose: (to: number, p: Parameters<typeof propose>[4]) => {
+    if (!game || !pm) return;
+    const r = propose(game, pm, 0, to, p);
+    report(r);
+    if (r.ok) toast(`Proposta enviada à ${game.nations[to].name}: resposta no mês que vem`);
+  },
+  answer: (id: number, accept: boolean) => game && pm && report(answerLetter(game, pm, id, accept)),
+  leaveAlliance: (n: number) => { if (game && confirm(`Desfazer a aliança com a ${game.nations[n].name}? A relação piora.`)) report(leaveAlliance(game, 0, n)); },
   centerOn: (province: number) => { if (pm) { const c = pm.provinces[province].city; view = clampView({ ...view, cx: c.x, cy: c.y, scale: Math.max(view.scale, 1) }); } },
   startRoute: (id: number) => { routeFrom = id; preview = null; toast('Clique noutra cidade sua · Esc cancela'); },
   removeRoute: (routeId: number) => game && pm && report(removeRoute(game, routeId, pm)),
@@ -115,7 +126,12 @@ initHud({
 initTopbar(speed);
 (document.getElementById('nations') as HTMLButtonElement).onclick = e => {
   nationsOpen = !nationsOpen; (e.currentTarget as HTMLButtonElement).blur();
-  if (nationsOpen) { selected = -1; selectedArmies.clear(); inspect = -1; }
+  if (nationsOpen) { selected = -1; selectedArmies.clear(); inspect = -1; lettersOpen = false; }
+};
+const lettersButton = document.getElementById('letters') as HTMLButtonElement;
+lettersButton.onclick = () => {
+  lettersOpen = !lettersOpen; lettersButton.blur();
+  if (lettersOpen) { selected = -1; selectedArmies.clear(); inspect = -1; nationsOpen = false; }
 };
 (document.getElementById('end-stay') as HTMLButtonElement).onclick = () => { (document.getElementById('end') as HTMLDivElement).style.display = 'none'; };
 (document.getElementById('end-new') as HTMLButtonElement).onclick = () => load(randomSeed());
@@ -174,7 +190,7 @@ canvas.addEventListener('pointerup', e => {
   down = null; box = null;
   if (b) return pickArmies(armiesInRect(game, view, b[0], b[1], b[2], b[3]), e.shiftKey);
   const hit = pickAt(game, pm, view, e.clientX, e.clientY, false, pins); // alheios também: abrem só para leitura
-  inspect = -1; nationsOpen = false;
+  inspect = -1; nationsOpen = false; lettersOpen = false;
   if (routeFrom !== null) { // modo traçar rota: o clique numa cidade sua confirma; fora dela, sai do modo
     const target = routeTargetAt(pm, view, e.clientX, e.clientY); // a mesma consulta da prévia: tropa ao lado da cidade não engole o clique
     if (target >= 0 && game.owner[target] === 0 && target !== routeFrom && moveGrid) report(buildRoute(game, pm, moveGrid, routeFrom, target));
@@ -229,7 +245,9 @@ function frame(now: number) {
       troops: `${battalionCount(game) + training(game)}/${armyCap(game)}`,
       depot: game.depot.filter((_, id) => game!.owner[id] === 0).reduce((a, d) => { for (const k of Object.keys(a) as (keyof typeof a)[]) a[k] += d[k]; return a; }, { money: 0, grain: 0, wood: 0, coal: 0, iron: 0, steel: 0, arms: 0 }) } : null);
     if (inspect >= 0 && !game.armies.some(a => a.id === inspect)) inspect = -1;
-    renderPanel(game, pm, selected, actions, [...selectedArmies], focus, { nations: nationsOpen, inspect });
+    renderPanel(game, pm, selected, actions, [...selectedArmies], focus, { nations: nationsOpen, inspect, letters: lettersOpen });
+    const mail = `✉ Cartas (${game.letters.length})`;
+    if (lettersButton.textContent !== mail) lettersButton.textContent = mail;
     if (game.result && !endShown) { // fim de partida: pausa e mostra o resultado
       endShown = true; speed(0);
       (document.getElementById('end-title') as HTMLElement).textContent = game.result === 'victory' ? 'Vitória' : 'Derrota';

@@ -62,6 +62,7 @@ export function checkPropose(s: GameState, pm: ProvinceMap, from: number, to: nu
   if (atWar(s, from, to)) return no('Em guerra: proponha paz primeiro');
   if (pactBetween(s, from, to, p.kind)) return no(`Já há um acordo de ${KIND_LABEL[p.kind]}`);
   if (p.kind === 'trade') {
+    if (p.give[0] === p.get[0]) return no('Recurso inválido'); // troca do mesmo recurso não é comércio
     for (const [k, q] of [p.give, p.get]) {
       if (!(RES_KEYS as readonly string[]).includes(k)) return no('Recurso inválido');
       if (!Number.isInteger(q) || q < 1 || q > DIPLO.maxQty) return no('Quantidade inválida');
