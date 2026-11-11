@@ -1,7 +1,7 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { makeRng, subSeed } from '../worldgen/rng';
 import { CELL } from '../worldgen/constants';
-import { BUILDINGS, HEADLINES, LAWS, REPRESS, STAB, UNREST, zeroRes, type TroopType } from './balance';
+import { BUILDINGS, CITY, HEADLINES, LAWS, REPRESS, STAB, UNREST, zeroRes, type TroopType } from './balance';
 import { inBattle, provinceAt, spawnArmy } from './armies';
 import type { MoveGrid } from './movegrid';
 import { activeLevel, cityLevel, logFor, type GameState, type LawKind } from './state';
@@ -18,7 +18,7 @@ export function stabilityTarget(s: GameState, pm: ProvinceMap, id: number): { ta
   if (!n) return { target: 0, factors: [] };
   const add = (label: string, v: number) => { if (v) f.push([label, v]); };
   const laws = n.laws, lots = s.lots[id];
-  if (n.grainShort && !(laws.includes('ration') && n.res.grain > 0)) add('Sem grãos', M.famine);
+  if (n.grainShort && !laws.includes('ration')) add('Sem grãos', M.famine); // racionar é a resposta à fome
   if (n.atWar.length) {
     add('Guerra', M.war * n.atWar.length);
     const oldest = Math.min(...n.atWar.map(e => s.warSince[e < n.id ? `${e}:${n.id}` : `${n.id}:${e}`] ?? s.month));
@@ -38,7 +38,6 @@ export function stabilityTarget(s: GameState, pm: ProvinceMap, id: number): { ta
   if (laws.includes('ration')) add('Racionamento', M.ration);
   if (laws.includes('martial') && s.armies.some(a => a.owner === n.id && !a.path.length && provinceOf(pm, a.x, a.y) === id)) add('Lei marcial', M.martial);
   if (s.month < s.resentment[id]) add('Ressentimento', M.resentment);
-  void pm;
   const target = Math.max(0, Math.min(100, STAB.base + f.reduce((k, [, v]) => k + v, 0)));
   return { target, factors: f };
 }
@@ -114,6 +113,9 @@ function unrest(s: GameState, pm: ProvinceMap, id: number): void {
 export function stabilityMonth(s: GameState, pm: ProvinceMap): void {
   s.revolts = s.revolts.filter(r => s.owner[r.province] >= 0);
   resolveRevolts(s, pm);
+  // rebeldes cuja revolta acabou (província conquistada ou neutralizada) se dispersam, fora de batalha
+  const live = new Set(s.revolts.map(r => r.army));
+  s.armies = s.armies.filter(a => !(a.owner === -1 && a.home < 0 && !live.has(a.id) && !inBattle(s, a.id)));
   // Pão e circo: paga por cidade; sem dinheiro, cai
   for (const n of s.nations) {
     if (!n.alive || !n.laws.includes('bread')) continue;
@@ -191,7 +193,9 @@ export function aiStability(s: GameState, pm: ProvinceMap, grid: MoveGrid, n: nu
   if (!own.length) return;
   const avg = own.reduce((k, id) => k + s.stability[id], 0) / own.length, has = (l: LawKind) => x.laws.includes(l);
   if (x.grainShort && !has('ration')) decree(s, n, 'ration');
-  if (!x.grainShort && has('ration') && x.res.grain > 0) repeal(s, n, 'ration');
+  // só revoga o Racionamento com estoque para 6 meses de consumo cheio (num déficit crônico, ele fica)
+  const fullGrain = own.reduce((k, id) => k + CITY.grain[cityLevel(s, id)], 0);
+  if (!x.grainShort && has('ration') && x.res.grain >= 6 * fullGrain) repeal(s, n, 'ration');
   if (avg > 60) { for (const l of ['bread', 'martial', 'shorter'] as const) if (has(l)) repeal(s, n, l); return; }
   if (avg < 45 && !has('bread') && x.res.money >= LAWS.bread.cost + 6 * LAWS.bread.perCity * own.length) decree(s, n, 'bread');
   if (x.bent === 'industrial' && !has('shorter') && s.strikes.some(k => s.owner[k.province] === n)) decree(s, n, 'shorter');

@@ -139,8 +139,7 @@ const battalionsOf = (list: GameState['armies']) => list.reduce((k, a) => k + a.
 function defend(s: GameState, pm: ProvinceMap, grid: MoveGrid, n: number): void {
   const cap = pm.provinces[s.nations[n].capital].city;
   // invasores: exércitos de nações hostis e rebeldes nas províncias da nação
-  const rebels = new Set(s.revolts.map(r => r.army));
-  const invaders = s.armies.filter(a => (rebels.has(a.id) || (a.owner >= 0 && hostile(s, a.owner, n))) && s.owner[provinceAt(pm, grid, a.x, a.y)] === n);
+  const invaders = s.armies.filter(a => ((a.owner === -1 && a.home < 0) || (a.owner >= 0 && hostile(s, a.owner, n))) && s.owner[provinceAt(pm, grid, a.x, a.y)] === n);
   if (!invaders.length) return;
   const mine = free(s, n), need = battalionsOf(invaders);
   if (battalionsOf(mine) >= AI.defendRatio * need) {

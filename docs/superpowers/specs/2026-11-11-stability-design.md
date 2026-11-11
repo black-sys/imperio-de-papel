@@ -26,7 +26,7 @@ como manchetes de jornal. Os rivais seguem as mesmas regras e a IA responde.
 Alvo = 60 + modificadores (`STAB.mod`):
 | Fator | Valor |
 |---|---|
-| Nação sem grãos (`grainShort`) | −25 (não vale com Racionamento enquanto houver estoque de grãos) |
+| Nação sem grãos (`grainShort`) | −25 (não vale com Racionamento em vigor) |
 | Cada guerra em andamento | −5 |
 | Guerra longa | −1 por 12 meses da guerra mais antiga, até −15 |
 | Fábricas (siderúrgica, armas) | −5 por nível ativo (não vale com Jornada reduzida) |
@@ -59,7 +59,7 @@ capital, onde a revolta segue até ser vencida. Rebeldes não regeneram nem ocup
 | Lei | Para decretar | Enquanto vigora |
 |---|---|---|
 | Pão e circo (`bread`) | 50 de dinheiro | Alvo +10; 2 de dinheiro por cidade/mês (sem dinheiro no mês: cai, com aviso) |
-| Racionamento (`ration`) | — | Cidades consomem metade dos grãos; alvo −5; o −25 da fome não vale enquanto houver estoque |
+| Racionamento (`ration`) | — | Cidades consomem metade dos grãos; alvo −5; o −25 da fome não vale |
 | Jornada reduzida (`shorter`) | — | Fábricas produzem 75%; o −5 por fábrica não vale |
 | Lei marcial (`martial`) | 30 de dinheiro | +15 onde há exército da nação parado; impostos ×0,8 em todas |
 Revogar é grátis; a mesma lei só volta depois de 12 meses (`LAWS.cooldown`).

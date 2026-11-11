@@ -272,7 +272,7 @@ function repressButton(s: GameState, pm: ProvinceMap, a: GameState['armies'][0])
 
 const LAW_TEXT: Record<LawKind, string> = {
   bread: `Estabilidade +10 em todas · decretar: ${LAWS.bread.cost} de dinheiro · ${LAWS.bread.perCity} por cidade/mês`,
-  ration: 'Cidades comem metade dos grãos · estabilidade −5 · a fome não pesa enquanto houver estoque',
+  ration: 'Cidades comem metade dos grãos · estabilidade −5 · a fome não pesa enquanto vigorar',
   shorter: 'Fábricas produzem 75% · a pressão das fábricas some',
   martial: `+15 onde há exército seu parado · impostos −20% · decretar: ${LAWS.martial.cost} de dinheiro`,
 };

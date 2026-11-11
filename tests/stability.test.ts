@@ -205,8 +205,8 @@ describe('leis', () => {
     const grain = (x: GameState) => runMonth(x, pm, false, 0).lines.grain.find(l => l[0] === 'Cidades')![1];
     expect(grain(r)).toBeCloseTo(grain(base) * 0.5, 9);
     expect(stabilityTarget(r, pm, 1).target).toBe(B);
-    r.nations[0].grainShort = true; base.nations[0].grainShort = true;
-    expect(stabilityTarget(r, pm, 1).target - stabilityTarget(base, pm, 1).target).toBe(25 - 5); // fome não pesa com estoque
+    r.nations[0].grainShort = true; base.nations[0].grainShort = true; r.nations[0].res.grain = 0;
+    expect(stabilityTarget(r, pm, 1).target - stabilityTarget(base, pm, 1).target).toBe(25 - 5); // com Racionamento a fome não pesa
     const f = world();
     f.lots[1][0] = { type: 'steelworks', level: 2, remaining: 0 };
     f.nations[0].res = { money: 999, grain: 999, wood: 999, coal: 999, iron: 999, steel: 999, arms: 999 };
@@ -281,5 +281,24 @@ describe('a IA', () => {
     aiStep(s, pm, grid, 1);
     const c = mine.path.at(-1)!;
     expect(Math.hypot((c % grid.size) * 4 + 2 - 340, Math.floor(c / grid.size) * 4 + 2 - 40)).toBeLessThan(20);
+  });
+});
+
+describe('revisão final', () => {
+  test('rebeldes órfãos (revolta encerrada por conquista) somem na virada', () => {
+    const s = world(), r = spawnArmy(s, -1, ['line'], 190, 32, -1, 'Rebeldes de R1');
+    s.revolts.push({ province: 1, since: 0, army: r.id });
+    fall(s, pm, 1, 1);
+    stabilityMonth(s, pm);
+    expect(s.armies.some(a => a.id === r.id)).toBe(false);
+  });
+  test('a IA não revoga o Racionamento sem estoque para 6 meses de consumo cheio', () => {
+    const s = world();
+    s.nations[1].laws = ['ration']; s.nations[1].grainShort = false; s.nations[1].res.grain = 5;
+    aiStability(s, pm, grid, 1);
+    expect(s.nations[1].laws).toContain('ration');
+    s.nations[1].res.grain = 500;
+    aiStability(s, pm, grid, 1);
+    expect(s.nations[1].laws).not.toContain('ration');
   });
 });
