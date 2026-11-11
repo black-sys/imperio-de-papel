@@ -2,12 +2,15 @@ import { describe, expect, test } from 'vitest';
 import { chooseCapital } from '../src/sim/commands';
 import { fall } from '../src/sim/conquest';
 import { runMonth } from '../src/sim/economy';
-import { headline, stabilityMonth, stabilityTarget } from '../src/sim/stability';
+import { decree, headline, repeal, repress, stabilityMonth, stabilityTarget } from '../src/sim/stability';
+import { spawnArmy, men } from '../src/sim/armies';
+import { eliminate } from '../src/sim/conquest';
+import { cityTax } from '../src/sim/economy';
 import { found, newGame, type GameState } from '../src/sim/state';
 import { declareWar } from '../src/sim/war';
 import { makeRouteWorld } from './troopworld';
 
-const { pm } = makeRouteWorld(); // R0, R1, R2 em faixa
+const { pm, grid } = makeRouteWorld(); // R0, R1, R2 em faixa
 /** Jogador com capital em R0 e R1 (cidade N1, ligada); rival (nação 1) em R2. */
 export const world = (): GameState => {
   const s = newGame(pm);
@@ -163,5 +166,90 @@ describe('eventos', () => {
     t.lots[1][0] = null;
     t.month = 5; stabilityMonth(t, pm);
     expect(t.strikes).toEqual([]);
+  });
+});
+
+describe('leis', () => {
+  test('decretar: custo, recusas, intervalo de 12 meses ao revogar', () => {
+    const s = world(), m0 = s.nations[0].res.money;
+    expect(decree(s, 0, 'bread')).toEqual({ ok: true });
+    expect(s.nations[0].res.money).toBe(m0 - 50);
+    expect(s.headlines.at(-1)!.text).toBe('NAÇÃO DE R0 DECRETA PÃO E CIRCO');
+    expect(decree(s, 0, 'bread')).toEqual({ ok: false, reason: 'Lei já em vigor' });
+    expect(repeal(s, 0, 'ration')).toEqual({ ok: false, reason: 'Lei não está em vigor' });
+    expect(repeal(s, 0, 'bread')).toEqual({ ok: true });
+    s.month = 5;
+    expect(decree(s, 0, 'bread')).toEqual({ ok: false, reason: 'Só pode decretar de novo em 7 meses' });
+    s.month = 12; s.nations[0].res.money = 10;
+    expect(decree(s, 0, 'bread')).toEqual({ ok: false, reason: 'Falta dinheiro' });
+  });
+  test('Pão e circo: +10, custa 2 por cidade/mês e cai sem dinheiro', () => {
+    const s = world();
+    s.nations[0].res.money = 500;
+    decree(s, 0, 'bread');
+    expect(stabilityTarget(s, pm, 1).target).toBe(75);
+    const m = s.nations[0].res.money;
+    stabilityMonth(s, pm);
+    expect(m - s.nations[0].res.money).toBe(4); // 2 cidades
+    s.nations[0].res.money = 1;
+    stabilityMonth(s, pm);
+    expect(s.nations[0].laws).toEqual([]);
+    expect(s.events.at(-1)!.text).toBe('Pão e circo suspenso: falta dinheiro');
+  });
+  test('Racionamento, Jornada reduzida e Lei marcial na conta do mês e no alvo', () => {
+    const base = world(), r = world();
+    decree(r, 0, 'ration');
+    const grain = (x: GameState) => runMonth(x, pm, false, 0).lines.grain.find(l => l[0] === 'Cidades')![1];
+    expect(grain(r)).toBeCloseTo(grain(base) * 0.5, 9);
+    expect(stabilityTarget(r, pm, 1).target).toBe(60);
+    r.nations[0].grainShort = true; base.nations[0].grainShort = true;
+    expect(stabilityTarget(r, pm, 1).target - stabilityTarget(base, pm, 1).target).toBe(25 - 5); // fome não pesa com estoque
+    const f = world();
+    f.lots[1][0] = { type: 'steelworks', level: 2, remaining: 0 };
+    f.nations[0].res = { money: 999, grain: 999, wood: 999, coal: 999, iron: 999, steel: 999, arms: 999 };
+    const full = runMonth(f, pm, false, 0).produced['1:0'];
+    decree(f, 0, 'shorter');
+    expect(runMonth(f, pm, false, 0).produced['1:0']).toBe(Math.floor(full * 0.75));
+    expect(stabilityTarget(f, pm, 1).factors.some(([k]) => k === 'Fábricas')).toBe(false);
+    const m = world(), tax = cityTax(m, pm, 1);
+    m.nations[0].res.money = 999;
+    decree(m, 0, 'martial');
+    expect(cityTax(m, pm, 1)).toBeCloseTo(tax * 0.8, 9);
+    expect(stabilityTarget(m, pm, 1).target).toBe(65);
+    spawnArmy(m, 0, ['line'], 190, 32); // parado em R1
+    expect(stabilityTarget(m, pm, 1).target).toBe(80);
+  });
+  test('nação eliminada com Pão e circo: nada é cobrado', () => {
+    const s = world();
+    decree(s, 1, 'bread');
+    eliminate(s, pm, 1, 0);
+    const m = s.nations[1].res.money;
+    stabilityMonth(s, pm);
+    expect(s.nations[1].res.money).toBe(m);
+  });
+});
+
+describe('reprimir', () => {
+  test('+20, fim da greve, ressentimento, −2 homens por batalhão; recusas', () => {
+    const s = world(), a = spawnArmy(s, 0, ['line', 'line'], 190, 32);
+    s.stability[1] = 30; s.strikes.push({ province: 1, until: 99 });
+    expect(repress(s, pm, grid, a.id)).toEqual({ ok: true });
+    expect(s.stability[1]).toBe(50);
+    expect(s.strikes).toEqual([]);
+    expect(s.resentment[1]).toBe(60);
+    expect(men(a)).toBe(36);
+    s.stability[1] = 30;
+    expect(repress(s, pm, grid, a.id)).toEqual({ ok: false, reason: 'Reprimida há menos de 12 meses' });
+    s.month = 12; s.stability[1] = 45;
+    expect(repress(s, pm, grid, a.id)).toEqual({ ok: false, reason: 'Estabilidade acima de 40' });
+    a.path = [1];
+    expect(repress(s, pm, grid, a.id)).toEqual({ ok: false, reason: 'Exército em marcha' });
+    a.path = []; a.x = 320; a.y = 64;
+    s.stability[2] = 10;
+    expect(repress(s, pm, grid, a.id)).toEqual({ ok: false, reason: 'Província não é sua' });
+    expect(repress(s, pm, grid, 999)).toEqual({ ok: false, reason: 'Exército inválido' });
+    a.x = 190; a.y = 32; s.stability[1] = 10;
+    s.battles.push({ x: 190, y: 32, start: 0, armyIds: [a.id], sides: [{ owner: 0, initial: 40, morale: 1 }] });
+    expect(repress(s, pm, grid, a.id)).toEqual({ ok: false, reason: 'Exército em batalha' });
   });
 });

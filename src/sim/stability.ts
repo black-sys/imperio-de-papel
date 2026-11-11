@@ -1,8 +1,10 @@
 import type { ProvinceMap } from '../worldgen/provinces';
 import { makeRng, subSeed } from '../worldgen/rng';
-import { BUILDINGS, HEADLINES, STAB, UNREST, zeroRes, type TroopType } from './balance';
-import { spawnArmy } from './armies';
-import { activeLevel, cityLevel, logFor, type GameState } from './state';
+import { CELL } from '../worldgen/constants';
+import { BUILDINGS, HEADLINES, LAWS, REPRESS, STAB, UNREST, zeroRes, type TroopType } from './balance';
+import { inBattle, provinceAt, spawnArmy } from './armies';
+import type { MoveGrid } from './movegrid';
+import { activeLevel, cityLevel, logFor, type GameState, type LawKind } from './state';
 
 /** Grava uma manchete no jornal (as últimas HEADLINES). */
 export function headline(s: GameState, text: string): void {
@@ -34,10 +36,17 @@ export function stabilityTarget(s: GameState, pm: ProvinceMap, id: number): { ta
   if (n.capital === id) add('Capital', M.capital);
   if (laws.includes('bread')) add('Pão e circo', M.bread);
   if (laws.includes('ration')) add('Racionamento', M.ration);
+  if (laws.includes('martial') && s.armies.some(a => a.owner === n.id && !a.path.length && provinceOf(pm, a.x, a.y) === id)) add('Lei marcial', M.martial);
   if (s.month < s.resentment[id]) add('Ressentimento', M.resentment);
   void pm;
   const target = Math.max(0, Math.min(100, STAB.base + f.reduce((k, [, v]) => k + v, 0)));
   return { target, factors: f };
+}
+
+/** Província sob o ponto (tiles), sem precisar da grade de movimento. */
+function provinceOf(pm: ProvinceMap, x: number, y: number): number {
+  const S = Math.round(Math.sqrt(pm.cellProvince.length)), cx = Math.floor(x / CELL), cy = Math.floor(y / CELL);
+  return cx < 0 || cy < 0 || cx >= S || cy >= S ? -1 : pm.cellProvince[cy * S + cx];
 }
 
 const FACTORY = new Set(['steelworks', 'arms_factory']);
@@ -105,6 +114,14 @@ function unrest(s: GameState, pm: ProvinceMap, id: number): void {
 export function stabilityMonth(s: GameState, pm: ProvinceMap): void {
   s.revolts = s.revolts.filter(r => s.owner[r.province] >= 0);
   resolveRevolts(s, pm);
+  // Pão e circo: paga por cidade; sem dinheiro, cai
+  for (const n of s.nations) {
+    if (!n.alive || !n.laws.includes('bread')) continue;
+    const cost = LAWS.bread.perCity * s.owner.filter((o, id) => o === n.id && s.city[id]).length;
+    if (n.res.money >= cost) { n.res.money -= cost; continue; }
+    n.laws = n.laws.filter(l => l !== 'bread'); n.lawCooldown.bread = s.month + LAWS.cooldown;
+    logFor(s, n.id, 'Pão e circo suspenso: falta dinheiro');
+  }
   s.strikes = s.strikes.filter(x => x.until > s.month + 1e-9 && s.owner[x.province] >= 0);
   s.owner.forEach((o, id) => { if (o >= 0 && s.city[id]) unrest(s, pm, id); }); // sorteios com a estabilidade do início do mês
   s.owner.forEach((o, id) => {
@@ -114,4 +131,50 @@ export function stabilityMonth(s: GameState, pm: ProvinceMap): void {
     if (d > 0 && s.month < s.resentment[id]) d /= 2; // ressentimento: a confiança volta devagar
     s.stability[id] = Math.max(0, Math.min(100, cur + d));
   });
+}
+
+type Result = { ok: true } | { ok: false; reason: string };
+const no = (reason: string): Result => ({ ok: false, reason });
+export const LAW_NAME: Record<LawKind, string> = { bread: 'Pão e circo', ration: 'Racionamento', shorter: 'Jornada reduzida', martial: 'Lei marcial' };
+const LAW_COST: Record<LawKind, number> = { bread: LAWS.bread.cost, ration: 0, shorter: 0, martial: LAWS.martial.cost };
+
+/** A nação `n` decreta a lei (paga o custo); depois de revogada, só volta em LAWS.cooldown meses. */
+export function decree(s: GameState, n: number, law: LawKind): Result {
+  const x = s.nations[n];
+  if (!x?.alive || !(law in LAW_NAME)) return no('Lei inválida');
+  if (x.laws.includes(law)) return no('Lei já em vigor');
+  const wait = (x.lawCooldown[law] ?? -Infinity) - s.month;
+  if (wait > 1e-9) return no(`Só pode decretar de novo em ${Math.ceil(wait)} meses`);
+  if (x.res.money < LAW_COST[law]) return no('Falta dinheiro');
+  x.res.money -= LAW_COST[law];
+  x.laws.push(law);
+  if (!x.ai) headline(s, `${x.name.toUpperCase()} DECRETA ${LAW_NAME[law].toUpperCase()}`);
+  return { ok: true };
+}
+
+export function repeal(s: GameState, n: number, law: LawKind): Result {
+  const x = s.nations[n];
+  if (!x?.laws.includes(law)) return no('Lei não está em vigor');
+  x.laws = x.laws.filter(l => l !== law);
+  x.lawCooldown[law] = s.month + LAWS.cooldown;
+  return { ok: true };
+}
+
+/** Força bruta: o exército parado reprime a província (fim da greve, +20, ressentimento, homens perdidos). */
+export function repress(s: GameState, pm: ProvinceMap, grid: MoveGrid, armyId: number, n = 0): Result {
+  const a = s.armies.find(x => x.id === armyId && x.owner === n);
+  if (!a) return no('Exército inválido');
+  if (inBattle(s, a.id)) return no('Exército em batalha');
+  if (a.path.length) return no('Exército em marcha');
+  const p = provinceAt(pm, grid, a.x, a.y);
+  if (p < 0 || s.owner[p] !== n) return no('Província não é sua');
+  if (s.stability[p] >= REPRESS.below) return no('Estabilidade acima de 40');
+  if (s.month - s.repressed[p] < REPRESS.every - 1e-9) return no('Reprimida há menos de 12 meses');
+  s.strikes = s.strikes.filter(x => x.province !== p);
+  s.stability[p] = Math.min(100, s.stability[p] + REPRESS.gain);
+  s.resentment[p] = s.month + REPRESS.resentMonths;
+  s.repressed[p] = s.month;
+  for (const b of a.battalions) b.soldiers = Math.max(0, b.soldiers - REPRESS.men);
+  logFor(s, n, `${a.name} reprimiu ${pm.provinces[p].name}`);
+  return { ok: true };
 }

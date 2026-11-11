@@ -2,7 +2,7 @@ import type { ProvinceMap, VeinKind } from '../worldgen/provinces';
 import { CELL } from '../worldgen/constants';
 import { Biome } from '../worldgen/types';
 import {
-  BUILDINGS, CITY, COLONIZE, DEPOT_MONTHS, SUPPLY, GARRISON_UPKEEP, GRAIN_SHORT_TAX, RES_KEYS, RES_NAMES, STALL_WARN_MONTHS, START_BASE, START_NO_VEIN, STEEL_ON_N3,
+  BUILDINGS, CITY, COLONIZE, LAWS, DEPOT_MONTHS, SUPPLY, GARRISON_UPKEEP, GRAIN_SHORT_TAX, RES_KEYS, RES_NAMES, STALL_WARN_MONTHS, START_BASE, START_NO_VEIN, STEEL_ON_N3,
   TROOPS, TROOP_GROWTH, UPGRADE_COST, UPGRADE_TIME, zeroRes, type BuildingType, type Res, type TroopType,
 } from './balance';
 import { activeLevel, cityLevel, logFor, type GameState } from './state';
@@ -45,7 +45,7 @@ export function cityTax(s: GameState, pm: ProvinceMap, id: number): number {
   const n = s.nations[s.owner[id]];
   if (!n || !s.city[id]) return 0;
   const market = Math.max(0, ...s.lots[id].map(b => (b?.type === 'market' ? BUILDINGS.market.out[activeLevel(b)] : 0)));
-  return (CITY.tax[cityLevel(s, id)] * pm.provinces[id].fertility + (n.capital === id ? CITY.capitalTax : 0)) * (1 + market) * (n.grainShort ? GRAIN_SHORT_TAX : 1) * n.incomeMult;
+  return (CITY.tax[cityLevel(s, id)] * pm.provinces[id].fertility + (n.capital === id ? CITY.capitalTax : 0)) * (1 + market) * (n.grainShort ? GRAIN_SHORT_TAX : 1) * n.incomeMult * (n.laws.includes('martial') ? LAWS.martial.tax : 1);
 }
 
 export interface MonthReport {
@@ -92,7 +92,7 @@ export function runMonth(s: GameState, pm: ProvinceMap, apply: boolean, n = 0): 
       if (m) s.lots[id].forEach((b, lot) => {
         const l = activeLevel(b);
         if (b?.type !== type || !l) return;
-        let units = def.out[l], missing: MonthReport['stalled'][0]['missing'] | null = null;
+        let units = nation.laws.includes('shorter') ? Math.floor(def.out[l] * LAWS.shorter.output) : def.out[l], missing: MonthReport['stalled'][0]['missing'] | null = null;
         if (revolt.has(id)) { units = 0; missing = 'revolt'; }
         else if (strike.has(id)) { units = 0; missing = 'strike'; }
         else if (!s.connected[id]) { units = 0; missing = 'route'; } // sem rota não chega insumo do estoque nacional
@@ -105,7 +105,8 @@ export function runMonth(s: GameState, pm: ProvinceMap, apply: boolean, n = 0): 
     });
   }
   // grãos das cidades
-  mine.forEach((m, id) => { if (m) add('grain', 'Cidades', -CITY.grain[cityLevel(s, id)]); });
+  const ration = nation.laws.includes('ration') ? LAWS.ration.grain : 1;
+  mine.forEach((m, id) => { if (m) add('grain', 'Cidades', -CITY.grain[cityLevel(s, id)] * ration); });
   // manutenção
   mine.forEach((m, id) => { if (m) for (const b of s.lots[id]) if (b?.type === 'garrison' && activeLevel(b)) add('money', 'Guarnições', -GARRISON_UPKEEP); });
   for (const a of s.armies) if (a.owner === n) for (const b of a.battalions) for (const [k, v] of Object.entries(TROOPS[b.type].upkeep) as [keyof Res, number][]) add(k, 'Tropas', -v);
