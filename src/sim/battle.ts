@@ -3,7 +3,7 @@ import { findCellPath } from './astar';
 import { BATTLE, SUPPLY, TROOPS, type TroopType } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
 import { logEvent, type Army, type Battalion, type Battle, type GameState } from './state';
-import { men } from './armies';
+import { men, splitOverflow } from './armies';
 
 /** Quem cada tipo castiga (+counter de dano). */
 const COUNTERS: Record<TroopType, TroopType> = { line: 'cavalry', cavalry: 'artillery', artillery: 'line' };
@@ -98,7 +98,7 @@ export function battleStep(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: nu
     const left = b.armyIds.map(id => byId.get(id)!).filter(t => s.armies.includes(t) && !routed(t));
     if (new Set(left.map(t => t.owner)).size >= 2) continue;
     s.battles.splice(s.battles.indexOf(b), 1);
-    for (const t of left) t.morale = 1;
+    for (const t of left) { t.morale = 1; splitOverflow(s, t); }
     const me = b.sides.find(side => side.owner === 0);
     if (!me) continue;
     const where = provinceName(pm, grid, b.x, b.y);

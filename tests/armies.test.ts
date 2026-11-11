@@ -5,7 +5,7 @@ import { monthlyIncome, recruitCost } from '../src/sim/economy';
 import type { GameState } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
 import { labelLand, type MoveGrid } from '../src/sim/movegrid';
-import { armyCap, armySpeed, men, spawnArmy } from '../src/sim/armies';
+import { armyCap, armySpeed, men, mergeArmies, renameArmy, spawnArmy, splitArmy } from '../src/sim/armies';
 import { game, makeTestWorld, run, world } from './troopworld';
 
 const { pm, grid } = world;
@@ -294,5 +294,55 @@ describe('exércitos', () => {
     const s = game(); // guarnição N1: 2 batalhões
     spawnArmy(s, 0, ['line', 'line'], 80, 80);
     expect(checkRecruit(s, pm, 0, 1, 'line')).toEqual({ ok: false, reason: 'Teto de batalhões atingido' });
+  });
+});
+
+describe('juntar, dividir e renomear', () => {
+  test('juntar: até 8 batalhões e a até 10 tiles; recusas', () => {
+    const s = game(), a = spawnArmy(s, 0, ['line', 'line'], 80, 80), b = spawnArmy(s, 0, ['cavalry'], 88, 80), far = spawnArmy(s, 0, ['line'], 140, 80);
+    expect(mergeArmies(s, a.id, far.id)).toEqual({ ok: false, reason: 'Longe demais para juntar' });
+    expect(mergeArmies(s, a.id, b.id)).toEqual({ ok: true });
+    expect(a.battalions.map(x => x.type)).toEqual(['line', 'line', 'cavalry']);
+    expect(s.armies).not.toContain(b);
+    const big = spawnArmy(s, 0, Array.from({ length: 6 }, () => 'line' as const), 82, 82);
+    expect(mergeArmies(s, a.id, big.id)).toEqual({ ok: false, reason: 'Passaria de 8 batalhões' });
+    const c = spawnArmy(s, 0, ['line'], 84, 80);
+    c.routedUntil = 5;
+    expect(mergeArmies(s, a.id, c.id)).toEqual({ ok: false, reason: 'Em fuga' });
+    expect(mergeArmies(s, a.id, a.id).ok).toBe(false);
+  });
+  test('juntar em batalha é recusado', () => {
+    const s = game(1, true), a = spawnArmy(s, 0, ['line'], 200, 20), b = spawnArmy(s, 0, ['line'], 200, 26);
+    spawnArmy(s, -1, ['line'], 204, 20, 1);
+    run(s, 0.04);
+    expect(mergeArmies(s, a.id, b.id)).toEqual({ ok: false, reason: 'Em batalha' });
+  });
+  test('dividir: os marcados formam outro exército; recusas', () => {
+    const s = game(), a = spawnArmy(s, 0, ['line', 'artillery', 'cavalry'], 80, 80);
+    expect(splitArmy(s, a.id, [])).toEqual({ ok: false, reason: 'Escolha os batalhões que vão sair' });
+    expect(splitArmy(s, a.id, [0, 1, 2])).toEqual({ ok: false, reason: 'Fica pelo menos um batalhão' });
+    expect(splitArmy(s, a.id, [9])).toEqual({ ok: false, reason: 'Escolha os batalhões que vão sair' });
+    expect(splitArmy(s, a.id, [1, 2])).toEqual({ ok: true });
+    expect(a.battalions.map(x => x.type)).toEqual(['line']);
+    const n = s.armies.at(-1)!;
+    expect(n.battalions.map(x => x.type)).toEqual(['artillery', 'cavalry']);
+    expect(Math.hypot(n.x - a.x, n.y - a.y)).toBeLessThanOrEqual(10);
+    expect(s.events.at(-1)!.text).toBe(`${a.name} dividido`);
+  });
+  test('renomear', () => {
+    const s = game(), a = spawnArmy(s, 0, ['line'], 80, 80);
+    expect(renameArmy(s, a.id, '  Guarda Real ')).toEqual({ ok: true });
+    expect(a.name).toBe('Guarda Real');
+    expect(renameArmy(s, a.id, '   ')).toEqual({ ok: false, reason: 'Nome vazio' });
+    expect(renameArmy(s, a.id, 'x'.repeat(41)).ok).toBe(false);
+  });
+  test('ao fim da batalha, batalhões além de 8 formam outro exército ao lado', () => {
+    const s = game(1, true), a = spawnArmy(s, 0, Array.from({ length: 10 }, () => 'line' as const), 200, 20);
+    spawnArmy(s, -1, ['line'], 204, 20, 1);
+    run(s, 2);
+    expect(s.battles).toEqual([]);
+    const mine = s.armies.filter(x => x.owner === 0);
+    expect(mine.map(x => x.battalions.length).sort()).toEqual([2, 8]);
+    expect(a.battalions.length).toBe(8);
   });
 });

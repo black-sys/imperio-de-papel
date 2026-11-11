@@ -3,9 +3,9 @@ import { CELL } from '../worldgen/constants';
 import { battleStep } from './battle';
 import { fortressStep } from './fortress';
 import { updateRoutes, updateSupply } from './routes';
-import { REFILL, TROOPS, TROOP_CAP, type TroopType } from './balance';
+import { ARMY, REFILL, TROOPS, TROOP_CAP, type TroopType } from './balance';
 import { cellAt, type MoveGrid } from './movegrid';
-import { activeLevel, type Army, type Battalion, type GameState } from './state';
+import { activeLevel, logEvent, type Army, type Battalion, type GameState } from './state';
 
 /** Batalhões que o reino sustenta: soma das guarnições do jogador (em melhoria vale o nível anterior). */
 export function armyCap(s: GameState): number {
@@ -70,4 +70,56 @@ function refill(s: GameState, pm: ProvinceMap, grid: MoveGrid, a: Army, dt: numb
     s.res.money -= money;
     b.soldiers += add;
   }
+}
+
+type Result = { ok: true } | { ok: false; reason: string };
+const no = (reason: string): Result => ({ ok: false, reason });
+const mine = (s: GameState, id: number) => s.armies.find(a => a.id === id && a.owner === 0);
+const busy = (s: GameState, a: Army): string | null => (inBattle(s, a.id) ? 'Em batalha' : s.clock < a.routedUntil ? 'Em fuga' : null);
+
+/** Junta `from` em `into`: exércitos seus a ≤ joinTiles, fora de batalha e de fuga, até maxBattalions. */
+export function mergeArmies(s: GameState, intoId: number, fromId: number): Result {
+  const into = mine(s, intoId), from = mine(s, fromId);
+  if (!into || !from || into === from) return no('Escolha dois exércitos seus');
+  const why = busy(s, into) ?? busy(s, from);
+  if (why) return no(why);
+  if (Math.hypot(into.x - from.x, into.y - from.y) > ARMY.joinTiles) return no('Longe demais para juntar');
+  if (into.battalions.length + from.battalions.length > ARMY.maxBattalions) return no(`Passaria de ${ARMY.maxBattalions} batalhões`);
+  into.battalions.push(...from.battalions);
+  if (!into.supply && from.supply) into.supply = from.supply;
+  s.armies.splice(s.armies.indexOf(from), 1);
+  logEvent(s, 'Exércitos unidos');
+  return { ok: true };
+}
+
+/** Os batalhões de índices `indices` formam um exército novo ao lado. */
+export function splitArmy(s: GameState, id: number, indices: number[]): Result {
+  const a = mine(s, id);
+  if (!a) return no('Exército inválido');
+  const why = busy(s, a);
+  if (why) return no(why);
+  const pick = [...new Set(indices)].filter(i => Number.isInteger(i) && i >= 0 && i < a.battalions.length);
+  if (!pick.length || pick.length !== new Set(indices).size) return no('Escolha os batalhões que vão sair');
+  if (pick.length === a.battalions.length) return no('Fica pelo menos um batalhão');
+  const out = pick.sort((x, y) => x - y).map(i => a.battalions[i]);
+  a.battalions = a.battalions.filter((_, i) => !pick.includes(i));
+  spawnArmy(s, 0, out, a.x + 6, a.y);
+  logEvent(s, `${a.name} dividido`);
+  return { ok: true };
+}
+
+export function renameArmy(s: GameState, id: number, name: string): Result {
+  const a = mine(s, id), n = name.trim();
+  if (!a) return no('Exército inválido');
+  if (!n) return no('Nome vazio');
+  if (n.length > 40) return no('Nome longo demais (máx. 40)');
+  a.name = n;
+  return { ok: true };
+}
+
+/** Exército com mais de maxBattalions (reforço pela linha numa batalha) separa o excesso num exército novo ao lado. */
+export function splitOverflow(s: GameState, a: Army): void {
+  if (a.battalions.length <= ARMY.maxBattalions) return;
+  const extra = a.battalions.splice(ARMY.maxBattalions);
+  spawnArmy(s, a.owner, extra, a.x + 6, a.y);
 }
