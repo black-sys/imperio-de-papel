@@ -1,6 +1,6 @@
-import { BUILDINGS, CITY, TROOPS, type BuildingType, type TroopType } from '../sim/balance';
+import { BUILDINGS, CITY, RES_NAMES, TROOPS, type BuildingType, type TroopType } from '../sim/balance';
 import { checkBuild, checkColonize, checkRecruit, checkUpgrade, checkUpgradeCity, type Place, type Result } from '../sim/commands';
-import { buildCost, colonizeCost, recruitCost, runMonth } from '../sim/economy';
+import { buildCost, cityTax, colonizeCost, recruitCost, runMonth } from '../sim/economy';
 import { activeLevel, cityLevel, type GameState } from '../sim/state';
 import { inBattle } from '../sim/troops';
 import type { ProvinceMap } from '../worldgen/provinces';
@@ -63,12 +63,12 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
       : `<div class="act">${button('colonize', 'Colonizar', checkColonize(s, pm, id), ` <small>${costText(colonizeCost(s, pm, id))}</small>`)}</div>`;
     html += veinsHtml(s, pm, id, false);
   } else {
-    const rep = runMonth(s, pm, false, id), lvl = cityLevel(s, id), c = s.city[id]!;
+    const rep = runMonth(s, pm, false), lvl = cityLevel(s, id), c = s.city[id]!;
     // cidade
     const cityWork = c.remaining > 0 ? ` <small>(subindo ao nível ${c.level}: ${c.remaining.toFixed(1)} meses)</small>` : '';
     const up = c.level < 3 && c.remaining === 0 ? button('upc', 'Melhorar cidade', checkUpgradeCity(s, pm, id), ` <small>${costText({ ...CITY.cost[c.level + 1], months: CITY.months[c.level + 1] })}</small>`) : '';
     html += `<h3>Cidade</h3><div class="slot"><b>${['', 'Vila', 'Cidade', 'Metrópole'][lvl]} ${stars(lvl)}</b>${cityWork}
-      <div class="sub">Impostos ${RES_ICON.money}${(rep.lines.money.find(l => l[0] === 'Impostos')?.[1] ?? 0).toFixed(1)}/mês · consome ${RES_ICON.grain}${CITY.grain[lvl]}/mês</div><div class="act">${up}</div></div>`;
+      <div class="sub">Impostos ${RES_ICON.money}${cityTax(s, pm, id).toFixed(1)}/mês · consome ${RES_ICON.grain}${CITY.grain[lvl]}/mês</div><div class="act">${up}</div></div>`;
     // lotes
     html += `<h3>Lotes</h3>`;
     s.lots[id].forEach((b, lot) => {
@@ -78,10 +78,9 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
         html += `<div class="slot empty" id="${key}"><b>Lote livre</b><div class="act">${LOT_TYPES.map(t => button(`b:${key}:${t}`, BUILDINGS[t].name, checkBuild(s, pm, id, place, t), ` <small>${costText(buildCost(t, 1))}</small>`)).join('')}</div></div>`;
         return;
       }
-      const stall = rep.stalled.find(x => x.lot === lot), def = BUILDINGS[b.type];
-      const out = def.product ? rep.lines[def.product].find(l => l[0] === def.plural) : null;
+      const stall = rep.stalled.find(x => x.province === id && x.lot === lot), def = BUILDINGS[b.type], made = rep.produced[`${id}:${lot}`] ?? 0;
       const status = b.remaining > 0 ? ` <small>(obra: ${b.remaining.toFixed(1)} meses)</small>`
-        : stall ? ` <small class="why">${out && out[1] > 0 ? `Produzindo ${Math.round(out[1])} de ${def.out[activeLevel(b)]}` : 'Parada'}: falta ${esc(RES_LABEL[stall.missing])}</small>` : '';
+        : stall ? ` <small class="why">${made > 0 ? `Produzindo ${made} de ${def.out[activeLevel(b)]}` : 'Parada'}: falta ${esc(RES_NAMES[stall.missing])}</small>` : '';
       let train = '';
       if (b.type === 'garrison' && activeLevel(b) > 0) {
         const q = s.recruiting.find(r => r.province === id && r.lot === lot);
@@ -96,7 +95,6 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
   show(html, id, act, focus ? placeKey(focus) : '');
 }
 
-const RES_LABEL: Record<string, string> = { money: 'dinheiro', grain: 'grãos', wood: 'madeira', coal: 'carvão', iron: 'ferro', steel: 'aço', arms: 'armas' };
 
 function upgradeButton(s: GameState, pm: ProvinceMap, id: number, place: Place): string {
   const b = 'lot' in place ? s.lots[id][place.lot] : s.veins[id][place.vein];

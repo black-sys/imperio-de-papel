@@ -1,7 +1,8 @@
 import { describe, expect, test } from 'vitest';
 import { START_BASE } from '../src/sim/balance';
 import { build, checkBuild, checkColonize, checkUpgrade, checkUpgradeCity, chooseCapital, colonize, setSpeed, upgrade, upgradeCity } from '../src/sim/commands';
-import { buildCost, colonizeCost, runMonth, startingStock } from '../src/sim/economy';
+import { CITY } from '../src/sim/balance';
+import { buildCost, cityTax, colonizeCost, runMonth, startingStock } from '../src/sim/economy';
 import { newGame, type GameState } from '../src/sim/state';
 import { tick } from '../src/sim/tick';
 import type { Province, ProvinceMap, Vein } from '../src/worldgen/provinces';
@@ -64,7 +65,7 @@ describe('virada do mês', () => {
     s.veins[0] = [ready('farm'), ready('sawmill'), ready('coal_mine'), ready('iron_mine', 2)];
     const n = runMonth(s, pm, false).net;
     expect(n.grain).toBeCloseTo(4 * 1.2 - 2, 9); // menos o consumo da cidade nível 2
-    expect(n.wood).toBeCloseTo(3 * 1.2, 9);
+    expect(n.wood).toBeCloseTo(3 * 1.2 + 2, 9); // + lenhadores da capital
     expect(n.coal).toBeCloseTo(2 * 1.2, 9);
     expect(n.iron).toBeCloseTo(4 * 1.2, 9);
   });
@@ -90,6 +91,32 @@ describe('virada do mês', () => {
     s.res.grain = 100;
     runMonth(s, pm, true);
     expect(s.grainShort).toBe(false);
+  });
+  test('sem madeira e sem veio de madeira, a capital ainda junta madeira para colonizar (sem beco sem saída)', () => {
+    const noWood: ProvinceMap = { ...pm, provinces: pm.provinces.map(p => ({ ...p, veins: p.veins.filter(v => v.kind !== 'wood') })) };
+    const s = newGame(noWood);
+    chooseCapital(s, noWood, 0);
+    s.res.wood = 0;
+    setSpeed(s, 1);
+    for (let i = 0; i < 300; i++) tick(s, noWood, 1, null); // 30 meses
+    expect(s.res.wood).toBeGreaterThanOrEqual(colonizeCost(s, noWood, 1).wood!);
+  });
+  test('cidade em obra de melhoria: impostos e grãos do nível anterior', () => {
+    const s = game();
+    s.res = { ...rich };
+    s.city[0] = { level: 3, remaining: 4 };
+    expect(cityTax(s, pm, 0)).toBeCloseTo(18, 9);
+    expect(runMonth(s, pm, false).net.grain).toBeCloseTo(-CITY.grain[2], 9);
+  });
+  test('produção por lote vem da conta nacional (duas siderúrgicas, ferro para uma só)', () => {
+    const s = game();
+    s.res = { ...rich, iron: 4, coal: 100 };
+    s.owner[1] = 0; s.city[1] = { level: 2, remaining: 0 };
+    s.lots[0][0] = ready('steelworks'); s.lots[1][0] = ready('steelworks');
+    const r = runMonth(s, pm, false);
+    expect(r.produced['0:0']).toBe(2);
+    expect(r.produced['1:0']).toBe(0);
+    expect(r.stalled).toEqual([{ province: 1, lot: 0, missing: 'iron' }]);
   });
   test('manutenção: guarnição custa dinheiro', () => {
     const s = game();

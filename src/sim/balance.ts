@@ -23,7 +23,7 @@ export const BUILDINGS: Record<BuildingType, { name: string; plural: string; pla
   steelworks: { name: 'Siderúrgica', plural: 'Siderúrgicas', place: 'lot', product: 'steel', cost: { money: 220, wood: 40, iron: 30 }, months: 4, out: [0, 2, 4, 6], uses: { iron: 2, coal: 2 } },
   arms_factory: { name: 'Fábrica de armas', plural: 'Fábricas de armas', place: 'lot', product: 'arms', cost: { money: 60, wood: 20, steel: 10 }, months: 4, out: [0, 2, 4, 6], uses: { steel: 1, wood: 1 } },
   market: { name: 'Mercado', plural: 'Mercados', place: 'lot', cost: { money: 50, wood: 20 }, months: 3, out: [0, 0.25, 0.4, 0.6] }, // % dos impostos da cidade
-  garrison: { name: 'Guarnição', plural: 'Guarnições', place: 'lot', cost: { money: 60, wood: 30, iron: 10 }, months: 4, out: [0, 0, 0, 0] },
+  garrison: { name: 'Guarnição', plural: 'Guarnições', place: 'lot', cost: { money: 70, wood: 30, iron: 10 }, months: 4, out: [0, 0, 0, 0] },
 };
 export const GARRISON_UPKEEP = 2; // dinheiro/mês
 export const STEEL_ON_N3 = 10; // aço extra em toda melhoria para o nível 3
@@ -40,6 +40,7 @@ export const CITY = {
   cost: [{}, {}, { money: 80, wood: 40, iron: 20 }, { money: 200, iron: 60, steel: 30 }] as Partial<Res>[],
   months: [0, 0, 4, 8],
   capitalTax: 10,
+  capitalWood: 2, // lenhadores da capital: sem isso, capital sem veio de madeira podia nunca mais colonizar
 };
 export const GRAIN_SHORT_TAX = 0.5; // impostos no mês seguinte a ficar sem grãos
 export const STALL_WARN_MONTHS = 6; // no máximo um aviso de fábrica parada por lote neste intervalo

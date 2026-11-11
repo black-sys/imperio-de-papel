@@ -26,7 +26,7 @@ export function greedy(pm: ProvinceMap, maxMonths = 3000, map?: WorldMap) {
   const owned = (k: VeinKind) => mine().reduce((n, id) => n + pm.provinces[id].veins.filter(v => v.kind === k).length, 0);
   const have = (k: VeinKind) => mine().some(id => s.veins[id].some((b, i) => b && pm.provinces[id].veins[i].kind === k));
   // vizinha com mais veios úteis; carvão e ferro valem o triplo até ter 3 de cada
-  const want = (k: VeinKind) => (k === 'coal' || k === 'iron' ? (owned(k) < 3 ? 3 : 1) : have(k) ? 1 : 2);
+  const want = (k: VeinKind) => (k === 'coal' || k === 'iron' ? (owned(k) === 0 ? 10 : owned(k) < 3 ? 3 : 1) : have(k) ? 1 : 2);
   const score = (id: number) => pm.provinces[id].veins.reduce((a, v) => a + v.richness * want(v.kind), 0) + pm.provinces[id].fertility * 0.5;
   const count = (type: BuildingType) => mine().reduce((n, id) => n + s.lots[id].filter(b => b?.type === type).length, 0);
   let firstColonize = -1, reach20 = -1, firstSteel = -1, firstFortress = -1, taken = 0;
@@ -71,7 +71,11 @@ export function greedy(pm: ProvinceMap, maxMonths = 3000, map?: WorldMap) {
       // com o dobro da guarnição inimiga em tropas prontas, ataca a fortaleza mais fraca entre as 6 mais próximas
       const ready = s.troops.filter(t => t.owner === 0 && !t.path.length && s.clock >= t.routedUntil && !inBattle(s, t.id) && t.soldiers >= TROOPS[t.type].soldiers * 0.9);
       const cap = pm.provinces[s.capital].center, d = (id: number) => Math.hypot(pm.provinces[id].center.x - cap.x, pm.provinces[id].center.y - cap.y);
-      const target = [...s.fortresses].sort((a, b) => d(a.province) - d(b.province)).slice(0, 6).sort((a, b) => a.garrison.length - b.garrison.length || d(a.province) - d(b.province))[0];
+      // faltando carvão ou ferro, a fortaleza que guarda esse minério vem primeiro; senão a mais fraca entre as 6 mais próximas
+      const missing = (['coal', 'iron'] as VeinKind[]).filter(k => owned(k) === 0);
+      const guards = (f: (typeof s.fortresses)[0]) => pm.provinces[f.province].veins.some(v => missing.includes(v.kind));
+      const near = [...s.fortresses].sort((a, b) => d(a.province) - d(b.province)).slice(0, 6);
+      const target = near.find(guards) ?? near.sort((a, b) => a.garrison.length - b.garrison.length || d(a.province) - d(b.province))[0];
       if (target && ready.length >= 2 * target.garrison.length) {
         const site = pm.provinces[target.province].city;
         moveTroops(s, grid, ready.map(t => t.id), site.x, site.y);
