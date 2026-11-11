@@ -33,7 +33,7 @@ export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: n
   // guarnições de fortaleza nunca (não aparecem: ficam dentro do pentágono)
   let mine: { id: number; d: number } | null = null, other: { id: number; d: number } | null = null;
   for (const t of s.armies) {
-    if (t.owner === -1 || (mineOnly && t.owner !== 0)) continue;
+    if ((t.owner === -1 && t.home >= 0) || (mineOnly && t.owner !== 0)) continue; // guarnição de fortaleza não; rebeldes sim
     const [px, py] = toScreen(v, t.x, t.y), dx = Math.abs(px - sx), dy = Math.abs(py - sy);
     if (dx > TROOP_W / 2 + PAD || dy > TROOP_H / 2 + PAD) continue;
     const d = dx + dy, cur = t.owner === 0 ? mine : other;

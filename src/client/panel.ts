@@ -4,7 +4,10 @@ import { buildCost, cityTax, colonizeCost, recruitCost, runMonth } from '../sim/
 import { activeLevel, cityLevel, playerCapital, type Bent, type GameState } from '../sim/state';
 import { occupyMonths } from '../sim/conquest';
 import { checkPropose, KIND_LABEL, pactBetween, relation, relationLabel } from '../sim/diplomacy';
-import type { Proposal } from '../sim/state';
+import type { LawKind, Proposal } from '../sim/state';
+import { LAW_NAME, stabilityTarget } from '../sim/stability';
+import { formatDate } from './hud';
+import { LAWS, REPRESS, STAB, UNREST } from '../sim/balance';
 import { RES_KEYS, type Res } from '../sim/balance';
 import { REALM_COLORS } from './map/pick';
 import { inBattle, men } from '../sim/armies';
@@ -33,10 +36,13 @@ export interface PanelActions {
   propose(to: number, p: Proposal): void;
   answer(letter: number, accept: boolean): void;
   leaveAlliance(nation: number): void;
+  decree(law: LawKind): void;
+  repeal(law: LawKind): void;
+  repress(armyId: number): void;
   centerOn(province: number): void;
 }
 /** O que mais o painel pode mostrar: a lista de nações ou um exército alheio (só leitura). */
-export interface PanelExtra { nations?: boolean; inspect?: number; letters?: boolean }
+export interface PanelExtra { nations?: boolean; inspect?: number; letters?: boolean; laws?: boolean; journal?: boolean }
 /** Lugar para onde o painel rola ao abrir (clique num lote ou veio no mapa). */
 export type PanelFocus = { lot: number } | { vein: number } | null;
 
@@ -62,16 +68,18 @@ export function veinsAround(pm: ProvinceMap, id: number): string {
 export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: number, act: PanelActions, armies: number[] = [], focus: PanelFocus = null, extra: PanelExtra = {}): void {
   const picked = s ? s.armies.filter(t => armies.includes(t.id)) : [];
   const other = s?.armies.find(a => a.id === extra.inspect && a.owner !== 0);
-  if (!s || !pm || (id < 0 && picked.length === 0 && !other && !extra.nations && !extra.letters)) { el.style.display = 'none'; lastHtml = ''; lastFocus = ''; return; }
+  if (!s || !pm || (id < 0 && picked.length === 0 && !other && !extra.nations && !extra.letters && !extra.laws && !extra.journal)) { el.style.display = 'none'; lastHtml = ''; lastFocus = ''; return; }
   if (picked.length) return show(armiesHtml(s, pm, picked), id, act, '');
   if (other) return show(foreignArmyHtml(s, other), id, act, '');
   if (id < 0 && extra.letters) return show(lettersHtml(s, pm), id, act, '');
+  if (id < 0 && extra.laws) return show(lawsHtml(s), id, act, '');
+  if (id < 0 && extra.journal) return show(journalHtml(s), id, act, '');
   if (id < 0) return show(nationsHtml(s, pm), id, act, '');
   const p = pm.provinces[id], mine = s.owner[id] === 0 && !!s.city[id], fort = s.fortresses.find(f => f.province === id), rival = s.owner[id] > 0 ? s.nations[s.owner[id]] : null;
   const owner = playerCapital(s) === id ? 'Sua capital' : mine ? 'Sua nação' : rival ? `${swatch(rival.id)}${esc(rival.name)}${rival.capital === id ? ' · capital' : ''}` : fort ? 'Fortaleza neutra' : 'Neutra';
   let html = `<button class="x" data-a="close">✕</button><h2>${esc(p.name)}</h2>
     <div class="sub">${owner} · ${BIOME_NAMES[p.biome]}${p.coastal ? ' · costeira' : ''}</div>
-    ${bar('Fertilidade', p.fertility)}${occupationHtml(s, pm, id)}`;
+    ${bar('Fertilidade', p.fertility)}${occupationHtml(s, pm, id)}${s.owner[id] >= 0 && s.city[id] ? stabilityHtml(s, pm, id) : ''}`;
   if (playerCapital(s) < 0) {
     html += pm.suggestedCapitals.includes(id)
       ? `<p>Uma boa terra para começar. Por perto: ${esc(veinsAround(pm, id))}.</p><button class="big" data-a="found">Fundar capital aqui</button>`
@@ -235,6 +243,57 @@ function lettersHtml(s: GameState, pm: ProvinceMap): string {
   return `<button class="x" data-a="close">✕</button><h2>Cartas</h2>${rows || '<p class="sub">Nenhuma carta.</p>'}`;
 }
 
+const stabilityLabel = (v: number) => (v >= 60 ? 'Estável' : v >= 40 ? 'Inquieta' : v >= 15 ? 'Tensa' : 'Em revolta');
+
+/** Estabilidade da província: barra, rótulo, fatores do alvo, greve, revolta e ressentimento. */
+function stabilityHtml(s: GameState, pm: ProvinceMap, id: number): string {
+  const v = s.stability[id], { target, factors } = stabilityTarget(s, pm, id);
+  const why = factors.map(([k, x]) => `${k} ${x > 0 ? '+' : ''}${Math.round(x)}`).join(' · ');
+  let html = `<div class="fac"><span>Estabilidade</span><i><b style="width:${v}%;background:${v < 15 ? '#8a2a20' : v < 40 ? '#b0602a' : v < 60 ? '#b0902a' : '#4f7a3a'}"></b></i><em>${Math.round(v)}</em></div>
+    <div class="sub">${stabilityLabel(v)} · tende a ${Math.round(target)} (base ${STAB.base}${why ? ` · ${why}` : ''})</div>`;
+  const strike = s.strikes.find(x => x.province === id), revolt = s.revolts.find(x => x.province === id);
+  if (strike) html += `<p class="why">⚙ Greve: fábricas paradas por ${Math.max(0, Math.ceil(strike.until - s.month))} meses</p>`;
+  if (revolt) {
+    const r = s.armies.find(a => a.id === revolt.army), capital = s.nations[s.owner[id]]?.capital === id;
+    html += `<p class="why">🔥 Rebeldes: ${r?.battalions.length ?? 0} batalhões — ${capital ? 'a capital resiste até vencê-los' : `a província cai em ${Math.max(0, Math.ceil(revolt.since + UNREST.revolt.months - s.month))} meses`}</p>`;
+  }
+  if (s.month < s.resentment[id]) html += `<div class="sub">Ressentimento da repressão por ${Math.ceil(s.resentment[id] - s.month)} meses</div>`;
+  return html;
+}
+
+/** Botão "Reprimir" do exército, desabilitado com o motivo. */
+function repressButton(s: GameState, pm: ProvinceMap, a: GameState['armies'][0]): string {
+  const S = Math.round(Math.sqrt(pm.cellProvince.length)), p = pm.cellProvince[Math.floor(a.y / 4) * S + Math.floor(a.x / 4)] ?? -1;
+  if (p < 0 || s.owner[p] !== 0) return '';
+  const why = inBattle(s, a.id) ? 'Exército em batalha' : a.path.length ? 'Exército em marcha' : s.stability[p] >= REPRESS.below ? 'Estabilidade acima de 40'
+    : s.month - s.repressed[p] < REPRESS.every ? 'Reprimida há menos de 12 meses' : '';
+  return button(`rp:${a.id}`, `Reprimir ${esc(pm.provinces[p].name)}`, why ? { ok: false, reason: why } : { ok: true });
+}
+
+const LAW_TEXT: Record<LawKind, string> = {
+  bread: `Estabilidade +10 em todas · decretar: ${LAWS.bread.cost} de dinheiro · ${LAWS.bread.perCity} por cidade/mês`,
+  ration: 'Cidades comem metade dos grãos · estabilidade −5 · a fome não pesa enquanto houver estoque',
+  shorter: 'Fábricas produzem 75% · a pressão das fábricas some',
+  martial: `+15 onde há exército seu parado · impostos −20% · decretar: ${LAWS.martial.cost} de dinheiro`,
+};
+/** Leis de emergência da nação do jogador. */
+function lawsHtml(s: GameState): string {
+  const me = s.nations[0];
+  const rows = (Object.keys(LAW_NAME) as LawKind[]).map(l => {
+    const on = me.laws.includes(l), wait = (me.lawCooldown[l] ?? -Infinity) - s.month, cost = l === 'bread' ? LAWS.bread.cost : l === 'martial' ? LAWS.martial.cost : 0;
+    const r = on ? { ok: true as const } : wait > 0 ? { ok: false as const, reason: `Só pode decretar de novo em ${Math.ceil(wait)} meses` } : me.res.money < cost ? { ok: false as const, reason: 'Falta dinheiro' } : { ok: true as const };
+    return `<div class="slot"><b>${LAW_NAME[l]}</b>${on ? ' <small>(em vigor)</small>' : ''}<div class="sub">${LAW_TEXT[l]}</div>
+      <div class="act">${on ? `<button data-a="lr:${l}">Revogar</button>` : button(`lw:${l}`, 'Decretar', r)}</div></div>`;
+  }).join('');
+  return `<button class="x" data-a="close">✕</button><h2>Leis de emergência</h2>${rows}`;
+}
+
+/** Últimas manchetes, da mais nova para a mais antiga. */
+function journalHtml(s: GameState): string {
+  const rows = [...s.headlines].reverse().map(h => `<div class="slot"><small>${formatDate(h.month)}</small><br><b>${esc(h.text)}</b></div>`).join('');
+  return `<button class="x" data-a="close">✕</button><h2>Jornal</h2>${rows || '<p class="sub">Nenhuma manchete ainda.</p>'}`;
+}
+
 const BENT: Record<Bent, string> = { militarist: 'Militarista', expansionist: 'Expansionista', industrial: 'Industrial' };
 const swatch = (n: number) => `<span class="swatch" style="background:${REALM_COLORS[n] ?? REALM_COLORS[0]}"></span>`;
 /** Situação de uma nação vista pelo jogador. */
@@ -282,7 +341,7 @@ function occupationHtml(s: GameState, pm: ProvinceMap, id: number): string {
 
 /** Exército de outra nação ou de fortaleza: só leitura. */
 function foreignArmyHtml(s: GameState, a: GameState['armies'][0]): string {
-  const who = a.owner === -1 ? 'Fortaleza neutra' : `${swatch(a.owner)}${esc(s.nations[a.owner].name)}`;
+  const who = a.owner === -1 ? (a.home < 0 ? 'Rebeldes' : 'Fortaleza neutra') : `${swatch(a.owner)}${esc(s.nations[a.owner].name)}`;
   const rows = a.battalions.map(b => `<div class="slot">${TROOP_ICON[b.type]} ${TROOPS[b.type].name} · ${Math.ceil(b.soldiers)}/${TROOPS[b.type].soldiers}</div>`).join('');
   return `<button class="x" data-a="close">✕</button><h2>${esc(a.name)}</h2>
     <div class="sub">${who} · ${Math.ceil(men(a))} homens · moral ${Math.round(a.morale * 100)}%${inBattle(s, a.id) ? ' · em batalha' : ''}</div>
@@ -317,7 +376,7 @@ function armiesHtml(s: GameState, pm: ProvinceMap, armies: GameState['armies']):
     <div class="sub">${Math.ceil(men(a))} homens · moral ${Math.round(a.morale * 100)}% · ${state(a)} · ${sup}</div>${reinf}
     <h3>Batalhões (${a.battalions.length}/${ARMY.maxBattalions})</h3>${rows}
     <div class="act">${btn(`sl:${a.id}:${marked.join(',')}`, `Dividir (formar exército com os marcados)`, marked.length > 0 && marked.length < a.battalions.length)}
-    ${near.map(o => btn(`mg:${a.id}:${o.id}`, `Juntar com ${esc(o.name)}`)).join('')}${lineBtn}</div>
+    ${near.map(o => btn(`mg:${a.id}:${o.id}`, `Juntar com ${esc(o.name)}`)).join('')}${lineBtn}${repressButton(s, pm, a)}</div>
     <div class="sub">Clique direito no mapa para mandar</div>`;
 }
 
@@ -355,6 +414,9 @@ function show(html: string, id: number, act: PanelActions, focus: string): void 
     else if (a.startsWith('dw:')) act.declareWar(Number(a.slice(3)));
     else if (a.startsWith('pp:')) { const [, n, kind] = a.split(':'); act.propose(Number(n), { kind } as Proposal); }
     else if (a.startsWith('lv:')) act.leaveAlliance(Number(a.slice(3)));
+    else if (a.startsWith('lw:')) act.decree(a.slice(3) as LawKind);
+    else if (a.startsWith('lr:')) act.repeal(a.slice(3) as LawKind);
+    else if (a.startsWith('rp:')) act.repress(Number(a.slice(3)));
     else if (a.startsWith('ly:')) act.answer(Number(a.slice(3)), true);
     else if (a.startsWith('ln:')) act.answer(Number(a.slice(3)), false);
     else if (a.startsWith('pf:') || a.startsWith('tf:')) { const n = Number(a.slice(3)); form = form?.to === n && form.kind === (a[0] === 'p' ? 'peace' : 'trade') ? null : { kind: a[0] === 'p' ? 'peace' : 'trade', to: n, cede: [], money: 0, theyPay: true, give: 'iron', giveQty: 10, get: 'money', getQty: 20 }; }

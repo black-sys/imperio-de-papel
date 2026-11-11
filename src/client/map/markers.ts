@@ -17,6 +17,10 @@ export interface MarkerOpts {
 
 const CUT = '#b3261e', SUPPLY_INK = '#c9a227';
 const color = (owner: number) => (owner >= 0 ? REALM_COLORS[owner] ?? REALM_COLORS[0] : NEUTRAL);
+const REBEL = '#1d1a17';
+const armyColor = (t: { owner: number; home: number }) => (t.owner === -1 && t.home < 0 ? REBEL : color(t.owner));
+/** Contorno da cidade pela estabilidade (nada quando estável). */
+const unrestInk = (v: number) => (v < 15 ? '#b3261e' : v < 40 ? '#c8641e' : v < 60 ? '#c9a227' : null);
 const onScreen = (v: View, px: number, py: number, m = 40) => px > -m && py > -m && px < v.w + m && py < v.h + m;
 
 /** Chave do que os marcadores mostram: igual enquanto nada visível muda (posições ao pixel de tela). */
@@ -36,6 +40,8 @@ export function markersKey(s: GameState, pm: ProvinceMap, v: View, o: MarkerOpts
   for (const c of s.colonizing) parts.push(`c${c.province}:${c.nation}:${Math.ceil(c.remaining)}`);
   for (const e of s.occupations) parts.push(`q${e.province}:${e.nation}:${Math.floor(e.progress * 10 + 1e-9)}`);
   parts.push(`o${s.owner.join(',')}`);
+  // faixas de estabilidade (só o que muda o contorno), greves e revoltas
+  parts.push(`u${s.stability.map(v => (v < 15 ? 3 : v < 40 ? 2 : v < 60 ? 1 : 0)).join('')}`, `g${s.strikes.map(k => k.province).join(',')}`, `v${s.revolts.map(k => k.province).join(',')}`);
   if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) parts.push(`f${f.province}:${s.armies.find(t => t.home === f.province)?.battalions.length ?? 0}`);
   for (const b of s.battles) parts.push(`w${Math.round(b.x)},${Math.round(b.y)}:${b.sides.map(x => Math.round(x.morale * 20)).join('/')}`);
   for (const r of s.routes) parts.push(`r${r.id}:${r.remaining > 0 ? 'o' : ''}${r.cut ? 'x' : ''}`);
@@ -123,6 +129,10 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     const level = cityLevel(s, id), r = CITY_R - 2 + level;
     ctx.fillStyle = color(s.owner[id]); ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.setLineDash(s.city[id]!.remaining > 0 ? [4, 2] : []);
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
+    const ink = unrestInk(s.stability[id]);
+    if (ink) { ctx.strokeStyle = ink; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2); ctx.stroke(); }
+    if (s.strikes.some(k => k.province === id)) label(ctx, '⚙', x - r - 6, y - r - 2, 12);
+    if (s.revolts.some(k => k.province === id)) label(ctx, '🔥', x + r + 6, y + r + 2, 13);
     if (s.nations.some(n => n.alive && n.capital === id)) { ctx.strokeStyle = PAPER; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r - 3, 0, Math.PI * 2); ctx.stroke(); }
     if (s.owner[id] === 0 && !s.connected[id]) { // desligada da capital: aro tracejado vermelho e ✕
       ctx.strokeStyle = CUT; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
@@ -161,20 +171,20 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
   }
   // exércitos (as guarnições de fortaleza ficam dentro do pentágono): de longe uma peça; de perto, as fichas dos batalhões
   for (const t of s.armies) {
-    if (t.owner === -1) continue;
+    if (t.owner === -1 && t.home >= 0) continue; // guarnição de fortaleza: fica dentro do pentágono (rebeldes aparecem)
     const [x, y] = P(t.x, t.y);
     if (!onScreen(v, x, y, 80)) continue;
     const w = TROOP_W, h = TROOP_H, total = Math.ceil(t.battalions.reduce((n, b) => n + b.soldiers, 0));
     if (v.scale >= ARMY.openScale) {
       // fichas em formação ao redor do estandarte: infantaria à frente, cavalaria nos flancos, artilharia atrás
       const spots = formation(t.battalions.map(b => b.type));
-      t.battalions.forEach((b, i) => chip(ctx, b.type, Math.ceil(b.soldiers), color(t.owner), x + spots[i][0], y + spots[i][1]));
+      t.battalions.forEach((b, i) => chip(ctx, b.type, Math.ceil(b.soldiers), armyColor(t), x + spots[i][0], y + spots[i][1]));
       ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, y + 6); ctx.lineTo(x, y - 14); ctx.stroke(); // estandarte
-      ctx.fillStyle = color(t.owner); ctx.beginPath(); ctx.moveTo(x, y - 14); ctx.lineTo(x + 10, y - 10); ctx.lineTo(x, y - 6); ctx.fill();
+      ctx.fillStyle = armyColor(t); ctx.beginPath(); ctx.moveTo(x, y - 14); ctx.lineTo(x + 10, y - 10); ctx.lineTo(x, y - 6); ctx.fill();
       if (o.selectedArmies.has(t.id)) { ctx.strokeStyle = GOLD; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(x, y, 40, 0, Math.PI * 2); ctx.stroke(); }
       label(ctx, `${t.name} · ${total}`, x, y + 48, 10);
     } else {
-      piece(ctx, mainType(t.battalions.map(b => b.type)), color(t.owner), x, y, w, h);
+      piece(ctx, mainType(t.battalions.map(b => b.type)), armyColor(t), x, y, w, h);
       if (o.selectedArmies.has(t.id)) { ctx.strokeStyle = GOLD; ctx.lineWidth = 3; ctx.strokeRect(x - w / 2 - 4, y - h / 2 - 4, w + 8, h + 8); }
       label(ctx, `${total} · ${t.battalions.length}`, x, y + h / 2 + 9);
     }

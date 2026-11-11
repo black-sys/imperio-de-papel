@@ -9,6 +9,8 @@ import { WorldClient } from './client/worldClient';
 import { build, chooseCapital, colonize, moveArmies, recruit, setSpeed, startGame, training, upgrade, upgradeCity, type Place, type Result } from './sim/commands';
 import { declareWar } from './sim/war';
 import { answerLetter, leaveAlliance, pactBetween, propose } from './sim/diplomacy';
+import { decree, repeal, repress } from './sim/stability';
+import type { LawKind } from './sim/state';
 import { runMonth } from './sim/economy';
 import { addFortress, placeFortresses } from './sim/fortress';
 import { buildRoute, dropSupply, planRoute, removeRoute, supplyArmy } from './sim/routes';
@@ -33,7 +35,10 @@ let game: GameState | null = null;
 let moveGrid: MoveGrid | null = null;
 let pins: { x: number; y: number; province: number }[] = [];
 let lastSpeed = 1, seenEvents = 0, selected = -1, focus: PanelFocus = null;
-let nationsOpen = false, lettersOpen = false, inspect = -1, endShown = false; // lista de nações; exército alheio em leitura; tela de fim já mostrada
+let nationsOpen = false, lettersOpen = false, lawsOpen = false, journalOpen = false, inspect = -1, endShown = false;
+// manchetes ainda não mostradas na faixa e a última já vista
+const headlineQueue: { month: number; text: string }[] = [];
+let lastHeadline: { month: number; text: string } | null = null, headlineUntil = 0; // lista de nações; exército alheio em leitura; tela de fim já mostrada
 // modo traçar rota: cidade de origem e a prévia sob o mouse
 let routeFrom: number | null = null, preview: { path: number[]; ok: boolean } | null = null, previewAt = 0;
 
@@ -43,7 +48,8 @@ async function load(s: number) {
   history.replaceState(null, '', `?seed=${s}`);
   showError(null);
   pm = null; game = null; moveGrid = null; pins = []; selected = -1; seenEvents = 0; lastSpeed = 1; lastClose = null;
-  groups.clear(); selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; inspect = -1; endShown = false;
+  groups.clear(); selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; lettersOpen = false; lawsOpen = false; journalOpen = false; inspect = -1; endShown = false;
+  headlineQueue.length = 0; lastHeadline = null; headlineUntil = 0;
   (document.getElementById('end') as HTMLDivElement).style.display = 'none';
   tiles.clear(); renderer.setWorld(null, null);
   let w: { provinces: ProvinceMap; map: Parameters<typeof makeMoveGrid>[0] };
@@ -87,7 +93,10 @@ const actions = {
     view = clampView({ ...view, cx: c.x, cy: c.y, scale: 1.5 });
     toast('Capital fundada. O tempo está pausado: espaço ou 1× para começar.');
   },
-  close: () => { selected = -1; focus = null; selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; lettersOpen = false; inspect = -1; },
+  close: () => { selected = -1; focus = null; selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; lettersOpen = false; lawsOpen = false; journalOpen = false; inspect = -1; },
+  decree: (law: LawKind) => game && report(decree(game, 0, law)),
+  repeal: (law: LawKind) => game && report(repeal(game, 0, law)),
+  repress: (armyId: number) => game && pm && moveGrid && report(repress(game, pm, moveGrid, armyId)),
   declareWar: (n: number) => {
     const target = game?.nations[n];
     const pact = game && (pactBetween(game, 0, n, 'nonaggression') ? 'um pacto de não agressão' : pactBetween(game, 0, n, 'truce') ? 'uma trégua' : '');
@@ -124,15 +133,16 @@ initHud({
   getLink: () => `${location.origin}${location.pathname}?seed=${seed}`,
 });
 initTopbar(speed);
-(document.getElementById('nations') as HTMLButtonElement).onclick = e => {
-  nationsOpen = !nationsOpen; (e.currentTarget as HTMLButtonElement).blur();
-  if (nationsOpen) { selected = -1; selectedArmies.clear(); inspect = -1; lettersOpen = false; }
-};
+/** Abre um dos painéis da barra (fecha os outros e a seleção). */
+function openBar(which: 'nations' | 'letters' | 'laws' | 'journal'): void {
+  const was = { nations: nationsOpen, letters: lettersOpen, laws: lawsOpen, journal: journalOpen }[which];
+  nationsOpen = lettersOpen = lawsOpen = journalOpen = false;
+  if (!was) { selected = -1; selectedArmies.clear(); inspect = -1; }
+  if (which === 'nations') nationsOpen = !was; else if (which === 'letters') lettersOpen = !was; else if (which === 'laws') lawsOpen = !was; else journalOpen = !was;
+}
+for (const id of ['nations', 'letters', 'laws', 'journal'] as const) (document.getElementById(id) as HTMLButtonElement).onclick = e => { openBar(id); (e.currentTarget as HTMLButtonElement).blur(); };
 const lettersButton = document.getElementById('letters') as HTMLButtonElement;
-lettersButton.onclick = () => {
-  lettersOpen = !lettersOpen; lettersButton.blur();
-  if (lettersOpen) { selected = -1; selectedArmies.clear(); inspect = -1; nationsOpen = false; }
-};
+
 (document.getElementById('end-stay') as HTMLButtonElement).onclick = () => { (document.getElementById('end') as HTMLDivElement).style.display = 'none'; };
 (document.getElementById('end-new') as HTMLButtonElement).onclick = () => load(randomSeed());
 
@@ -190,7 +200,7 @@ canvas.addEventListener('pointerup', e => {
   down = null; box = null;
   if (b) return pickArmies(armiesInRect(game, view, b[0], b[1], b[2], b[3]), e.shiftKey);
   const hit = pickAt(game, pm, view, e.clientX, e.clientY, false, pins); // alheios também: abrem só para leitura
-  inspect = -1; nationsOpen = false; lettersOpen = false;
+  inspect = -1; nationsOpen = false; lettersOpen = false; lawsOpen = false; journalOpen = false;
   if (routeFrom !== null) { // modo traçar rota: o clique numa cidade sua confirma; fora dela, sai do modo
     const target = routeTargetAt(pm, view, e.clientX, e.clientY); // a mesma consulta da prévia: tropa ao lado da cidade não engole o clique
     if (target >= 0 && game.owner[target] === 0 && target !== routeFrom && moveGrid) report(buildRoute(game, pm, moveGrid, routeFrom, target));
@@ -229,6 +239,20 @@ function tip(e: PointerEvent) {
 }
 canvas.addEventListener('pointerleave', () => setTip(null));
 
+// ---- faixa de manchete: uma por vez, 6 s cada ----
+function showHeadline(now: number): void {
+  const el = document.getElementById('headline') as HTMLDivElement;
+  if (now < headlineUntil) return;
+  const h = headlineQueue.shift();
+  if (!h || !game || !pm) { el.style.display = 'none'; return; }
+  const cap = game.nations[0]?.capital ?? -1;
+  (document.getElementById('hl-paper') as HTMLElement).textContent = `A Gazeta de ${cap >= 0 ? pm.provinces[cap].name : 'Império'}`;
+  (document.getElementById('hl-date') as HTMLElement).textContent = formatDate(h.month);
+  (document.getElementById('hl-title') as HTMLElement).textContent = h.text;
+  el.style.display = 'block';
+  headlineUntil = now + 6000;
+}
+
 // ---- quadro ----
 let last = performance.now(), frames = 0, fps = 0, fpsT = last;
 function frame(now: number) {
@@ -245,7 +269,17 @@ function frame(now: number) {
       troops: `${battalionCount(game) + training(game)}/${armyCap(game)}`,
       depot: game.depot.filter((_, id) => game!.owner[id] === 0).reduce((a, d) => { for (const k of Object.keys(a) as (keyof typeof a)[]) a[k] += d[k]; return a; }, { money: 0, grain: 0, wood: 0, coal: 0, iron: 0, steel: 0, arms: 0 }) } : null);
     if (inspect >= 0 && !game.armies.some(a => a.id === inspect)) inspect = -1;
-    renderPanel(game, pm, selected, actions, [...selectedArmies], focus, { nations: nationsOpen, inspect, letters: lettersOpen });
+    renderPanel(game, pm, selected, actions, [...selectedArmies], focus, { nations: nationsOpen, inspect, letters: lettersOpen, laws: lawsOpen, journal: journalOpen });
+    // barra: estabilidade média e leis
+    const me = game.nations[0], own = me ? game.owner.map((o, id) => (o === 0 && game!.city[id] ? game!.stability[id] : -1)).filter(v => v >= 0) : [];
+    const avg = own.length ? Math.round(own.reduce((a, b) => a + b, 0) / own.length) : 0, stab = document.getElementById('stab')!;
+    if (stab.textContent !== `☮ ${avg}`) { stab.innerHTML = `☮ <b>${avg}</b>`; stab.classList.toggle('low', avg < 40); }
+    const lawsText = `Leis (${me?.laws.length ?? 0})`, lawsBtn = document.getElementById('laws')!;
+    if (lawsBtn.textContent !== lawsText) lawsBtn.textContent = lawsText;
+    // manchetes novas entram na fila da faixa
+    const hs = game.headlines, from = lastHeadline ? hs.indexOf(lastHeadline) + 1 : 0;
+    if (hs.length && hs.at(-1) !== lastHeadline) { headlineQueue.push(...hs.slice(from)); lastHeadline = hs.at(-1)!; }
+    showHeadline(now);
     const mail = `✉ Cartas (${game.letters.length})`;
     if (lettersButton.textContent !== mail) lettersButton.textContent = mail;
     if (game.result && !endShown) { // fim de partida: pausa e mostra o resultado
