@@ -382,15 +382,21 @@ function pickSites(map: WorldMap, cells: number[], center: { x: number; y: numbe
 const cellCenter = (S: number, i: number) => ({ x: (i % S) * CELL + CELL / 2, y: Math.floor(i / S) * CELL + CELL / 2 });
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
 
-/** Até 4 lotes de fábrica: secos, de 4 a 10 tiles da cidade, ≥ 4 tiles entre si. */
+/**
+ * Até 4 lotes de fábrica: secos, a ≤ 10 tiles da cidade, ≥ 4 tiles entre si. Preferem ~8 tiles da cidade (≥ 6): mais
+ * perto, o ícone da fábrica some sob o marcador da cidade no mapa; só se faltar lugar aceitam 4 tiles.
+ */
 function pickLots(map: WorldMap, cells: number[], city: { x: number; y: number }): { x: number; y: number }[] {
   const S = map.size, out: { x: number; y: number }[] = [];
-  const cand = cells.filter(i => map.water[i] === 0 && !map.river[i]).map(i => cellCenter(S, i))
-    .filter(c => dist(c, city) >= 4 && dist(c, city) <= 10).sort((a, b) => dist(a, city) - dist(b, city) || a.x - b.x || a.y - b.y);
-  for (const c of cand) {
+  const dry = cells.filter(i => map.water[i] === 0 && !map.river[i]).map(i => cellCenter(S, i));
+  for (const minD of [6, 4]) {
+    const cand = dry.filter(c => dist(c, city) >= minD && dist(c, city) <= 10).sort((a, b) => Math.abs(dist(a, city) - 8) - Math.abs(dist(b, city) - 8) || a.x - b.x || a.y - b.y);
+    for (const c of cand) {
+      if (out.length >= 4) break;
+      if (out.some(o => dist(o, c) < 4) || !dryAround(map, c.x, c.y, 2)) continue;
+      out.push(c);
+    }
     if (out.length >= 4) break;
-    if (out.some(o => dist(o, c) < 4) || !dryAround(map, c.x, c.y, 2)) continue;
-    out.push(c);
   }
   return out;
 }
