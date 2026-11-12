@@ -17,8 +17,8 @@ import { REALM_COLORS } from './map/pick';
 import { inBattle, men } from '../sim/armies';
 import { reinforcing } from '../sim/routes';
 import type { ProvinceMap } from '../worldgen/provinces';
-import { costText, RES_ICON, roman, VEIN_NAME, veinLabel } from './labels';
-import { TROOP_ICON } from './map/markers';
+import { costText, RES_ICON, TROOP_ICON, roman, VEIN_NAME, veinLabel } from './labels';
+import { icon } from './icons';
 import { BIOME_NAMES } from './map2d';
 
 export interface PanelActions {
@@ -69,7 +69,7 @@ function effect(a: Action): Effect | undefined {
     if (Math.abs(d) < UI.showDelta) continue;
     parts.push(`<span class="${d < 0 ? 'neg' : 'pos'}">${RES_ICON[k]} ${d > 0 ? '+' : '−'}${(Math.round(Math.abs(d) * 10) / 10).toLocaleString('pt-BR')}</span>`);
     const out = runsOutIn(s.nations[0].res[k], p.after[k]);
-    tips.push(`${RES_ICON[k]} ${RES_NAMES[k][0].toUpperCase()}${RES_NAMES[k].slice(1)}: ${fmtNet(p.before[k])} → ${fmtNet(p.after[k])}/mês${out !== null && p.before[k] >= 0 ? ` ⚠ acaba em ${out} ${out === 1 ? 'mês' : 'meses'}` : ''}`);
+    tips.push(`${RES_NAMES[k][0].toUpperCase()}${RES_NAMES[k].slice(1)}: ${fmtNet(p.before[k])} → ${fmtNet(p.after[k])}/mês${out !== null && p.before[k] >= 0 ? ` (atenção: acaba em ${out} ${out === 1 ? 'mês' : 'meses'})` : ''}`);
   }
   if (!parts.length) return undefined;
   return { line: `<small class="fx">por mês: ${parts.join(' · ')}</small>`, tip: tips.join('\n') };
@@ -135,8 +135,8 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
       <div class="sub">Impostos ${RES_ICON.money}${cityTax(s, pm, id).toFixed(1)}/mês · consome ${RES_ICON.grain}${CITY.grain[lvl]}/mês</div><div class="act">${up}</div></div>`;
     // ligação com a capital e rotas
     const dep = (Object.keys(RES_ICON) as (keyof typeof RES_ICON)[]).filter(k => s.depot[id][k] >= 0.5).map(k => `${RES_ICON[k]}${Math.floor(s.depot[id][k])}`).join(' ');
-    html += s.connected[id] ? `<div class="sub">🔗 Ligada à capital</div>`
-      : `<div class="why">⛓ Desligada da capital${dep ? `: depósito ${dep}` : ''} (teto ${DEPOT_MONTHS} meses)</div>`;
+    html += s.connected[id] ? `<div class="sub">${icon('link')} Ligada à capital</div>`
+      : `<div class="why">${icon('chain')} Desligada da capital${dep ? `: depósito ${dep}` : ''} (teto ${DEPOT_MONTHS} meses)</div>`;
     const name = (p: number) => esc(pm.provinces[p].name);
     const rows = s.routes.filter(r => r.a === id || r.b === id).map(r => {
       const other = r.a === id ? r.b : r.a, state = r.remaining > 0 ? `em obra ${r.remaining.toFixed(1)} meses` : r.cut ? '<span class="why">cortada</span>' : 'pronta';
@@ -147,7 +147,7 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
     html += sec('Lotes');
     s.lots[id].forEach((b, lot) => {
       const place: Place = { lot }, key = placeKey(place);
-      if (lot >= CITY.lots[lvl]) { html += `<div class="slot empty" id="${key}"><b>🔒 Lote ${lot + 1}</b><small class="why">Libera com a cidade nível ${CITY.lots.findIndex(n => n > lot)}</small></div>`; return; }
+      if (lot >= CITY.lots[lvl]) { html += `<div class="slot empty" id="${key}"><b>${icon('lock')} Lote ${lot + 1}</b><small class="why">Libera com a cidade nível ${CITY.lots.findIndex(n => n > lot)}</small></div>`; return; }
       if (!b) {
         html += `<div class="slot empty" id="${key}"><b>Lote livre</b><div class="act">${LOT_TYPES.map(t => button(`b:${key}:${t}`, BUILDINGS[t].name, checkBuild(s, pm, id, place, t), ` <small>${costText(buildCost(t, 1))}</small>`, effect({ kind: 'build', province: id, place, type: t }))).join('')}</div></div>`;
         return;
@@ -215,7 +215,7 @@ let form: Form | null = null;
 const formProposal = (f: Form): Proposal => (f.kind === 'peace'
   ? { kind: 'peace', cede: f.cede, money: f.money, payer: f.theyPay ? f.to : 0 }
   : { kind: 'trade', give: [f.give, f.giveQty], get: [f.get, f.getQty] });
-const PACT_ICON: Record<string, string> = { truce: '🕊', nonaggression: '🕊', trade: '⚖', alliance: '🤝' };
+const PACT_ICON: Record<string, string> = { truce: icon('dove'), nonaggression: icon('dove'), trade: icon('scales'), alliance: icon('handshake') };
 
 /** Relação, acordos em vigor e propostas possíveis com a nação `n` (do ponto de vista do jogador). */
 function diplomacyHtml(s: GameState, pm: ProvinceMap, n: number): string {
@@ -293,10 +293,10 @@ function stabilityHtml(s: GameState, pm: ProvinceMap, id: number): string {
   let html = `<div class="fac"><span>Estabilidade</span><i><b style="width:${v}%;background:${v < 15 ? '#8a2a20' : v < 40 ? '#b0602a' : v < 60 ? '#b0902a' : '#4f7a3a'}"></b></i><em>${Math.round(v)}</em></div>
     <div class="sub">${stabilityLabel(v)} · tende a ${Math.round(target)} (base ${STAB.base}${why ? ` · ${why}` : ''})</div>`;
   const strike = s.strikes.find(x => x.province === id), revolt = s.revolts.find(x => x.province === id);
-  if (strike) html += `<p class="why">⚙ Greve: fábricas paradas por ${Math.max(0, Math.ceil(strike.until - s.month))} meses</p>`;
+  if (strike) html += `<p class="why">${icon('hammer')} Greve: fábricas paradas por ${Math.max(0, Math.ceil(strike.until - s.month))} meses</p>`;
   if (revolt) {
     const r = s.armies.find(a => a.id === revolt.army), capital = s.nations[s.owner[id]]?.capital === id;
-    html += `<p class="why">🔥 Rebeldes: ${r?.battalions.length ?? 0} batalhões — ${capital ? 'a capital resiste até vencê-los' : `a província cai em ${Math.max(0, Math.ceil(revolt.since + UNREST.revolt.months - s.month))} meses`}</p>`;
+    html += `<p class="why">${icon('flame')} Rebeldes: ${r?.battalions.length ?? 0} batalhões — ${capital ? 'a capital resiste até vencê-los' : `a província cai em ${Math.max(0, Math.ceil(revolt.since + UNREST.revolt.months - s.month))} meses`}</p>`;
   }
   if (s.month < s.resentment[id]) html += `<div class="sub">Ressentimento da repressão por ${Math.ceil(s.resentment[id] - s.month)} meses</div>`;
   return html;
@@ -376,8 +376,8 @@ function occupationHtml(s: GameState, pm: ProvinceMap, id: number): string {
   if (!e) return '';
   const left = Math.max(0, occupyMonths(s, id) - e.progress).toFixed(1);
   const g = Math.max(0, ...s.lots[id].map(b => (b?.type === 'garrison' ? activeLevel(b) : 0)));
-  if (e.nation === 0) return `<p>⚑ Você ocupa — cai em ${left} meses${g ? ` (Guarnição N${g} alonga)` : ''}</p>`;
-  return `<p class="why">⚑ Ocupada pela ${esc(s.nations[e.nation].name)} — cai em ${left} meses</p>`;
+  if (e.nation === 0) return `<p>${icon('flag')} Você ocupa — cai em ${left} meses${g ? ` (Guarnição N${g} alonga)` : ''}</p>`;
+  return `<p class="why">${icon('flag')} Ocupada pela ${esc(s.nations[e.nation].name)} — cai em ${left} meses</p>`;
 }
 
 /** Exército de outra nação ou de fortaleza: só leitura. */
@@ -400,10 +400,10 @@ function armiesHtml(s: GameState, pm: ProvinceMap, armies: GameState['armies']):
     return `${head}<h2>${armies.length} exércitos</h2><div class="sub">Clique direito no mapa para mandar</div>${rows}`;
   }
   const a = armies[0];
-  const sup = a.supply ? (a.supply.cut ? '<span class="why">linha de suprimento cortada</span>' : `⛽ linha de suprimento de ${esc(pm.provinces[a.supply.from].name)}`)
+  const sup = a.supply ? (a.supply.cut ? '<span class="why">linha de suprimento cortada</span>' : `${icon('supply')} linha de suprimento de ${esc(pm.provinces[a.supply.from].name)}`)
     : a.supplied ? 'abastecido' : `<span class="why">sem suprimento (cada batalhão perde ${SUPPLY.attrition} homem/mês)</span>`;
   const from = reinforcing(s, a);
-  const reinf = from !== null ? `<div class="sub">⛽ Reforço de ${esc(pm.provinces[from].name)}: +${REINFORCE.rate} homens/mês por batalhão</div>`
+  const reinf = from !== null ? `<div class="sub">${icon('supply')} Reforço de ${esc(pm.provinces[from].name)}: +${REINFORCE.rate} homens/mês por batalhão</div>`
     : a.supply && inBattle(s, a.id) ? '<div class="why">Sem reforço: a cidade da linha precisa estar ligada e ter Guarnição</div>' : '';
   const rows = a.battalions.map((b, i) => {
     const k = `${a.id}:${i}`;
@@ -413,7 +413,7 @@ function armiesHtml(s: GameState, pm: ProvinceMap, armies: GameState['armies']):
   const near = s.armies.filter(o => o !== a && o.owner === 0 && Math.hypot(o.x - a.x, o.y - a.y) <= ARMY.joinTiles);
   const btn = (act: string, label: string, ok = true) => `<button data-a="${act}" ${ok ? '' : 'disabled'}>${label}</button>`;
   const lineBtn = a.supply ? btn(`ds:${a.id}`, 'Cortar linha') : btn(`sp:${a.id}`, `Abastecer <small>${RES_ICON.money}${SUPPLY.lineMoney}+/mês</small>`);
-  return `${head}<h2>${esc(a.name)} <button data-a="rn:${a.id}" title="Renomear">✎</button></h2>
+  return `${head}<h2>${esc(a.name)} <button data-a="rn:${a.id}" title="Renomear">${icon('pen')}</button></h2>
     <div class="sub">${Math.ceil(men(a))} homens · moral ${Math.round(a.morale * 100)}% · ${state(a)} · ${sup}</div>${reinf}
     <h3>Batalhões (${a.battalions.length}/${ARMY.maxBattalions})</h3>${rows}
     <div class="act">${btn(`sl:${a.id}:${marked.join(',')}`, `Dividir (formar exército com os marcados)`, marked.length > 0 && marked.length < a.battalions.length)}

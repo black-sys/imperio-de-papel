@@ -14,7 +14,7 @@ import { alerts, type Alert, type AlertKind } from './sim/alerts';
 import { firstSteps } from './client/steps';
 import { previewCached } from './sim/preview';
 import { RES_KEYS, RES_NAMES } from './sim/balance';
-import { RES_ICON } from './client/labels';
+import { icon, type IconName } from './client/icons';
 import type { LawKind } from './sim/state';
 import { runMonth } from './sim/economy';
 import { addFortress, placeFortresses } from './sim/fortress';
@@ -145,6 +145,11 @@ initHud({
   getLink: () => `${location.origin}${location.pathname}?seed=${seed}`,
 });
 initTopbar(speed);
+// ícones a tinta da barra (o HTML estático só tem os rótulos)
+for (const [id, name, label] of [['ledger', 'ledger', 'Contas'], ['nations', 'nations', 'Nações'], ['journal', 'journal', 'Jornal']] as const)
+  (document.getElementById(id) as HTMLElement).innerHTML = `${icon(name)} <span class="lbl">${label}</span>`;
+(document.querySelector('#speeds [data-speed="0"]') as HTMLElement).innerHTML = icon('pause');
+(document.getElementById('troops-ico') as HTMLElement).innerHTML = icon('battle');
 /** Abre um dos painéis da barra (fecha os outros e a seleção). */
 function openBar(which: 'nations' | 'letters' | 'laws' | 'journal' | 'ledger', force = false): void {
   const was = !force && { nations: nationsOpen, letters: lettersOpen, laws: lawsOpen, journal: journalOpen, ledger: ledgerOpen }[which];
@@ -246,10 +251,10 @@ function tip(e: PointerEvent) {
     let fx = '';
     if (plan.ok) {
       const pr = previewCached(game, pm, 0, { kind: 'route', a: routeFrom, b: p });
-      const parts = RES_KEYS.filter(k => Math.abs(pr.after[k] - pr.before[k]) >= 0.1).map(k => `${RES_ICON[k]} ${pr.after[k] - pr.before[k] > 0 ? '+' : '−'}${(Math.round(Math.abs(pr.after[k] - pr.before[k]) * 10) / 10).toLocaleString('pt-BR')} ${RES_NAMES[k]}`);
+      const parts = RES_KEYS.filter(k => Math.abs(pr.after[k] - pr.before[k]) >= 0.1).map(k => `${RES_NAMES[k]} ${pr.after[k] - pr.before[k] > 0 ? '+' : '−'}${(Math.round(Math.abs(pr.after[k] - pr.before[k]) * 10) / 10).toLocaleString('pt-BR')} ${RES_NAMES[k]}`);
       if (parts.length) fx = ` · por mês: ${parts.join(', ')}`;
     }
-    return setTip(plan.ok ? `Rota até ${pm.provinces[p].name}: ${costText({ ...plan.cost, months: plan.months })}${fx}${plan.threatened ? ' · ⚠ passa perto de uma fortaleza: nascerá cortada' : ''}` : plan.reason, e.clientX, e.clientY);
+    return setTip(plan.ok ? `Rota até ${pm.provinces[p].name}: ${costText({ ...plan.cost, months: plan.months }, 'text')}${fx}${plan.threatened ? ' · atenção: passa perto de uma fortaleza, nascerá cortada' : ''}` : plan.reason, e.clientX, e.clientY);
   }
   // selo de capital sugerida: o que há por perto (é assim que se escolhe onde fundar)
   const pin = playerCapital(game) < 0 ? pins.find(q => { const [sx, sy] = [(q.x - view.cx) * view.scale + view.w / 2, (q.y - view.cy) * view.scale + view.h / 2]; return Math.hypot(sx - e.clientX, sy - e.clientY) <= 13; }) : undefined;
@@ -261,7 +266,7 @@ function tip(e: PointerEvent) {
 canvas.addEventListener('pointerleave', () => setTip(null));
 
 // ---- faixa de alertas: agrupados por tipo, clique leva ao problema, ✕ silencia o tipo até ele se resolver ----
-const ALERT_ICON: Record<AlertKind, string> = { stalled: '⚙', 'running-out': '⏳', 'money-negative': '🪙', famine: '🌾', disconnected: '⛓', unsupplied: '⛽', revolt: '🔥', strike: '✊', cap: '⚔' };
+const ALERT_ICON: Record<AlertKind, IconName> = { stalled: 'gear', 'running-out': 'hourglass', 'money-negative': 'money', famine: 'grain', disconnected: 'chain', unsupplied: 'supply', revolt: 'flame', strike: 'hammer', cap: 'battle' };
 const ALERT_NAME: Record<AlertKind, string> = { stalled: 'Fábricas paradas', 'running-out': 'Recursos acabando', 'money-negative': 'Dinheiro', famine: 'Fome', disconnected: 'Cidades desligadas', unsupplied: 'Sem suprimento', revolt: 'Revoltas', strike: 'Greves', cap: 'Teto de batalhões' };
 const silenced = new Set<AlertKind>();
 let alertList: Alert[] = [], alertsAt = 0, alertsHtml = '';
@@ -274,7 +279,7 @@ function renderAlerts(now: number, report: ReturnType<typeof runMonth>): void {
   for (const k of [...silenced]) if (!present.has(k)) silenced.delete(k); // resolvido: volta a avisar da próxima vez
   const groups = new Map<AlertKind, number[]>();
   alertList.forEach((a, i) => { if (!silenced.has(a.kind)) groups.set(a.kind, [...(groups.get(a.kind) ?? []), i]); });
-  const html = [...groups].map(([k, idx]) => `<span class="grp ${idx.some(i => alertList[i].severity === 'red') ? 'red' : ''}">${ALERT_ICON[k]} ${idx.length}
+  const html = [...groups].map(([k, idx]) => `<span class="grp ${idx.some(i => alertList[i].severity === 'red') ? 'red' : ''}">${icon(ALERT_ICON[k])} ${idx.length}
     <span class="list"><b>${ALERT_NAME[k]}</b> <a data-x="${k}" style="float:right;cursor:pointer">✕</a>${idx.map(i => `<div class="item" data-i="${i}">${escHtml(alertList[i].text)}<small>${escHtml(alertList[i].hint)}</small></div>`).join('')}</span></span>`).join('');
   const el = document.getElementById('alerts') as HTMLDivElement;
   if (html !== alertsHtml) { alertsHtml = html; el.innerHTML = html; }
@@ -342,15 +347,15 @@ function frame(now: number) {
     // barra: estabilidade média e leis
     const me = game.nations[0], own = me ? game.owner.map((o, id) => (o === 0 && game!.city[id] ? game!.stability[id] : -1)).filter(v => v >= 0) : [];
     const avg = own.length ? Math.round(own.reduce((a, b) => a + b, 0) / own.length) : 0, stab = document.getElementById('stab')!;
-    if (stab.textContent !== `☮ ${avg}`) { stab.innerHTML = `☮ <b>${avg}</b>`; stab.classList.toggle('low', avg < 40); }
-    const lawsText = `<span class="lbl">Leis</span> (${me?.laws.length ?? 0})`, lawsBtn = document.getElementById('laws')!;
+    if (stab.dataset.v !== String(avg)) { stab.dataset.v = String(avg); stab.innerHTML = `${icon('dove')} <b>${avg}</b>`; stab.classList.toggle('low', avg < 40); }
+    const lawsText = `${icon('laws')} <span class="lbl">Leis</span> (${me?.laws.length ?? 0})`, lawsBtn = document.getElementById('laws')!;
     if (lawsBtn.innerHTML !== lawsText) lawsBtn.innerHTML = lawsText;
     // manchetes novas entram na fila da faixa
     const hs = game.headlines, from = lastHeadline ? hs.indexOf(lastHeadline) + 1 : 0;
     if (hs.length && hs.at(-1) !== lastHeadline) { headlineQueue.push(...hs.slice(from)); lastHeadline = hs.at(-1)!; }
     showHeadline(now);
     renderSteps();
-    const mail = `✉ <span class="lbl">Cartas</span> (${game.letters.length})`;
+    const mail = `${icon('letter')} <span class="lbl">Cartas</span> (${game.letters.length})`;
     if (lettersButton.innerHTML !== mail) lettersButton.innerHTML = mail;
     if (game.result && !endShown) { // fim de partida: pausa e mostra o resultado
       endShown = true; speed(0);

@@ -68,5 +68,5 @@ export function resourceTip(k: keyof Res, stock: number, report: MonthReport): s
   return [`${label}: ${num(stock)} · ${signed(net)}/mês · ${situation(stock, net)}`,
     best ? `Maior entrada: ${best[0]} ${signed(best[1])}` : 'Nada entra',
     worst ? `Maior saída: ${worst[0]} ${signed(worst[1])}` : 'Nada sai',
-    '📒 clique para ver nas Contas'].join('\n');
+    'Clique para ver nas Contas'].join('\n');
 }

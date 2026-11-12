@@ -11,6 +11,6 @@ export function firstSteps(s: GameState | null, ledgerSeen: boolean): { text: st
     { text: 'Colonize uma província vizinha', done: !!s && (s.colonizing.some(c => c.nation === 0) || s.owner.filter(o => o === 0).length > 1) },
     { text: 'Ligue a nova cidade à capital por rota (R)', done: !!s && s.routes.some(r => r.owner === 0) },
     { text: 'Erga uma Guarnição e treine um batalhão', done: !!s && has && battalionCount(s) > 0 },
-    { text: 'Abra o 📒 Contas para acompanhar a economia', done: ledgerSeen },
+    { text: 'Abra as Contas (barra de cima) para acompanhar a economia', done: ledgerSeen },
   ];
 }

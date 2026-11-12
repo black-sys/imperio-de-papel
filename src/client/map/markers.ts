@@ -4,6 +4,7 @@ import { occupyMonths } from '../../sim/conquest';
 import { afford } from '../../sim/commands';
 import { buildCost } from '../../sim/economy';
 import { roman } from '../labels';
+import { drawIcon } from '../icons';
 import type { MoveGrid } from '../../sim/movegrid';
 import type { GameState } from '../../sim/state';
 import { CELL } from '../../worldgen/constants';
@@ -11,7 +12,6 @@ import type { ProvinceMap } from '../../worldgen/provinces';
 import { FONT_TEXT, FORT_DETAIL, FORT_R, GOLD, LOT_DETAIL, VEIN_DETAIL, INK, NEUTRAL, PAPER, REALM_COLORS, TROOP_H, TROOP_W, cityAt, cityRadius, formation, lotOnScreen, lotScale, markerScale, veinVisible } from './pick';
 import { toScreen, type View } from './view';
 
-export const TROOP_ICON: Record<TroopType, string> = { line: '🎖', artillery: '💣', cavalry: '🐎' };
 export interface MarkerOpts {
   selectedArmies: Set<number>; selectedProvince: number; pins: { x: number; y: number }[]; grid: MoveGrid | null;
   preview?: { path: number[]; ok: boolean } | null; // prévia da rota sendo traçada
@@ -175,8 +175,8 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
     const ink = unrestInk(s.stability[id]);
     if (ink) { ctx.strokeStyle = ink; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2); ctx.stroke(); }
-    if (s.strikes.some(k => k.province === id)) label(ctx, '⚙', x - r - 6, y - r - 2, 12);
-    if (s.revolts.some(k => k.province === id)) label(ctx, '🔥', x + r + 6, y + r + 2, 13);
+    if (s.strikes.some(k => k.province === id)) drawIcon(ctx, 'hammer', x - r - 6, y - r - 2, 14, INK);
+    if (s.revolts.some(k => k.province === id)) drawIcon(ctx, 'flame', x + r + 6, y + r + 2, 15, '#b3261e');
     if (capital) { ctx.strokeStyle = PAPER; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r - 3, 0, Math.PI * 2); ctx.stroke(); }
     if (s.owner[id] === 0 && !s.connected[id]) { // desligada da capital: aro tracejado vermelho e ✕
       ctx.strokeStyle = CUT; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
@@ -236,14 +236,13 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
       label(ctx, `${total} · ${t.battalions.length}`, x, y + h / 2 + 9);
     }
     if (t.owner === 0 && !t.supplied) { ctx.fillStyle = CUT; ctx.fillRect(x - 10, y + h / 2 + 15, 20, 3); } // sem suprimento
-    if (t.owner === 0 && t.supply && !t.supply.cut) label(ctx, '⛽', x + w / 2 + 7, y - h / 2, 10);
+    if (t.owner === 0 && t.supply && !t.supply.cut) drawIcon(ctx, 'supply', x + w / 2 + 7, y - h / 2, 12, SUPPLY_INK);
   }
   // batalhas
   for (const b of s.battles) {
     const [x, y] = P(b.x, b.y);
     if (!onScreen(v, x, y)) continue;
-    ctx.font = `bold 22px ${FONT_TEXT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#7a1d14';
-    ctx.fillText('⚔', x, y - 26);
+    drawIcon(ctx, 'battle', x, y - 26, 22, '#7a1d14');
     b.sides.forEach((side, i) => {
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x - 20, y - 12 + i * 6, 40, 4);
       ctx.fillStyle = color(side.owner); ctx.fillRect(x - 20, y - 12 + i * 6, 40 * side.morale, 4);

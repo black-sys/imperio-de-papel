@@ -18,8 +18,9 @@
         radial-gradient(circle at calc(100% - 8px) calc(100% - 8px), var(--brass-hi) 0 2px, var(--brass-lo) 2.5px, transparent 3px);
       --grain: repeating-linear-gradient(37deg, #6b553608 0 1px, transparent 1px 5px), repeating-linear-gradient(-53deg, #6b553606 0 1px, transparent 1px 7px);
       --brass-frame: inset 0 0 0 1px var(--brass-hi), inset 0 0 0 3px var(--brass-lo); }
-    html, body { margin: 0; height: 100%; overflow: hidden; background: #e9dcbc; color: #3e2a18; font: 14px var(--text); font-variant-numeric: tabular-nums; }
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #e9dcbc; color: #3e2a18; font: 14px var(--text); }
     button, input, select { font-family: inherit; }
+    .ico { width: 1.1em; height: 1.1em; vertical-align: -0.18em; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
     #map { position: fixed; inset: 0; width: 100%; height: 100%; display: block; cursor: crosshair; }
     #hud { position: fixed; z-index: 2; top: 12px; left: 12px; display: flex; flex-direction: column; gap: 8px; background: #efe3c4ee; padding: 10px 12px; border-radius: 6px; border: 1px solid #6b5536; }
     #hud .row { display: flex; gap: 6px; align-items: center; }
@@ -133,18 +134,18 @@
   <div id="topbar">
     <span id="res"></span>
     <span class="mid">
-      <span class="res" title="Batalhões / teto das guarnições">⚔ <b id="troops">0/0</b></span>
-      <span class="res" id="stab" title="Estabilidade média das suas províncias">☮ <b>–</b></span>
+      <span class="res" title="Batalhões / teto das guarnições"><span id="troops-ico"></span> <b id="troops">0/0</b></span>
+      <span class="res" id="stab" title="Estabilidade média das suas províncias"><b>–</b></span>
     </span>
     <span class="right">
-    <button id="ledger" title="Contas: de onde vem e para onde vai cada recurso">📒 <span class="lbl">Contas</span></button>
+    <button id="ledger" title="Contas: de onde vem e para onde vai cada recurso"><span class="lbl">Contas</span></button>
     <button id="nations" title="Nações do mapa: relação, acordos e guerra"><span class="lbl">Nações</span></button>
-    <button id="letters" class="mail" title="Propostas das outras nações">✉ <span class="lbl">Cartas</span> (0)</button>
+    <button id="letters" class="mail" title="Propostas das outras nações"><span class="lbl">Cartas</span> (0)</button>
     <button id="laws" title="Leis de emergência"><span class="lbl">Leis</span> (0)</button>
-    <button id="journal" title="Últimas manchetes">📰 <span class="lbl">Jornal</span></button>
+    <button id="journal" title="Últimas manchetes"><span class="lbl">Jornal</span></button>
     <span id="date"></span>
     <span id="speeds">
-      <button data-speed="0" title="Pausa (espaço)">⏸</button><button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button>
+      <button data-speed="0" title="Pausa (espaço)"></button><button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button>
     </span>
     </span>
   </div>
