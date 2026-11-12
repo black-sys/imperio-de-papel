@@ -1,9 +1,9 @@
-import type { GameState } from '../../sim/state';
+import { cityLevel, type GameState } from '../../sim/state';
 import { CELL } from '../../worldgen/constants';
 import type { ProvinceMap } from '../../worldgen/provinces';
 import { drawMarkers, markersKey, type MarkerOpts } from './markers';
 import { borderSegments, provinceRings } from './outlines';
-import { GOLD, INK, REALM_COLORS } from './pick';
+import { GOLD, INK, REALM_COLORS, cityRadius } from './pick';
 import { drawableFor, type TileCache } from './tileCache';
 import { OPEN_SEA } from './tilePaint';
 import { levelFor, TILE_PX, tileSpan, toScreen, visibleTiles, type View } from './view';
@@ -16,7 +16,7 @@ export class MapRenderer {
   private key = '';
   private rings: Path2D[] = [];
   private borders: Path2D | null = null;
-  private labels: { x: number; y: number; name: string; size: number }[] = [];
+  private labels: { id: number; x: number; y: number; name: string; size: number }[] = [];
   private pm: ProvinceMap | null = null;
   private cache: TileCache | null = null;
 
@@ -35,7 +35,7 @@ export class MapRenderer {
     const seg = borderSegments(pm), b = new Path2D();
     for (let i = 0; i < seg.length; i += 4) { b.moveTo(seg[i], seg[i + 1]); b.lineTo(seg[i + 2], seg[i + 3]); }
     this.borders = b;
-    this.labels = pm.provinces.map(p => ({ x: p.center.x, y: p.center.y, name: p.name, size: Math.sqrt(p.cells) * CELL * 0.12 }));
+    this.labels = pm.provinces.map(p => ({ id: p.id, x: p.center.x, y: p.center.y, name: p.name, size: Math.sqrt(p.cells) * CELL * 0.12 }));
   }
 
   /** Devolve true se redesenhou. `box` = caixa de seleção em px de tela; `extra` = qualquer outra coisa que mude o desenho. */
@@ -49,7 +49,7 @@ export class MapRenderer {
     this.key = key;
     this.paints++;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = OPEN_SEA; // fora do mundo: mar aberto sem fim ctx.fillRect(0, 0, v.w, v.h);
+    ctx.fillStyle = OPEN_SEA; ctx.fillRect(0, 0, v.w, v.h); // fora do mundo: mar aberto sem fim
     if (!pm || !cache) return true;
     // ladrilhos (ou o substituto do nível acima, recortado na área deste)
     ctx.imageSmoothingEnabled = true;
@@ -81,8 +81,13 @@ export class MapRenderer {
     for (const l of this.labels) {
       const fs = l.size * v.scale, [px, py] = toScreen(v, l.x, l.y);
       if (fs < 9 || px < -150 || py < -40 || px > v.w + 150 || py > v.h + 40) continue;
-      ctx.font = `italic ${Math.min(28, fs).toFixed(0)}px Georgia, 'Times New Roman', serif`;
-      ctx.fillStyle = 'rgba(62,42,24,0.85)'; ctx.fillText(l.name, px, py - 22);
+      // com cidade: nome em negrito e maior; terra vazia: itálico claro
+      // (com cidade, o nome vai logo acima do marcador dela)
+      const town = !!s.city[l.id], size = Math.min(town ? 32 : 28, fs * (town ? 1.15 : 1));
+      ctx.font = `${town ? 'bold ' : 'italic '}${size.toFixed(0)}px Georgia, 'Times New Roman', serif`;
+      ctx.fillStyle = town ? 'rgba(48,30,16,0.95)' : 'rgba(62,42,24,0.7)';
+      if (town) { const c = pm.provinces[l.id].city, [cx, cy] = toScreen(v, c.x, c.y); ctx.fillText(l.name, cx, cy - cityRadius(cityLevel(s, l.id), v.scale) - 6 - size / 2); }
+      else ctx.fillText(l.name, px, py - 22);
     }
     drawMarkers(ctx, s, pm, v, o);
     if (box) {

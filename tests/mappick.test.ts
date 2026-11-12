@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 import { markersKey } from '../src/client/map/markers';
-import { REALM_COLORS, cityAt, pickAt, provinceAtTile, routeTargetAt, armiesInRect } from '../src/client/map/pick';
+import { REALM_COLORS, cityAt, cityRadius, lotOnScreen, markerScale, pickAt, provinceAtTile, routeTargetAt, armiesInRect, veinVisible } from '../src/client/map/pick';
 import { toScreen, type View } from '../src/client/map/view';
 import { addFortress } from '../src/sim/fortress';
 import { spawnArmy } from '../src/sim/armies';
@@ -168,4 +168,48 @@ test('clique na fortaleza abre a fortaleza (a guarnição não é escolhida); ri
   const c = pm.provinces[0].city, [cx, cy] = toScreen(view, c.x, c.y);
   spawnArmy(s, 1, ['line'], c.x, c.y);
   expect(pickAt(s, pm, view, cx, cy, false)).toEqual({ kind: 'city', province: 0 });
+});
+
+test('markerScale: 1 de longe, 2 de perto, nunca diminui com o zoom', () => {
+  expect(markerScale(0.2)).toBe(1);
+  expect(markerScale(0.75)).toBe(1);
+  expect(markerScale(1.5)).toBeGreaterThan(1);
+  expect(markerScale(1.5)).toBeLessThan(2);
+  expect(markerScale(3)).toBe(2);
+  expect(markerScale(12)).toBe(2);
+  let last = 0;
+  for (let z = 0.1; z < 12; z *= 1.1) { expect(markerScale(z)).toBeGreaterThanOrEqual(last); last = markerScale(z); }
+});
+
+test('cidade maior: clique a 1,5× o raio antigo ainda a seleciona', () => {
+  const s = game(), [sx, sy] = scr(60, 80);
+  expect(pickAt(s, pm, view, sx + 21, sy)).toEqual({ kind: 'city', province: 0 });
+  expect(cityRadius(1, view.scale)).toBeGreaterThanOrEqual(21);
+});
+
+test('cidade antes de lote: lote encostado na cidade grande não rouba o clique', () => {
+  const s = game(), [sx, sy] = scr(60, 80);
+  expect(pickAt(s, pm, view, sx, sy + 18)).toEqual({ kind: 'city', province: 0 }); // lote 0 fica 20 tiles abaixo (50 px)
+});
+
+test('veios de longe: livres somem (e não são clicáveis), os seus explorados ficam', () => {
+  const s = game(), far: View = { ...view, scale: 0.5 }, near: View = { ...view, scale: 1 };
+  const at = (v: View, x: number, y: number) => toScreen(v, x, y);
+  // veio livre da província 1 (220, 40)
+  expect(veinVisible(s, 1, 1, 0.5)).toBe(false);
+  expect(pickAt(s, pm, far, ...at(far, 220, 40))).toEqual({ kind: 'province', province: 1 });
+  expect(pickAt(s, pm, near, ...at(near, 220, 40))).toEqual({ kind: 'vein', province: 1, vein: 1 });
+  // veio explorado da nação 0 (20, 40)
+  s.veins[0][0] = { type: 'farm', level: 1, remaining: 0 } as never;
+  expect(veinVisible(s, 0, 0, 0.5)).toBe(true);
+  expect(pickAt(s, pm, far, ...at(far, 20, 40))).toEqual({ kind: 'vein', province: 0, vein: 0 });
+});
+
+test('lote coberto pela cidade grande vai para fora do círculo, e o clique acompanha', () => {
+  const s = game(), close: View = { ...view, scale: 4 };
+  pm.provinces[0].lots[3] = { x: 62, y: 82 }; // 2 tiles da cidade: ficaria sob o marcador
+  const [cx, cy] = toScreen(close, 60, 80), [lx, ly] = lotOnScreen(s, pm, close, 0, 3);
+  expect(Math.hypot(lx - cx, ly - cy)).toBeGreaterThan(cityRadius(1, close.scale));
+  expect(pickAt(s, pm, close, lx, ly)).toEqual({ kind: 'lot', province: 0, lot: 3 });
+  pm.provinces[0].lots[3] = { x: 68, y: 92 };
 });

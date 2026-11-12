@@ -6,7 +6,7 @@ import type { MoveGrid } from '../../sim/movegrid';
 import type { GameState } from '../../sim/state';
 import { CELL } from '../../worldgen/constants';
 import type { ProvinceMap } from '../../worldgen/provinces';
-import { CITY_R, FORT_DETAIL, FORT_R, GOLD, LOT_DETAIL, VEIN_DETAIL, INK, NEUTRAL, PAPER, REALM_COLORS, TROOP_H, TROOP_W, cityAt } from './pick';
+import { FORT_DETAIL, FORT_R, GOLD, LOT_DETAIL, VEIN_DETAIL, INK, NEUTRAL, PAPER, REALM_COLORS, TROOP_H, TROOP_W, cityAt, cityRadius, lotOnScreen, lotScale, markerScale, veinVisible } from './pick';
 import { toScreen, type View } from './view';
 
 export const TROOP_ICON: Record<TroopType, string> = { line: '🎖', artillery: '💣', cavalry: '🐎' };
@@ -52,7 +52,9 @@ export function markersKey(s: GameState, pm: ProvinceMap, v: View, o: MarkerOpts
 }
 
 /** Ícone gravado a tinta de um prédio ou veio, centrado em (x, y) na tela. */
-function icon(ctx: CanvasRenderingContext2D, kind: BuildingType | 'grain' | 'wood' | 'coal' | 'iron', x: number, y: number): void {
+function icon(ctx: CanvasRenderingContext2D, kind: BuildingType | 'grain' | 'wood' | 'coal' | 'iron', cx: number, cy: number, k = 1): void {
+  ctx.save(); ctx.translate(cx, cy); ctx.scale(k, k); ctx.lineWidth /= k;
+  const x = 0, y = 0;
   ctx.beginPath();
   if (kind === 'farm' || kind === 'grain') { for (const d of [-4, 0, 4]) { ctx.moveTo(x + d, y + 6); ctx.lineTo(x + d * 0.4, y - 6); } } // feixe de trigo
   else if (kind === 'sawmill' || kind === 'wood') { ctx.moveTo(x, y + 7); ctx.lineTo(x, y - 7); ctx.moveTo(x - 6, y); ctx.lineTo(x, y - 7); ctx.lineTo(x + 6, y); } // árvore
@@ -62,6 +64,7 @@ function icon(ctx: CanvasRenderingContext2D, kind: BuildingType | 'grain' | 'woo
   else if (kind === 'market') { ctx.rect(x - 6, y - 2, 12, 8); ctx.moveTo(x - 7, y - 2); ctx.lineTo(x, y - 8); ctx.lineTo(x + 7, y - 2); } // toldo
   else if (kind === 'garrison') { ctx.rect(x - 6, y - 6, 12, 12); ctx.moveTo(x - 6, y - 6); ctx.lineTo(x - 6, y - 9); ctx.moveTo(x, y - 6); ctx.lineTo(x, y - 9); ctx.moveTo(x + 6, y - 6); ctx.lineTo(x + 6, y - 9); } // torre
   ctx.stroke();
+  ctx.restore();
 }
 const VEIN_INK: Record<string, string> = { grain: '#8a6a10', wood: '#3f5a2a', coal: '#2a2420', iron: '#5a5f66' };
 
@@ -90,34 +93,36 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     ctx.setLineDash([]);
   }
   // veios (de qualquer província) e lotes (das suas cidades, de perto)
-  if (v.scale >= VEIN_DETAIL) for (const p of pm.provinces) p.veins.forEach((vein, i) => {
+  const k = markerScale(v.scale), kl = lotScale(v.scale);
+  for (const p of pm.provinces) p.veins.forEach((vein, i) => {
+    if (!veinVisible(s, p.id, i, v.scale)) return;
     const [x, y] = P(vein.x, vein.y);
     if (!onScreen(v, x, y)) return;
     const b = s.veins[p.id][i];
     ctx.lineWidth = 1.6;
-    if (b && s.owner[p.id] >= 0) { ctx.fillStyle = color(s.owner[p.id]); ctx.globalAlpha = b.remaining > 0 ? 0.35 : 0.8; ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
-    else { ctx.strokeStyle = INK; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, 10, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
+    if (b && s.owner[p.id] >= 0) { ctx.fillStyle = color(s.owner[p.id]); ctx.globalAlpha = b.remaining > 0 ? 0.35 : 0.8; ctx.beginPath(); ctx.arc(x, y, 10 * k, 0, Math.PI * 2); ctx.fill(); ctx.globalAlpha = 1; }
+    else { ctx.strokeStyle = INK; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, 10 * k, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
     ctx.strokeStyle = b ? PAPER : VEIN_INK[vein.kind]; ctx.lineWidth = 2;
-    icon(ctx, vein.kind, x, y);
-    if (v.scale >= 0.7) label(ctx, roman(vein.richness), x + 12, y - 9, 10);
+    icon(ctx, vein.kind, x, y, k);
+    if (v.scale >= VEIN_DETAIL) label(ctx, roman(vein.richness), x + 12 * k, y - 9 * k, Math.round(10 * Math.sqrt(k)));
   });
   if (v.scale >= LOT_DETAIL) s.lots.forEach((lots, id) => {
     if (s.owner[id] !== 0 || !s.city[id]) return;
     const open = CITY.lots[cityLevel(s, id)];
     lots.forEach((b, lot) => {
-      const spot = pm.provinces[id].lots[lot], [x, y] = P(spot.x, spot.y);
+      const [x, y] = lotOnScreen(s, pm, v, id, lot);
       if (!onScreen(v, x, y)) return;
       ctx.strokeStyle = INK; ctx.lineWidth = 1.4;
       if (!b) {
-        ctx.globalAlpha = lot < open ? 1 : 0.35; ctx.setLineDash([3, 3]); ctx.strokeRect(x - 8, y - 8, 16, 16); ctx.setLineDash([]);
-        if (lot >= open) { ctx.strokeRect(x - 3, y - 1, 6, 5); ctx.beginPath(); ctx.arc(x, y - 2, 2.5, Math.PI, 0); ctx.stroke(); } // cadeado
+        ctx.globalAlpha = lot < open ? 1 : 0.35; ctx.setLineDash([3, 3]); ctx.strokeRect(x - 8 * kl, y - 8 * kl, 16 * kl, 16 * kl); ctx.setLineDash([]);
+        if (lot >= open) { ctx.strokeRect(x - 3 * kl, y - kl, 6 * kl, 5 * kl); ctx.beginPath(); ctx.arc(x, y - 2 * kl, 2.5 * kl, Math.PI, 0); ctx.stroke(); } // cadeado
         ctx.globalAlpha = 1;
         return;
       }
       ctx.setLineDash(b.remaining > 0 ? [3, 3] : []); ctx.lineWidth = 2;
-      icon(ctx, b.type, x, y);
+      icon(ctx, b.type, x, y, kl);
       ctx.setLineDash([]);
-      if (v.scale >= 2) label(ctx, BUILDINGS[b.type].name, x, y + 15, 9, 'italic');
+      if (v.scale >= 2) label(ctx, BUILDINGS[b.type].name, x, y + 15 * kl, Math.round(9 * Math.sqrt(kl)), 'italic');
     });
   });
   for (let id = 0; id < s.owner.length; id++) {
@@ -126,37 +131,40 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     if (!c) continue;
     const [x, y] = P(c.x, c.y);
     if (!onScreen(v, x, y)) continue;
-    const level = cityLevel(s, id), r = CITY_R - 2 + level;
+    const level = cityLevel(s, id), r = cityRadius(level, v.scale), capital = s.nations.some(n => n.alive && n.capital === id);
+    if (capital) { ctx.fillStyle = GOLD; ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r + 5, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); } // aro dourado: capital de longe
     ctx.fillStyle = color(s.owner[id]); ctx.strokeStyle = INK; ctx.lineWidth = 2; ctx.setLineDash(s.city[id]!.remaining > 0 ? [4, 2] : []);
     ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2); ctx.fill(); ctx.stroke(); ctx.setLineDash([]);
     const ink = unrestInk(s.stability[id]);
     if (ink) { ctx.strokeStyle = ink; ctx.lineWidth = 3; ctx.beginPath(); ctx.arc(x, y, r + 2, 0, Math.PI * 2); ctx.stroke(); }
     if (s.strikes.some(k => k.province === id)) label(ctx, '⚙', x - r - 6, y - r - 2, 12);
     if (s.revolts.some(k => k.province === id)) label(ctx, '🔥', x + r + 6, y + r + 2, 13);
-    if (s.nations.some(n => n.alive && n.capital === id)) { ctx.strokeStyle = PAPER; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r - 3, 0, Math.PI * 2); ctx.stroke(); }
+    if (capital) { ctx.strokeStyle = PAPER; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(x, y, r - 3, 0, Math.PI * 2); ctx.stroke(); }
     if (s.owner[id] === 0 && !s.connected[id]) { // desligada da capital: aro tracejado vermelho e ✕
       ctx.strokeStyle = CUT; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
       label(ctx, '✕', x + r + 4, y - r - 2, 10);
     }
     ctx.fillStyle = PAPER;
-    for (let i = 0; i < level; i++) { ctx.beginPath(); ctx.arc(x - (level - 1) * 3.5 + i * 7, y, 2.3, 0, Math.PI * 2); ctx.fill(); }
+    const g = r / 13; // pontos do nível acompanham o tamanho
+    for (let i = 0; i < level; i++) { ctx.beginPath(); ctx.arc(x + (i - (level - 1) / 2) * 7 * g, y, 2.3 * g, 0, Math.PI * 2); ctx.fill(); }
   }
   // colonizações
   for (const col of s.colonizing) {
     const site = pm.provinces[col.province].city;
     const [x, y] = P(site.x, site.y);
     if (!onScreen(v, x, y)) continue;
-    ctx.strokeStyle = INK; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(x, y + 8); ctx.lineTo(x, y - 12); ctx.stroke();
-    ctx.fillStyle = color(col.nation); ctx.beginPath(); ctx.moveTo(x, y - 12); ctx.lineTo(x + 12, y - 8); ctx.lineTo(x, y - 4); ctx.fill();
-    label(ctx, `${Math.ceil(col.remaining)} m`, x, y + 16, 10);
+    ctx.strokeStyle = INK; ctx.lineWidth = 1.5 * k; ctx.beginPath(); ctx.moveTo(x, y + 8 * k); ctx.lineTo(x, y - 12 * k); ctx.stroke();
+    ctx.fillStyle = color(col.nation); ctx.beginPath(); ctx.moveTo(x, y - 12 * k); ctx.lineTo(x + 12 * k, y - 8 * k); ctx.lineTo(x, y - 4 * k); ctx.fill();
+    label(ctx, `${Math.ceil(col.remaining)} m`, x, y + 16 * k, 10);
   }
   // ocupações: barra sob a cidade na cor do ocupante
   for (const e of s.occupations) {
     const site = pm.provinces[e.province].city, [x, y] = P(site.x, site.y);
     if (!onScreen(v, x, y)) continue;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x - 18, y + CITY_R + 4, 36, 5);
-    ctx.fillStyle = color(e.nation); ctx.fillRect(x - 18, y + CITY_R + 4, 36 * Math.min(1, e.progress / occupyMonths(s, e.province)), 5);
-    ctx.strokeStyle = INK; ctx.lineWidth = 1; ctx.strokeRect(x - 18, y + CITY_R + 4, 36, 5);
+    const by = y + cityRadius(cityLevel(s, e.province), v.scale) + 6;
+    ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x - 18, by, 36, 5);
+    ctx.fillStyle = color(e.nation); ctx.fillRect(x - 18, by, 36 * Math.min(1, e.progress / occupyMonths(s, e.province)), 5);
+    ctx.strokeStyle = INK; ctx.lineWidth = 1; ctx.strokeRect(x - 18, by, 36, 5);
   }
   // fortalezas (somem no continente inteiro, como os prédios: poluiriam o mapa)
   if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) {
@@ -164,9 +172,9 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     const [x, y] = P(site.x, site.y);
     if (!onScreen(v, x, y)) continue;
     ctx.fillStyle = NEUTRAL; ctx.strokeStyle = INK; ctx.lineWidth = 1.6; ctx.beginPath();
-    for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5; ctx.lineTo(x + Math.cos(a) * FORT_R, y + Math.sin(a) * FORT_R); }
+    for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5; ctx.lineTo(x + Math.cos(a) * FORT_R * k, y + Math.sin(a) * FORT_R * k); }
     ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = PAPER; ctx.font = 'bold 11px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = PAPER; ctx.font = `bold ${Math.round(11 * k)}px Georgia, serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(String(s.armies.find(t => t.home === f.province)?.battalions.length ?? 0), x, y + 1);
   }
   // exércitos (as guarnições de fortaleza ficam dentro do pentágono): de longe uma peça; de perto, as fichas dos batalhões

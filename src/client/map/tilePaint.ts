@@ -14,7 +14,7 @@ const TINT: Record<number, RGB> = {
 };
 
 /** Cor do alto-mar como `paintTile` a produz longe da costa (média da textura): fundo de fora do mundo. */
-export const OPEN_SEA = 'rgb(196,204,207)';
+export const OPEN_SEA = 'rgb(196,209,211)'; // medido no navegador ao lado do fundo
 
 const hash = (x: number, y: number) => {
   let h = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263);
