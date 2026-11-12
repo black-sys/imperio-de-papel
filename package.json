@@ -7,13 +7,55 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview --host",
     "test": "vitest run",
-    "perf": "tsx scripts/perf.ts"
+    "perf": "tsx scripts/perf.ts",
+    "app": "npm run build && electron .",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "devDependencies": {
     "@types/node": "^22.9.0",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "tsx": "^4.19.2",
     "typescript": "^5.6.3",
     "vite": "^5.4.10",
     "vitest": "^2.1.4"
+  },
+  "allowScripts": {
+    "electron@33.4.11": true
+  },
+  "version": "0.1.0",
+  "description": "Império de Papel — grand strategy 1760–1918 numa mesa de guerra cartográfica",
+  "author": "black-sys",
+  "main": "electron/main.cjs",
+  "build": {
+    "appId": "com.imperiodepapel.game",
+    "productName": "Imperio de Papel",
+    "files": [
+      "dist/**",
+      "electron/**",
+      "package.json"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "artifactName": "Imperio-de-Papel-${version}-${os}-${arch}.${ext}",
+    "linux": {
+      "target": [
+        "AppImage",
+        "tar.gz"
+      ],
+      "category": "Game"
+    },
+    "win": {
+      "target": [
+        "portable",
+        "zip"
+      ],
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "Imperio-de-Papel-${version}-portable.${ext}"
+    }
   }
 }
