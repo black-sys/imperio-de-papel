@@ -10,11 +10,13 @@ import type { GameState } from '../../sim/state';
 import { CELL } from '../../worldgen/constants';
 import type { ProvinceMap } from '../../worldgen/provinces';
 import { FONT_TEXT, FORT_DETAIL, FORT_R, GOLD, LOT_DETAIL, VEIN_DETAIL, INK, NEUTRAL, PAPER, REALM_COLORS, TROOP_H, TROOP_W, cityAt, cityRadius, formation, lotOnScreen, lotScale, markerScale, veinVisible } from './pick';
+import type { MapMode } from './modes';
 import { toScreen, type View } from './view';
 
 export interface MarkerOpts {
   selectedArmies: Set<number>; selectedProvince: number; pins: { x: number; y: number }[]; grid: MoveGrid | null;
   preview?: { path: number[]; ok: boolean } | null; // prévia da rota sendo traçada
+  mode?: MapMode; // modo do mapa (Político se ausente)
 }
 
 const CUT = '#b3261e', SUPPLY_INK = '#c9a227';
@@ -60,7 +62,7 @@ function upArrow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number)
 
 /** Chave do que os marcadores mostram: igual enquanto nada visível muda (posições ao pixel de tela). */
 export function markersKey(s: GameState, pm: ProvinceMap, v: View, o: MarkerOpts): string {
-  const parts: (string | number)[] = [v.cx, v.cy, v.scale, v.w, v.h, o.selectedProvince, o.pins.length, playerCapital(s)];
+  const parts: (string | number)[] = [v.cx, v.cy, v.scale, v.w, v.h, o.selectedProvince, o.pins.length, playerCapital(s), o.mode ?? 'political'];
   const open = v.scale >= ARMY.openScale;
   if (open) parts.push('open');
   for (const t of s.armies) {
@@ -131,7 +133,7 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
   // veios (de qualquer província) e lotes (das suas cidades, de perto)
   const k = markerScale(v.scale), kl = lotScale(v.scale), up = upgradeable(s, pm);
   for (const p of pm.provinces) p.veins.forEach((vein, i) => {
-    if (!veinVisible(s, p.id, i, v.scale)) return;
+    if (!veinVisible(s, p.id, i, v.scale, o.mode)) return;
     const [x, y] = P(vein.x, vein.y);
     if (!onScreen(v, x, y)) return;
     const b = s.veins[p.id][i];

@@ -6,6 +6,9 @@ import { borderSegments, provinceRings } from './outlines';
 import { FONT_TITLE, GOLD, INK, LOT_DETAIL, REALM_COLORS, cityRadius, lotScale } from './pick';
 import { drawableFor, type TileCache } from './tileCache';
 import { OPEN_SEA } from './tilePaint';
+import { provinceFill } from './modes';
+import { coverageMask } from '../../sim/routes';
+import type { MoveGrid } from '../../sim/movegrid';
 import { levelFor, TILE_PX, tileSpan, toScreen, visibleTiles, type View } from './view';
 
 const PAPER_BG = '#e9dcbc';
@@ -23,6 +26,7 @@ export class MapRenderer {
   private natBorders: Path2D | null = null;
   private realms = new Map<number, Path2D>();
   private hatches = new Map<string, CanvasPattern>();
+  private cover: { mask: Uint8Array; img: HTMLCanvasElement } | null = null;
   private labels: { id: number; x: number; y: number; name: string; size: number }[] = [];
   private pm: ProvinceMap | null = null;
   private cache: TileCache | null = null;
@@ -77,17 +81,28 @@ export class MapRenderer {
       ctx.drawImage(d.img, sx, sy, sub, sub, dx, dy, Math.ceil(bx) - dx, Math.ceil(by) - dy);
     }
     if (!s) return true;
+    const mode = o.mode ?? 'political';
+    if (mode === 'resources') { ctx.fillStyle = PAPER_BG; ctx.globalAlpha = 0.5; ctx.fillRect(0, 0, v.w, v.h); ctx.globalAlpha = 1; } // véu: os veios saltam
     // território e fronteiras em coordenadas do mundo
     ctx.setTransform(v.scale, 0, 0, v.scale, v.w / 2 - v.cx * v.scale, v.h / 2 - v.cy * v.scale);
     // território: véu leve + hachura de espaçamento fixo na tela; fronteira nacional na cor da nação, só do lado de dentro
     // (entre duas nações cada lado mostra a sua cor)
     this.nationalOutlines(s, pm);
-    for (const [owner, realm] of this.realms) {
-      const color = REALM_COLORS[owner] ?? REALM_COLORS[0], hatch = this.hatchFor(color);
-      ctx.fillStyle = color; ctx.globalAlpha = 0.08; ctx.fill(realm, 'evenodd');
+    if (mode !== 'political') { // outros modos: cor sólida por província (a legenda explica)
+      ctx.globalAlpha = 0.35;
+      s.owner.forEach((_, id) => { const f = provinceFill(s, id, mode); if (f && this.rings[id]) { ctx.fillStyle = f; ctx.fill(this.rings[id], 'evenodd'); } });
       ctx.globalAlpha = 1;
-      hatch.setTransform(new DOMMatrix().scale(1 / v.scale));
-      ctx.fillStyle = hatch; ctx.fill(realm, 'evenodd');
+      if (mode === 'network' && o.grid && s.nations[0]?.alive) this.drawCoverage(ctx, s, pm, o.grid);
+    }
+    for (const [owner, realm] of this.realms) {
+      const color = REALM_COLORS[owner] ?? REALM_COLORS[0];
+      if (mode === 'political') {
+        const hatch = this.hatchFor(color);
+        ctx.fillStyle = color; ctx.globalAlpha = 0.08; ctx.fill(realm, 'evenodd');
+        ctx.globalAlpha = 1;
+        hatch.setTransform(new DOMMatrix().scale(1 / v.scale));
+        ctx.fillStyle = hatch; ctx.fill(realm, 'evenodd');
+      }
       if (this.natBorders) {
         ctx.save(); ctx.clip(realm, 'evenodd');
         ctx.strokeStyle = color; ctx.lineWidth = 5 / v.scale; ctx.stroke(this.natBorders);
@@ -150,5 +165,20 @@ export class MapRenderer {
     h = this.ctx.createPattern(c, 'repeat')!;
     this.hatches.set(color, h);
     return h;
+  }
+
+  /** Alcance de suprimento do jogador (modo Rede): 1 px por célula, refeito só quando a máscara muda. */
+  private drawCoverage(ctx: CanvasRenderingContext2D, s: GameState, pm: ProvinceMap, grid: MoveGrid): void {
+    const mask = coverageMask(s, pm, grid, 0), S = grid.size;
+    if (this.cover?.mask !== mask) {
+      const img = document.createElement('canvas'); img.width = img.height = S;
+      const g = img.getContext('2d')!, data = g.createImageData(S, S);
+      for (let i = 0; i < mask.length; i++) if (mask[i]) { data.data[i * 4] = 0xc9; data.data[i * 4 + 1] = 0xa2; data.data[i * 4 + 2] = 0x27; data.data[i * 4 + 3] = 64; }
+      g.putImageData(data, 0, 0);
+      this.cover = { mask, img };
+    }
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.cover.img, 0, 0, S * CELL, S * CELL);
+    ctx.imageSmoothingEnabled = true;
   }
 }

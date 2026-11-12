@@ -258,7 +258,7 @@ export function updateSupply(s: GameState, pm: ProvinceMap, grid: MoveGrid, dt: 
 
 /** Células a ≤ SUPPLY.range de cidade ligada ou de rota pronta, ligada e não cortada. Refeito só quando a rede muda. */
 const coverCache = new WeakMap<GameState, Map<number, { sig: string; clock: number; mask: Uint8Array }>>();
-function coverageMask(s: GameState, pm: ProvinceMap, grid: MoveGrid, n: number): Uint8Array {
+export function coverageMask(s: GameState, pm: ProvinceMap, grid: MoveGrid, n: number): Uint8Array {
   const memo = coverCache.get(s)?.get(n);
   if (memo && memo.clock === s.clock && memo.mask.length === grid.size * grid.size) return memo.mask; // a rede não muda dentro do passo
   const live = s.routes.filter(r => r.owner === n && r.remaining <= 0 && !r.cut && s.connected[r.a] && s.connected[r.b]);

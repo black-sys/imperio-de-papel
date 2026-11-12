@@ -81,6 +81,9 @@
     #panel .secb.closed { display: none; }
     #panel small.nope { display: block; width: 100%; font-size: 11px; color: #8a7a5a; margin-top: -1px; }
     #panel button:not(.x) small { display: block; font-size: 10px; opacity: .85; }
+    #legend { position: fixed; z-index: 2; right: 12px; bottom: 34px; background: var(--paper); color: var(--ink); border: 2px solid var(--brass); border-radius: 6px; padding: 8px 12px; font-size: 13px; display: none; }
+    #legend h4 { margin: 0 0 6px; font: 16px var(--title); }
+    #legend .sw { display: inline-block; width: 12px; height: 12px; border: 1px solid #0006; margin-right: 6px; vertical-align: -1px; }
     #steps { position: fixed; z-index: 2; left: 12px; bottom: 34px; width: 300px; background: var(--rivets), var(--grain), var(--paper); color: var(--ink); border: 2px solid var(--brass); border-radius: 8px; padding: 12px 14px; box-shadow: var(--brass-frame), 0 4px 16px #0005; font-size: 13px; display: none; }
     #steps h4 { margin: 0 0 6px; font: italic 18px var(--title); }
     #steps li { margin: 3px 0; } #steps li.done { color: #6b8a4a; text-decoration: line-through; }
@@ -143,6 +146,7 @@
     <button id="letters" class="mail" title="Propostas das outras nações"><span class="lbl">Cartas</span> (0)</button>
     <button id="laws" title="Leis de emergência"><span class="lbl">Leis</span> (0)</button>
     <button id="journal" title="Últimas manchetes"><span class="lbl">Jornal</span></button>
+    <button id="mapmode" title="Modo do mapa (Tab)"><span class="lbl">Político</span></button>
     <span id="date"></span>
     <span id="speeds">
       <button data-speed="0" title="Pausa (espaço)"></button><button data-speed="1">1×</button><button data-speed="2">2×</button><button data-speed="4">4×</button><button data-speed="8">8×</button>
@@ -150,6 +154,7 @@
     </span>
   </div>
   <div id="alerts"></div>
+  <div id="legend"></div>
   <div id="steps"><h4>Primeiros passos</h4><ol id="steps-list"></ol><button id="steps-skip">Pular dicas</button></div>
   <div id="help">arrastar (botão direito ou do meio) / WASD: mover · roda: zoom · M: continente · espaço: pausa · clique / caixa: selecionar tropas · clique direito: mandar · Shift+1–9: salvar grupo · 1–9: chamar · Esc: soltar</div>
   <script type="module" src="/src/main.ts"></script>

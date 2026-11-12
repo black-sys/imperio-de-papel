@@ -25,6 +25,7 @@ import { tick } from './sim/tick';
 import { armyCap, battalionCount, mergeArmies, renameArmy, spawnArmy, splitArmy } from './sim/armies';
 import type { ProvinceMap } from './worldgen/provinces';
 import { parseSeed, randomSeed } from './worldgen/seed';
+import { MODES, MODE_LEGEND, MODE_NAME, type MapMode } from './client/map/modes';
 
 const client = new WorldClient();
 const canvas = document.getElementById('map') as HTMLCanvasElement;
@@ -98,6 +99,7 @@ const actions = {
     const c = pm.provinces[id].center;
     view = clampView({ ...view, cx: c.x, cy: c.y, scale: 1.5 });
     toast('Capital fundada. O tempo está pausado: espaço ou 1× para começar.');
+    renderLegend();
   },
   close: () => { selected = -1; focus = null; selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; lettersOpen = false; lawsOpen = false; journalOpen = false; ledgerOpen = false; inspect = -1; },
   decree: (law: LawKind) => game && report(decree(game, 0, law)),
@@ -145,8 +147,21 @@ initHud({
   getLink: () => `${location.origin}${location.pathname}?seed=${seed}`,
 });
 initTopbar(speed);
+// modo do mapa: Tab ou o botão da barra; legenda no canto (nada no Político nem antes da capital)
+let mapMode: MapMode = 'political';
+function nextMode(): void {
+  mapMode = MODES[(MODES.indexOf(mapMode) + 1) % MODES.length];
+  (document.getElementById('mapmode') as HTMLElement).innerHTML = `${icon('map')} <span class="lbl">${MODE_NAME[mapMode]}</span>`;
+  renderLegend();
+}
+function renderLegend(): void {
+  const el = document.getElementById('legend') as HTMLDivElement, show = mapMode !== 'political' && !!game && playerCapital(game) >= 0;
+  el.style.display = show ? 'block' : 'none';
+  if (show) el.innerHTML = `<h4>${MODE_NAME[mapMode]}</h4>${MODE_LEGEND[mapMode].map(([c, l]) => `<div><span class="sw" style="background:${c}"></span>${l}</div>`).join('')}`;
+}
+(document.getElementById('mapmode') as HTMLButtonElement).onclick = e => { nextMode(); (e.currentTarget as HTMLButtonElement).blur(); };
 // ícones a tinta da barra (o HTML estático só tem os rótulos)
-for (const [id, name, label] of [['ledger', 'ledger', 'Contas'], ['nations', 'nations', 'Nações'], ['journal', 'journal', 'Jornal']] as const)
+for (const [id, name, label] of [['ledger', 'ledger', 'Contas'], ['nations', 'nations', 'Nações'], ['journal', 'journal', 'Jornal'], ['mapmode', 'map', MODE_NAME.political]] as const)
   (document.getElementById(id) as HTMLElement).innerHTML = `${icon(name)} <span class="lbl">${label}</span>`;
 (document.querySelector('#speeds [data-speed="0"]') as HTMLElement).innerHTML = icon('pause');
 (document.getElementById('troops-ico') as HTMLElement).innerHTML = icon('battle');
@@ -168,8 +183,9 @@ const lettersButton = document.getElementById('letters') as HTMLButtonElement;
 // ---- teclado ----
 const keys = new Set<string>();
 window.addEventListener('keydown', e => {
-  if (e.target instanceof HTMLInputElement) return;
+  if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement || e.target instanceof HTMLTextAreaElement) return;
   const k = e.key.toLowerCase();
+  if (k === 'tab') { e.preventDefault(); nextMode(); return; }
   if (k === 'm') {
     // alterna entre o continente e a última vista de perto
     if (view.scale > minScale(view) * 1.01) { lastClose = view; view = clampView({ ...view, scale: 0 }); }
@@ -219,7 +235,7 @@ canvas.addEventListener('pointerup', e => {
   const b = box;
   down = null; box = null;
   if (b) return pickArmies(armiesInRect(game, view, b[0], b[1], b[2], b[3]), e.shiftKey);
-  const hit = pickAt(game, pm, view, e.clientX, e.clientY, false, pins); // alheios também: abrem só para leitura
+  const hit = pickAt(game, pm, view, e.clientX, e.clientY, false, pins, mapMode); // alheios também: abrem só para leitura
   inspect = -1; nationsOpen = false; lettersOpen = false; lawsOpen = false; journalOpen = false; ledgerOpen = false;
   if (routeFrom !== null) { // modo traçar rota: o clique numa cidade sua confirma; fora dela, sai do modo
     const target = routeTargetAt(pm, view, e.clientX, e.clientY); // a mesma consulta da prévia: tropa ao lado da cidade não engole o clique
@@ -369,7 +385,7 @@ function frame(now: number) {
     seenEvents = game.eventCount;
   }
   canvas.style.cursor = routeFrom !== null ? 'copy' : 'crosshair';
-  renderer.draw(game, view, { selectedArmies, selectedProvince: selected, pins, grid: moveGrid, preview }, box);
+  renderer.draw(game, view, { selectedArmies, selectedProvince: selected, pins, grid: moveGrid, preview, mode: mapMode }, box);
   setInfo({ fps });
   frames++;
   if (now - fpsT > 500) { fps = Math.round((frames * 1000) / (now - fpsT)); frames = 0; fpsT = now; }

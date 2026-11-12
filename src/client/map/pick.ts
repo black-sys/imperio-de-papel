@@ -44,14 +44,14 @@ export function lotOnScreen(s: GameState, pm: ProvinceMap, v: View, id: number, 
   return [cx + Math.cos(a) * min, cy + Math.sin(a) * min];
 }
 /** Veio aparece (e é clicável)? Livre/alheio só de mais perto; o seu explorado sempre. */
-export const veinVisible = (s: GameState, province: number, vein: number, scale: number) =>
-  scale >= VEIN_DETAIL || (s.owner[province] === 0 && !!s.veins[province]?.[vein]);
+export const veinVisible = (s: GameState, province: number, vein: number, scale: number, mode?: string) =>
+  scale >= VEIN_DETAIL || mode === 'resources' || (s.owner[province] === 0 && !!s.veins[province]?.[vein]);
 
 export type Pick = { kind: 'army'; id: number } | { kind: 'city' | 'fortress' | 'province'; province: number }
   | { kind: 'lot'; province: number; lot: number } | { kind: 'vein'; province: number; vein: number } | null;
 
 /** O que está sob o ponto da tela: tropa > cidade > fortaleza > província. */
-export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: number, mineOnly = true, pins: { x: number; y: number; province?: number }[] = []): Pick {
+export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: number, mineOnly = true, pins: { x: number; y: number; province?: number }[] = [], mode?: string): Pick {
   const PAD = 14; // folga além do retângulo da tropa (acima fica o número)
   // os seus exércitos vêm antes de tudo; os alheios, depois das cidades (rival parado na própria cidade não a esconde);
   // guarnições de fortaleza nunca (não aparecem: ficam dentro do pentágono)
@@ -75,7 +75,7 @@ export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: n
     const lots = pm.provinces[id].lots;
     for (let lot = 0; lot < lots.length; lot++) { const [lx, ly] = lotOnScreen(s, pm, v, id, lot); if (Math.hypot(lx - sx, ly - sy) <= SPOT_R * lotScale(v.scale)) return { kind: 'lot', province: id, lot }; }
   }
-  for (const p of pm.provinces) for (let i = 0; i < p.veins.length; i++) if (veinVisible(s, p.id, i, v.scale) && near(p.veins[i].x, p.veins[i].y, SPOT_R * markerScale(v.scale))) return { kind: 'vein', province: p.id, vein: i };
+  for (const p of pm.provinces) for (let i = 0; i < p.veins.length; i++) if (veinVisible(s, p.id, i, v.scale, mode) && near(p.veins[i].x, p.veins[i].y, SPOT_R * markerScale(v.scale))) return { kind: 'vein', province: p.id, vein: i };
   if (v.scale >= FORT_DETAIL) for (const f of s.fortresses) { const c = pm.provinces[f.province].city; if (c && near(c.x, c.y, FORT_R * markerScale(v.scale))) return { kind: 'fortress', province: f.province }; }
   // selo de capital sugerida (raio 11 px + folga): vale a província dele, mesmo que o centro caia fora dela
   for (const pin of pins) if (pin.province !== undefined && near(pin.x, pin.y, 13)) return { kind: 'province', province: pin.province };
