@@ -1,7 +1,8 @@
-import { ARMY, BUILDINGS, CITY, type BuildingType, type TroopType } from '../../sim/balance';
-import { cityLevel, playerCapital } from '../../sim/state';
+import { ARMY, BUILDINGS, CITY, MAX_LEVEL, QUOTA, type BuildingType, type TroopType } from '../../sim/balance';
+import { activeLevel, cityLevel, playerCapital, type Building } from '../../sim/state';
 import { occupyMonths } from '../../sim/conquest';
-import { checkUpgrade, checkUpgradeCity } from '../../sim/commands';
+import { afford } from '../../sim/commands';
+import { buildCost } from '../../sim/economy';
 import { roman } from '../labels';
 import type { MoveGrid } from '../../sim/movegrid';
 import type { GameState } from '../../sim/state';
@@ -24,14 +25,28 @@ const armyColor = (t: { owner: number; home: number }) => (t.owner === -1 && t.h
 const unrestInk = (v: number) => (v < 15 ? '#b3261e' : v < 40 ? '#c8641e' : v < 60 ? '#c9a227' : null);
 const onScreen = (v: View, px: number, py: number, m = 40) => px > -m && py > -m && px < v.w + m && py < v.h + m;
 
-/** O que da nação 0 pode ser melhorado agora (mesma validação do botão "Melhorar"): `c:<id>`, `l:<id>:<lot>`, `v:<id>:<veio>`. */
-export function upgradeable(s: GameState, pm: ProvinceMap): Set<string> {
-  const out = new Set<string>();
-  s.owner.forEach((o, id) => {
+/**
+ * O que da nação 0 pode ser melhorado agora: as regras de `checkUpgrade`/`checkUpgradeCity` (o botão "Melhorar"),
+ * com as cotas contadas uma vez (roda a cada quadro). `c:<id>`, `l:<id>:<lot>`, `v:<id>:<veio>`.
+ */
+export function upgradeable(s: GameState, _pm: ProvinceMap): Set<string> {
+  const out = new Set<string>(), have = new Map<string, number>(); // `<tipo>:<nível>` → prédios ativos nesse nível ou acima
+  let towns2 = 0;
+  const each = (f: (b: Building, id: number, place: string) => void) => s.owner.forEach((o, id) => {
     if (o !== 0) return;
-    if (s.city[id] && checkUpgradeCity(s, pm, id).ok) out.add(`c:${id}`);
-    s.lots[id].forEach((b, lot) => { if (b && checkUpgrade(s, pm, id, { lot }).ok) out.add(`l:${id}:${lot}`); });
-    s.veins[id].forEach((b, vein) => { if (b && checkUpgrade(s, pm, id, { vein }).ok) out.add(`v:${id}:${vein}`); });
+    s.lots[id].forEach((b, lot) => b && f(b, id, `l:${id}:${lot}`));
+    s.veins[id].forEach((b, vein) => b && f(b, id, `v:${id}:${vein}`));
+  });
+  each(b => { for (let l = 1; l <= activeLevel(b); l++) have.set(`${b.type}:${l}`, (have.get(`${b.type}:${l}`) ?? 0) + 1); });
+  s.owner.forEach((o, id) => { if (o === 0 && cityLevel(s, id) >= 2) towns2++; });
+  each((b, _id, key) => {
+    if (b.remaining > 0 || b.level >= MAX_LEVEL || (have.get(`${b.type}:${b.level}`) ?? 0) < QUOTA) return;
+    if (afford(s, buildCost(b.type, b.level + 1)).ok) out.add(key);
+  });
+  s.owner.forEach((o, id) => {
+    const c = s.city[id];
+    if (o !== 0 || !c || c.remaining > 0 || c.level >= MAX_LEVEL || (c.level + 1 === 3 && towns2 < QUOTA)) return;
+    if (afford(s, CITY.cost[c.level + 1]).ok) out.add(`c:${id}`);
   });
   return out;
 }
