@@ -118,7 +118,29 @@ describe('a IA declara pela inclinação', () => {
     expect(firstWar('expansionist', 3, 3, 2)).toBeLessThan(Infinity);
   });
   test('na média, a Militarista declara antes da Expansionista', () => {
-    const mean = (bent: Bent) => { let t = 0; for (let seed = 0; seed < 20; seed++) t += Math.min(300, firstWar(bent, seed, 3, 2)); return t / 20; };
+    const mean = (bent: Bent) => { let t = 0; for (let seed = 0; seed < 20; seed++) t += Math.min(300, firstWar(bent, seed, 5, 2)); return t / 20; };
     expect(mean('militarist')).toBeLessThan(mean('expansionist'));
+  });
+  /** Fronteira que só aparece no mês `meet` (nação já fundada há muito): mês da declaração, ou Infinity. */
+  const afterContact = (bent: Bent, seed: number, rivalBats: number, playerBats: number, meet = 100) => {
+    const s = two(bent, seed);
+    spawnArmy(s, 1, Array.from({ length: rivalBats }, () => 'line' as const), 180, 80);
+    spawnArmy(s, 0, Array.from({ length: playerBats }, () => 'line' as const), 60, 80);
+    for (let m = meet; m <= meet + 300; m++) {
+      s.month = m;
+      aiWarRoll(s, pm, 1);
+      if (s.nations[1].atWar.includes(0)) return m - meet;
+    }
+    return Infinity;
+  };
+  test('Militarista forte não ataca no primeiro ano de fronteira, mas ataca depois', () => {
+    const t = Array.from({ length: 20 }, (_, seed) => afterContact('militarist', seed, 8, 1));
+    for (const m of t) expect(m).toBeGreaterThanOrEqual(12);
+    expect(t.filter(m => m < Infinity).length).toBeGreaterThanOrEqual(15); // continua agressiva
+    expect(t.reduce((a, m) => a + Math.min(300, m), 0) / 20).toBeLessThan(80);
+  });
+  test('Militarista mais fraca (ou quase sem exército) não declara', () => {
+    expect(afterContact('militarist', 1, 3, 3)).toBe(Infinity);
+    expect(afterContact('militarist', 1, 3, 1)).toBe(Infinity); // 3 batalhões: abaixo do mínimo
   });
 });

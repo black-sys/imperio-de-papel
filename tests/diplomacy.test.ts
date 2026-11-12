@@ -108,6 +108,7 @@ describe('a IA respeita a relação ao declarar', () => {
       const s = trio('militarist');
       spawnArmy(s, 1, Array.from({ length: 8 }, () => 'line' as const), 190, 32);
       setup(s);
+      s.contact = { '0:1': 0, '1:2': 0 }; // fronteiras antigas: fora da carência de contato
       s.month = m;
       aiWarRoll(s, pm, 1);
       if (s.nations[1].atWar.length) return m;

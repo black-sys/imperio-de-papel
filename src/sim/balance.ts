@@ -92,7 +92,9 @@ export const COLONIZE = { money: 70, growth: 1.39, wood: 50, woodGrowth: 1.15, m
 // ---- nações (ciclo 4) ----
 export const DIFFICULTY = { easy: 0.7, normal: 1, hard: 1.3 }; // renda dos rivais (o jogador é sempre 1)
 export const MAX_RIVALS = 4;
-export const WAR = { militarist: 0.15, expansionist: 0.08, strongMult: 2, strongRatio: 1.5, graceMonths: 24 };
+// guerra da IA: chance mensal por vizinho; nada nos primeiros `contactGrace` meses de fronteira e a tensão sobe até `contactRamp`;
+// a Militarista só declara com `minRatio`× os batalhões do vizinho e pelo menos `minBattalions`
+export const WAR = { militarist: 0.05, expansionist: 0.03, strongMult: 2, strongRatio: 1.5, graceMonths: 24, contactGrace: 12, contactRamp: 24, minRatio: 1.2, minBattalions: 4 };
 export const OCCUPY = { base: 1, garrison: [0, 2, 3, 4], capital: 3 }; // meses para a província ocupada cair
 // pesos da IA por inclinação: fração das províncias com Guarnição; margem de força (batalhões) para atacar
 export const AI_BENT = {

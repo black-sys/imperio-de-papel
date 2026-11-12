@@ -82,6 +82,7 @@ export interface GameState {
   revolts: { province: number; since: number; army: number }[];
   headlines: { month: number; text: string }[]; // últimas manchetes (jornal)
   lastOffer: Record<string, number>; // "de:para:tipo" → mês da última proposta da IA (não repete por 12 meses)
+  contact: Record<string, number>; // "a:b" (a < b) → mês em que as fronteiras do par se encontraram (carência de guerra da IA)
   warSince: Record<string, number>; // "a:b" (a < b) → mês em que a guerra do par começou (cansaço)
   depot: Res[]; // por província: carga guardada enquanto a cidade está desligada da capital
   connected: boolean[]; // por província: ligada à capital por rotas prontas e não cortadas
@@ -94,7 +95,7 @@ export function newGame(pm: ProvinceMap, seed = 0): GameState {
     month: 0, speed: 0, seed, nations: [], colonizing: [], events: [], eventCount: 0,
     armies: [], nextArmyId: 1, recruiting: [], fortresses: [], battles: [], clock: 0, stepAcc: 0,
     stallWarned: {}, routes: [], nextRouteId: 1, occupations: [], result: null,
-    relations: [], pacts: [], nextPactId: 1, letters: [], pending: [], nextLetterId: 1, warSince: {}, lastOffer: {}, strikes: [], revolts: [], headlines: [],
+    relations: [], pacts: [], nextPactId: 1, letters: [], pending: [], nextLetterId: 1, warSince: {}, contact: {}, lastOffer: {}, strikes: [], revolts: [], headlines: [],
     stability: pm.provinces.map(() => 0), conquered: pm.provinces.map(() => -1e9), resentment: pm.provinces.map(() => -1e9), repressed: pm.provinces.map(() => -1e9),
     depot: pm.provinces.map(() => zeroRes()), connected: pm.provinces.map(() => false),
     owner: pm.provinces.map(() => -1),

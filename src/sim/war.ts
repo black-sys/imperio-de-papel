@@ -62,9 +62,12 @@ const battalions = (s: GameState, n: number) => s.armies.reduce((k, a) => k + (a
 /** Sorteio mensal de um rival contra cada vizinho de fronteira (no máximo uma declaração por mês). */
 export function aiWarRoll(s: GameState, pm: ProvinceMap, n: number): void {
   const me = s.nations[n];
-  if (!me?.alive || me.bent === 'industrial' || s.month - me.founded < WAR.graceMonths) return;
+  if (!me?.alive) return;
   const border = new Set<number>();
   s.owner.forEach((o, id) => { if (o === n) for (const q of pm.provinces[id].neighbors) { const v = s.owner[q]; if (v >= 0 && v !== n) border.add(v); } });
+  s.contact ??= {}; // partidas salvas antes do campo
+  for (const v of border) s.contact[warKey(n, v)] ??= s.month;
+  if (me.bent === 'industrial' || s.month - me.founded < WAR.graceMonths) return;
   const mine = battalions(s, n);
   for (const v of [...border].sort((x, y) => x - y)) {
     if (!s.nations[v]?.alive || me.atWar.includes(v)) continue;
@@ -72,10 +75,14 @@ export function aiWarRoll(s: GameState, pm: ProvinceMap, n: number): void {
     if (rel >= 15 || pactBetween(s, n, v, 'alliance')) continue; // relação cordial ou aliado: não declara
     // com trégua ou não agressão, só a Militarista hostil trai
     if ((pactBetween(s, n, v, 'nonaggression') || pactBetween(s, n, v, 'truce')) && !(me.bent === 'militarist' && rel < -50)) continue;
+    // tensão de fronteira: nada na carência, depois sobe até o máximo em `contactRamp` meses de contato
+    const met = s.month - s.contact[warKey(n, v)];
+    if (met < WAR.contactGrace) continue;
     const theirs = battalions(s, v);
     let p = 0;
-    if (me.bent === 'militarist') p = WAR.militarist * (mine >= WAR.strongRatio * theirs ? WAR.strongMult : 1);
+    if (me.bent === 'militarist') { if (mine >= WAR.minBattalions && mine >= WAR.minRatio * theirs) p = WAR.militarist * (mine >= WAR.strongRatio * theirs ? WAR.strongMult : 1); }
     else if (mine > theirs) p = WAR.expansionist;
+    p *= Math.min(1, met / WAR.contactRamp);
     if (rel < -50) p *= 2;
     if (p > 0 && makeRng(subSeed(s.seed, `war:${n}:${s.month}:${v}`))() < p) { declareWar(s, n, v, pm); return; }
   }
