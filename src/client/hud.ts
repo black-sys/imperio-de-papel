@@ -26,7 +26,10 @@ export function setProgress(stage: string | null, pct: number): void {
   $('progress').style.visibility = stage === null ? 'hidden' : 'visible';
 }
 
+const debug = new URLSearchParams(location.search).has('debug');
 export function setInfo(i: { fps: number }): void {
+  if (!debug) return;
+  $('info').classList.add('on');
   $('info').textContent = `${i.fps} fps`;
 }
 

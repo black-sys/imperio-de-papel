@@ -8,7 +8,7 @@ import type { MoveGrid } from '../../sim/movegrid';
 import type { GameState } from '../../sim/state';
 import { CELL } from '../../worldgen/constants';
 import type { ProvinceMap } from '../../worldgen/provinces';
-import { FORT_DETAIL, FORT_R, GOLD, LOT_DETAIL, VEIN_DETAIL, INK, NEUTRAL, PAPER, REALM_COLORS, TROOP_H, TROOP_W, cityAt, cityRadius, formation, lotOnScreen, lotScale, markerScale, veinVisible } from './pick';
+import { FONT_TEXT, FORT_DETAIL, FORT_R, GOLD, LOT_DETAIL, VEIN_DETAIL, INK, NEUTRAL, PAPER, REALM_COLORS, TROOP_H, TROOP_W, cityAt, cityRadius, formation, lotOnScreen, lotScale, markerScale, veinVisible } from './pick';
 import { toScreen, type View } from './view';
 
 export const TROOP_ICON: Record<TroopType, string> = { line: '🎖', artillery: '💣', cavalry: '🐎' };
@@ -105,7 +105,7 @@ function icon(ctx: CanvasRenderingContext2D, kind: BuildingType | 'grain' | 'woo
 const VEIN_INK: Record<string, string> = { grain: '#8a6a10', wood: '#3f5a2a', coal: '#2a2420', iron: '#5a5f66' };
 
 function label(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, size = 11, style = 'bold'): void {
-  ctx.font = `${style} ${size}px Georgia, 'Times New Roman', serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `${style} ${size}px ${FONT_TEXT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(243,231,201,0.85)'; ctx.strokeText(text, x, y);
   ctx.fillStyle = INK; ctx.fillText(text, x, y);
 }
@@ -213,7 +213,7 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     ctx.fillStyle = NEUTRAL; ctx.strokeStyle = INK; ctx.lineWidth = 1.6; ctx.beginPath();
     for (let i = 0; i < 5; i++) { const a = -Math.PI / 2 + (i * 2 * Math.PI) / 5; ctx.lineTo(x + Math.cos(a) * FORT_R * k, y + Math.sin(a) * FORT_R * k); }
     ctx.closePath(); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = PAPER; ctx.font = `bold ${Math.round(11 * k)}px Georgia, serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = PAPER; ctx.font = `bold ${Math.round(11 * k)}px ${FONT_TEXT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(String(s.armies.find(t => t.home === f.province)?.battalions.length ?? 0), x, y + 1);
   }
   // exércitos (as guarnições de fortaleza ficam dentro do pentágono): de longe uma peça; de perto, as fichas dos batalhões
@@ -242,7 +242,7 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
   for (const b of s.battles) {
     const [x, y] = P(b.x, b.y);
     if (!onScreen(v, x, y)) continue;
-    ctx.font = 'bold 22px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#7a1d14';
+    ctx.font = `bold 22px ${FONT_TEXT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#7a1d14';
     ctx.fillText('⚔', x, y - 26);
     b.sides.forEach((side, i) => {
       ctx.fillStyle = 'rgba(0,0,0,0.35)'; ctx.fillRect(x - 20, y - 12 + i * 6, 40, 4);
@@ -254,7 +254,7 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     const [x, y] = P(p.x, p.y);
     ctx.fillStyle = '#8a2a20'; ctx.strokeStyle = PAPER; ctx.lineWidth = 2;
     ctx.beginPath(); ctx.arc(x, y, 11, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-    ctx.fillStyle = PAPER; ctx.font = 'bold 13px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('♜', x, y + 1);
+    ctx.fillStyle = PAPER; ctx.font = `bold 13px ${FONT_TEXT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('♜', x, y + 1);
   }
   ctx.restore();
 }
@@ -333,7 +333,7 @@ function piece(ctx: CanvasRenderingContext2D, type: TroopType, fill: string, x: 
 /** Ficha de um batalhão (menor que a peça), com os homens embaixo. */
 function chip(ctx: CanvasRenderingContext2D, type: TroopType, soldiers: number, fill: string, x: number, y: number): void {
   piece(ctx, type, fill, x, y, 20, 13);
-  ctx.font = 'bold 9px Georgia, serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.font = `bold 9px ${FONT_TEXT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.lineWidth = 2.5; ctx.strokeStyle = 'rgba(243,231,201,0.85)'; ctx.strokeText(String(soldiers), x, y + 13);
   ctx.fillStyle = INK; ctx.fillText(String(soldiers), x, y + 13);
 }

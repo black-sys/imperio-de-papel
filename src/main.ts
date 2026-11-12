@@ -343,15 +343,15 @@ function frame(now: number) {
     const me = game.nations[0], own = me ? game.owner.map((o, id) => (o === 0 && game!.city[id] ? game!.stability[id] : -1)).filter(v => v >= 0) : [];
     const avg = own.length ? Math.round(own.reduce((a, b) => a + b, 0) / own.length) : 0, stab = document.getElementById('stab')!;
     if (stab.textContent !== `☮ ${avg}`) { stab.innerHTML = `☮ <b>${avg}</b>`; stab.classList.toggle('low', avg < 40); }
-    const lawsText = `Leis (${me?.laws.length ?? 0})`, lawsBtn = document.getElementById('laws')!;
-    if (lawsBtn.textContent !== lawsText) lawsBtn.textContent = lawsText;
+    const lawsText = `<span class="lbl">Leis</span> (${me?.laws.length ?? 0})`, lawsBtn = document.getElementById('laws')!;
+    if (lawsBtn.innerHTML !== lawsText) lawsBtn.innerHTML = lawsText;
     // manchetes novas entram na fila da faixa
     const hs = game.headlines, from = lastHeadline ? hs.indexOf(lastHeadline) + 1 : 0;
     if (hs.length && hs.at(-1) !== lastHeadline) { headlineQueue.push(...hs.slice(from)); lastHeadline = hs.at(-1)!; }
     showHeadline(now);
     renderSteps();
-    const mail = `✉ Cartas (${game.letters.length})`;
-    if (lettersButton.textContent !== mail) lettersButton.textContent = mail;
+    const mail = `✉ <span class="lbl">Cartas</span> (${game.letters.length})`;
+    if (lettersButton.innerHTML !== mail) lettersButton.innerHTML = mail;
     if (game.result && !endShown) { // fim de partida: pausa e mostra o resultado
       endShown = true; speed(0);
       (document.getElementById('end-title') as HTMLElement).textContent = game.result === 'victory' ? 'Vitória' : 'Derrota';
@@ -371,6 +371,7 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+document.fonts.ready.then(() => renderer.invalidate()); // nomes do mapa desenhados antes das fontes chegarem
 if (import.meta.env.DEV) { // para testes no console
   Object.assign(window, { renderer, tiles, selectedArmies, sim: { recruit, moveArmies, spawnArmy, addFortress, chooseCapital, startGame, planRoute, declareWar } });
   Object.defineProperties(window, {
