@@ -1,32 +1,30 @@
-# Mundo procedural (protótipo)
+# Império de Papel
 
-Gerador de continente determinístico por semente + visualizador isométrico low-poly no navegador.
+Estratégia em tempo real de 1760 a 1918, jogada sobre um mapa cartográfico antigo: funde a capital, colonize
+províncias, explore veios, ligue as cidades por rotas, treine exércitos de batalhões, negocie (paz, comércio,
+alianças) e segure a ordem interna (greves, revoltas, leis de emergência) contra até quatro nações rivais.
+Offline, um jogador; cada semente gera um continente diferente.
 
-## Rodar
+## Baixar (build de teste)
+
+Veja a página **Releases** do repositório:
+
+- **Windows:** `Imperio-de-Papel-<versão>-portable.exe` (dois cliques, sem instalar) ou o `.zip`.
+  O executável não é assinado: no aviso do Windows, use "Mais informações" → "Executar assim mesmo".
+- **Linux:** `.AppImage` (`chmod +x` e rodar) ou `.tar.gz`.
+
+## Rodar a partir do código
 
 ```bash
 npm install
-npm run dev        # http://localhost:5173/?seed=860
-npm test           # testes do gerador
-npm run perf       # tempo da fase global e dos chunks
+npm run dev          # navegador: http://localhost:5173/?seed=860
+npm test             # testes da simulação
+npm run app          # abre em janela própria (Electron)
+npm run dist:win     # gera os pacotes de Windows em release/
+npm run dist:linux   # gera os pacotes de Linux em release/
 ```
-
-## Compartilhar com amigos (seu PC como servidor)
-
-```bash
-npm run build
-npm run preview    # serve dist/ em 0.0.0.0:4173
-```
-
-Escolha um jeito de dar acesso, sem abrir porta no roteador:
-
-- **Tailscale** (recomendado para um grupo fixo): todos instalam o Tailscale e entram na mesma tailnet;
-  os amigos abrem `http://<ip-tailscale-do-seu-pc>:4173/?seed=860`.
-- **Cloudflare Tunnel** (link público temporário, sem conta):
-  `cloudflared tunnel --url http://localhost:4173` e envie a URL `https://….trycloudflare.com/?seed=860`.
-
-A mesma semente gera o mesmo mundo para todos — o botão "Copiar link" copia a URL com `?seed=`.
 
 ## Controles
 
-WASD ou clique: andar · Q/E: girar câmera · roda do mouse: zoom · M: mapa-múndi (clique para teleportar)
+Arrastar com o botão direito/do meio ou WASD: mover · roda: zoom · M: continente · espaço: pausa ·
+clique/caixa: selecionar exércitos · clique direito: mandar · Shift+1–9: salvar grupo · 1–9: chamar · Esc: soltar
