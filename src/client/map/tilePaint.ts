@@ -6,13 +6,15 @@ import { MAX_SCALE, TILE_PX, tileSpan } from './view';
 
 type RGB = [number, number, number];
 const CHUNK_SCALE = 1.5; // px/tile a partir do qual os ladrilhos usam os dados de chunk (por tile)
-const PAPER: RGB = [240, 228, 198], FRESH: RGB = [110, 145, 160], INK: RGB = [62, 42, 24], TREE: RGB = [70, 95, 55];
+const PAPER: RGB = [240, 228, 198], FRESH: RGB = [110, 145, 160], INK: RGB = [62, 42, 24];
 const TINT: Record<number, RGB> = {
-  [Biome.Ocean]: [150, 178, 180], [Biome.Beach]: [226, 208, 160], [Biome.Snow]: [236, 234, 226], [Biome.Taiga]: [150, 165, 128],
-  [Biome.TemperateForest]: [168, 182, 130], [Biome.Grassland]: [204, 205, 150], [Biome.Swamp]: [158, 165, 130], [Biome.Savanna]: [214, 196, 140],
-  [Biome.Desert]: [226, 200, 150], [Biome.Jungle]: [140, 168, 116], [Biome.Mountain]: [180, 168, 150],
+  [Biome.Ocean]: [150, 178, 180], [Biome.Beach]: [226, 208, 160], [Biome.Snow]: [236, 234, 226], [Biome.Taiga]: [92, 114, 92],
+  [Biome.TemperateForest]: [104, 136, 78], [Biome.Grassland]: [204, 205, 150], [Biome.Swamp]: [138, 150, 118], [Biome.Savanna]: [214, 196, 140],
+  [Biome.Desert]: [226, 200, 150], [Biome.Jungle]: [88, 140, 78], [Biome.Mountain]: [180, 168, 150],
 };
-const TREE_KINDS = new Set(['tree', 'pine', 'cactus']);
+
+/** Cor do alto-mar como `paintTile` a produz longe da costa (média da textura): fundo de fora do mundo. */
+export const OPEN_SEA = 'rgb(196,204,207)';
 
 const hash = (x: number, y: number) => {
   let h = Math.imul(x | 0, 374761393) + Math.imul(y | 0, 668265263);
@@ -61,7 +63,8 @@ function seaDistance(map: WorldMap): Float32Array {
 interface Grid { res: number; ox: number; oy: number; n: number; wet: Float32Array; river: Float32Array; shade: Float32Array; tr: Float32Array; tg: Float32Array; tb: Float32Array }
 
 function buildGrid(map: WorldMap, L: number, x0: number, y0: number, span: number, chunk: (cx: number, cy: number) => ChunkData): Grid {
-  const res = MAX_SCALE / 2 ** L >= CHUNK_SCALE ? 1 : CELL, PAD = 2, n = Math.ceil(span / res) + 2 * PAD;
+  // folga: 2 nós (bilinear + gradiente) + o alcance dos borrões abaixo, para a emenda sair igual dos dois lados
+  const res = MAX_SCALE / 2 ** L >= CHUNK_SCALE ? 1 : CELL, HB = res === 1 ? 4 : 1, PAD = 2 + 2 * HB, n = Math.ceil(span / res) + 2 * PAD;
   const gx0 = Math.floor(x0 / res) - PAD, gy0 = Math.floor(y0 / res) - PAD, N = n * n;
   const wet = new Float32Array(N), river = new Float32Array(N), height = new Float32Array(N), biome = new Uint8Array(N), shade = new Float32Array(N);
   if (res === 1) {
@@ -81,6 +84,8 @@ function buildGrid(map: WorldMap, L: number, x0: number, y0: number, span: numbe
       height[k] = (map.elevation[c] - SEA_LEVEL) * HEIGHT_SCALE;
     }
   }
+  // a erosão deixa sulcos retos de uma célula (4 tiles) que a luz rasante vira faixas: o relevo é sombreado já sem eles
+  blur(height, n, HB); blur(height, n, HB);
   // relevo: luz de noroeste; mais suave de longe
   const hk = 0.18 * Math.min(1, (MAX_SCALE / 2 ** L) * 1.5);
   for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
@@ -91,6 +96,8 @@ function buildGrid(map: WorldMap, L: number, x0: number, y0: number, span: numbe
   // cor do bioma por nó, interpolada depois por pixel: de perto a troca de bioma vira uma passagem suave, não quadrados
   const tr = new Float32Array(N), tg = new Float32Array(N), tb = new Float32Array(N);
   for (let k = 0; k < N; k++) { const t = TINT[biome[k]] ?? TINT[Biome.Grassland]; tr[k] = t[0]; tg[k] = t[1]; tb[k] = t[2]; }
+  // o bioma vem por célula (4 tiles): sem borrão, a borda vira degraus
+  for (const a of [tr, tg, tb]) blur(a, n, res === 1 ? 3 : 1);
   // na resolução de tile, água e rio passam por um borrão 3×3: o contorno sai arredondado em vez de em degraus
   if (res === 1) for (const a of [wet, river]) {
     const src = a.slice();
@@ -146,28 +153,16 @@ export function paintTile(map: WorldMap, L: number, tx: number, ty: number, chun
     if (m === 0 && (water[q + 1] === 1 || water[q - 1] === 1 || water[q + P] === 1 || water[q - P] === 1)) { r = r * 0.15 + INK[0] * 0.85; gg = gg * 0.15 + INK[1] * 0.85; b = b * 0.15 + INK[2] * 0.85; }
     out[o] = r; out[o + 1] = gg; out[o + 2] = b; out[o + 3] = 255;
   }
-  if (scale >= CHUNK_SCALE) trees(out, chunk, x0, y0, span, scale, scale < 3 ? 2 : 1, water, P);
   return out;
 }
 
-/** Pontinhos verdes nas posições reais das árvores (1 a cada `every`). */
-function trees(out: Uint8ClampedArray, chunk: (cx: number, cy: number) => ChunkData, x0: number, y0: number, span: number, scale: number, every: number, water: Uint8Array, P: number): void {
-  const r = Math.min(1.5 * scale, 5), rr = r * r; // de muito perto a copa não cresce sem fim
-  // chunks que tocam o ladrilho, com folga de 1 tile (árvores na borda aparecem dos dois lados)
-  for (let cy = Math.floor((y0 - 1) / CHUNK); cy <= Math.floor((y0 + span) / CHUNK); cy++)
-    for (let cx = Math.floor((x0 - 1) / CHUNK); cx <= Math.floor((x0 + span) / CHUNK); cx++) {
-      const c = chunk(cx, cy);
-      c.resources.forEach((res, n) => {
-        if (!TREE_KINDS.has(res.kind) || (every > 1 && n % every)) return;
-        const sx = (res.x - x0) * scale, sy = (res.y - y0) * scale;
-        if (sx < -r || sy < -r || sx > TILE_PX + r || sy > TILE_PX + r) return;
-        for (let py = Math.max(0, Math.floor(sy - r)); py <= Math.min(TILE_PX - 1, Math.ceil(sy + r)); py++)
-          for (let px = Math.max(0, Math.floor(sx - r)); px <= Math.min(TILE_PX - 1, Math.ceil(sx + r)); px++) {
-            const dx = px + 0.5 - sx, dy = py + 0.5 - sy;
-            if (dx * dx + dy * dy > rr || water[(py + 1) * P + px + 1]) continue;
-            const o = (py * TILE_PX + px) * 4, a = 0.55;
-            out[o] = out[o] * (1 - a) + TREE[0] * a; out[o + 1] = out[o + 1] * (1 - a) + TREE[1] * a; out[o + 2] = out[o + 2] * (1 - a) + TREE[2] * a;
-          }
-      });
+/** Borrão de caixa separável de raio r nós, no lugar (bordas presas). */
+function blur(a: Float32Array, n: number, r: number): void {
+  const tmp = new Float32Array(a.length), w = 1 / (2 * r + 1);
+  for (const [src, dst, sx, sy] of [[a, tmp, 1, n], [tmp, a, n, 1]] as const)
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      let sum = 0;
+      for (let d = -r; d <= r; d++) { const q = Math.min(n - 1, Math.max(0, i + d)); sum += src[j * sy + q * sx]; }
+      dst[j * sy + i * sx] = sum * w;
     }
 }

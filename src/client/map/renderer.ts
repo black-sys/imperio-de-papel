@@ -5,9 +5,9 @@ import { drawMarkers, markersKey, type MarkerOpts } from './markers';
 import { borderSegments, provinceRings } from './outlines';
 import { GOLD, INK, REALM_COLORS } from './pick';
 import { drawableFor, type TileCache } from './tileCache';
+import { OPEN_SEA } from './tilePaint';
 import { levelFor, TILE_PX, tileSpan, toScreen, visibleTiles, type View } from './view';
 
-const PAPER_BG = '#e9dcbc';
 
 /** Desenha o mapa num Canvas 2D: ladrilhos → território → fronteiras → nomes → marcadores → caixa. Só quando algo muda. */
 export class MapRenderer {
@@ -49,7 +49,7 @@ export class MapRenderer {
     this.key = key;
     this.paints++;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = PAPER_BG; ctx.fillRect(0, 0, v.w, v.h);
+    ctx.fillStyle = OPEN_SEA; // fora do mundo: mar aberto sem fim ctx.fillRect(0, 0, v.w, v.h);
     if (!pm || !cache) return true;
     // ladrilhos (ou o substituto do nível acima, recortado na área deste)
     ctx.imageSmoothingEnabled = true;

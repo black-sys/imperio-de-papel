@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest';
-import { makeChunkCache, paintTile } from '../src/client/map/tilePaint';
+import { OPEN_SEA, makeChunkCache, paintTile } from '../src/client/map/tilePaint';
 import { TILE_PX, tileSpan } from '../src/client/map/view';
 import { generateWorld } from '../src/worldgen/global/world';
 import { generateProvinces } from '../src/worldgen/provinces';
@@ -74,5 +74,34 @@ describe('ladrilho em aquarela', { timeout: 60000 }, () => {
     t = performance.now();
     for (let i = 0; i < 12; i++) paintTile(map, 5, (t5.x + i) % 8, t5.y, chunk);
     expect((performance.now() - t) / 12).toBeLessThan(15);
+  });
+});
+
+describe('mapa limpo (ciclo 8)', { timeout: 120000 }, () => {
+  const map2 = generateWorld(2209734144), pm2 = generateProvinces(map2), chunk2 = makeChunkCache(map2);
+  const capital = pm2.provinces.find(p => p.name === 'Valimoronddor')!.city;
+  const lum = (img: Uint8ClampedArray, x: number, y: number) => { const p = px(img, x, y); return p[0] * 0.3 + p[1] * 0.59 + p[2] * 0.11; };
+  test('floresta sem pontinhos nem degraus: quase nenhum salto brusco entre pixels vizinhos', () => {
+    // ladrilho L0 na borda floresta/planície ao lado da capital (as capturas do teste)
+    const t = tileOf(0, capital.x - 16, capital.y), img = paintTile(map2, 0, t.x, t.y, chunk2);
+    let sharp = 0;
+    for (let y = 0; y < TILE_PX; y++) for (let x = 0; x < TILE_PX - 1; x++) if (Math.abs(lum(img, x, y) - lum(img, x + 1, y)) > 10) sharp++;
+    expect(sharp / (TILE_PX * TILE_PX)).toBeLessThan(0.01); // com os pontinhos de árvore: ~3%
+  });
+  test('sem faixas verticais: a ondulação das colunas não se repete de cima para baixo', () => {
+    // planície ao norte da capital (3×2 ladrilhos L0), onde a erosão deixou sulcos retos norte–sul
+    const t0 = tileOf(0, capital.x - 32, capital.y - 42), C = 3, R = 2, W = C * TILE_PX, Hh = R * TILE_PX;
+    const tiles = Array.from({ length: C * R }, (_, i) => paintTile(map2, 0, t0.x + (i % C), t0.y + Math.floor(i / C), chunk2));
+    const L = (x: number, y: number) => lum(tiles[Math.floor(y / TILE_PX) * C + Math.floor(x / TILE_PX)], x % TILE_PX, y % TILE_PX);
+    const prof = (n: number, m: number, f: (i: number, k: number) => number) => Array.from({ length: n }, (_, i) => { let s = 0; for (let k = 0; k < m; k++) s += f(i, k); return s / m; });
+    // faixa = a mesma ondulação de colunas na metade de cima e na de baixo; textura e árvores não se repetem
+    const detr = (a: number[]) => a.map((v, i) => { let m = 0, n = 0; for (let d = -15; d <= 15; d++) if (a[i + d] !== undefined) { m += a[i + d]; n++; } return v - m / n; });
+    const top = detr(prof(W, TILE_PX / 2, (x, y) => L(x, y))), bot = detr(prof(W, TILE_PX / 2, (x, y) => L(x, y + TILE_PX / 2)));
+    const dot = (a: number[], b: number[]) => a.reduce((s, v, i) => s + v * b[i], 0), corr = dot(top, bot) / Math.sqrt(dot(top, top) * dot(bot, bot));
+    expect(corr).toBeLessThan(0.3);
+  });
+  test('fora do mundo é alto-mar: o fundo casa com o mar aberto dos ladrilhos', () => {
+    const img = paintTile(map2, 3, 0, 0, chunk2), m = OPEN_SEA.match(/\d+/g)!.map(Number); // canto do mundo: só mar
+    for (const [x, y] of [[5, 5], [100, 40], [180, 180]]) { const p = px(img, x, y); for (let c = 0; c < 3; c++) expect(Math.abs(p[c] - m[c])).toBeLessThanOrEqual(8); }
   });
 });
