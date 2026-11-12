@@ -56,7 +56,7 @@ const TROOP_TYPES: TroopType[] = ['line', 'artillery', 'cavalry'];
 const esc = (s: string) => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
 const bar = (label: string, v: number) => `<div class="fac"><span>${label}</span><i><b style="width:${(v / 1.5) * 100}%"></b></i><em>${v.toFixed(2)}</em></div>`;
 const button = (action: string, label: string, r: Result, extra = '', fx?: Effect) =>
-  `<button data-a="${action}" ${r.ok ? '' : 'disabled'} title="${esc([r.ok ? '' : r.reason, fx?.tip ?? ''].filter(Boolean).join('\n'))}">${label}${extra}</button>${fx?.line ?? ''}${r.ok ? '' : `<small class="why">${esc(r.reason)}</small>`}`;
+  `<button data-a="${action}" ${r.ok ? '' : 'disabled'} title="${esc([r.ok ? '' : r.reason, fx?.tip ?? ''].filter(Boolean).join('\n'))}">${label}${extra}</button>${fx?.line ?? ''}${r.ok ? '' : `<small class="nope">${esc(r.reason)}</small>`}`;
 
 type Effect = { line: string; tip: string };
 let effectState: { s: GameState; pm: ProvinceMap } | null = null; // estado do painel em desenho (para as prévias)
@@ -107,7 +107,8 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
   const owner = playerCapital(s) === id ? 'Sua capital' : mine ? 'Sua nação' : rival ? `${swatch(rival.id)}${esc(rival.name)}${rival.capital === id ? ' · capital' : ''}` : fort ? 'Fortaleza neutra' : 'Neutra';
   let html = `<button class="x" data-a="close">✕</button><h2>${esc(p.name)}</h2>
     <div class="sub">${owner} · ${BIOME_NAMES[p.biome]}${p.coastal ? ' · costeira' : ''}</div>
-    ${bar('Fertilidade', p.fertility)}${occupationHtml(s, pm, id)}${s.owner[id] >= 0 && s.city[id] ? stabilityHtml(s, pm, id) : ''}`;
+    ${mine ? provinceSummary(s, pm, id) : ''}${bar('Fertilidade', p.fertility)}${occupationHtml(s, pm, id)}${!mine && s.owner[id] >= 0 && s.city[id] ? stabilityHtml(s, pm, id) : ''}<div>`;
+  if (mine) html += sec('Estabilidade') + stabilityHtml(s, pm, id);
   if (playerCapital(s) < 0) {
     html += pm.suggestedCapitals.includes(id)
       ? `<p>Uma boa terra para começar. Por perto: ${esc(veinsAround(pm, id))}.</p><button class="big" data-a="found">Fundar capital aqui</button>`
@@ -130,7 +131,7 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
     // cidade
     const cityWork = c.remaining > 0 ? ` <small>(subindo ao nível ${c.level}: ${c.remaining.toFixed(1)} meses)</small>` : '';
     const up = c.level < 3 && c.remaining === 0 ? button('upc', 'Melhorar cidade', checkUpgradeCity(s, pm, id), ` <small>${costText({ ...CITY.cost[c.level + 1], months: CITY.months[c.level + 1] })}</small>`, effect({ kind: 'upgradeCity', province: id })) : '';
-    html += `<h3>Cidade</h3><div class="slot"><b>${['', 'Vila', 'Cidade', 'Metrópole'][lvl]} ${stars(lvl)}</b>${cityWork}
+    html += `${sec('Cidade')}<div class="slot"><b>${['', 'Vila', 'Cidade', 'Metrópole'][lvl]} ${stars(lvl)}</b>${cityWork}
       <div class="sub">Impostos ${RES_ICON.money}${cityTax(s, pm, id).toFixed(1)}/mês · consome ${RES_ICON.grain}${CITY.grain[lvl]}/mês</div><div class="act">${up}</div></div>`;
     // ligação com a capital e rotas
     const dep = (Object.keys(RES_ICON) as (keyof typeof RES_ICON)[]).filter(k => s.depot[id][k] >= 0.5).map(k => `${RES_ICON[k]}${Math.floor(s.depot[id][k])}`).join(' ');
@@ -141,9 +142,9 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
       const other = r.a === id ? r.b : r.a, state = r.remaining > 0 ? `em obra ${r.remaining.toFixed(1)} meses` : r.cut ? '<span class="why">cortada</span>' : 'pronta';
       return `<div class="slot">→ ${name(other)} · ${state} <button data-a="rr:${r.id}">Remover</button></div>`;
     }).join('');
-    html += `<h3>Rotas</h3>${rows || '<p class="sub">Nenhuma rota.</p>'}<div class="act"><button data-a="route">Traçar rota (R)</button></div>`;
+    html += `${sec('Rotas')}${rows || '<p class="sub">Nenhuma rota.</p>'}<div class="act"><button data-a="route">Traçar rota (R)</button></div>`;
     // lotes
-    html += `<h3>Lotes</h3>`;
+    html += sec('Lotes');
     s.lots[id].forEach((b, lot) => {
       const place: Place = { lot }, key = placeKey(place);
       if (lot >= CITY.lots[lvl]) { html += `<div class="slot empty" id="${key}"><b>🔒 Lote ${lot + 1}</b><small class="why">Libera com a cidade nível ${CITY.lots.findIndex(n => n > lot)}</small></div>`; return; }
@@ -169,9 +170,21 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
     });
     html += veinsHtml(s, pm, id, true);
   }
-  show(html, id, act, focus ? placeKey(focus) : '');
+  show(html + '</div>', id, act, focus ? placeKey(focus) : '');
 }
 
+// seções recolhíveis do painel da província (fechadas ficam lembradas no navegador)
+const closed = new Set<string>((() => { try { return JSON.parse(localStorage.getItem('imperio.closed') ?? '[]') as string[]; } catch { return []; } })());
+/** Título de seção: fecha o bloco anterior e abre o seu (escondido se a seção estiver fechada). */
+const sec = (name: string) => `</div><h3 class="sec" data-a="sec:${name}">${closed.has(name) ? '▸' : '▾'} ${name}</h3><div class="secb${closed.has(name) ? ' closed' : ''}">`;
+
+/** "Esta província por mês": soma das parcelas da província na conta nacional. */
+function provinceSummary(s: GameState, pm: ProvinceMap, id: number): string {
+  const r = runMonth(s, pm, false), key = `p:${id}`;
+  const parts = RES_KEYS.map(k => [k, Object.values(r.byProvince[k]).reduce((a, list) => a + list.filter(([w]) => w === key).reduce((b, [, v]) => b + v, 0), 0)] as const)
+    .filter(([, v]) => Math.abs(v) >= 0.05).map(([k, v]) => `<span class="${v < 0 ? 'neg' : 'pos'}">${RES_ICON[k]} ${v > 0 ? '+' : '−'}${(Math.round(Math.abs(v) * 10) / 10).toLocaleString('pt-BR')}</span>`);
+  return `<div class="sub"><b>Esta província por mês:</b> ${parts.join(' · ') || 'nada'}</div>`;
+}
 
 function upgradeButton(s: GameState, pm: ProvinceMap, id: number, place: Place): string {
   const b = 'lot' in place ? s.lots[id][place.lot] : s.veins[id][place.vein];
@@ -182,8 +195,8 @@ function upgradeButton(s: GameState, pm: ProvinceMap, id: number, place: Place):
 /** Seção Veios: tipo, riqueza e produção; com `build`, o botão do prédio do recurso. */
 function veinsHtml(s: GameState, pm: ProvinceMap, id: number, build: boolean): string {
   const veins = pm.provinces[id].veins;
-  if (!veins.length) return `<h3>Veios</h3><p class="sub">Nenhum veio nesta província.</p>`;
-  let html = '<h3>Veios</h3>';
+  if (!veins.length) return `${sec('Veios')}<p class="sub">Nenhum veio nesta província.</p>`;
+  let html = sec('Veios');
   veins.forEach((v, i) => {
     const place: Place = { vein: i }, key = placeKey(place), b = s.veins[id][i];
     const type = (Object.keys(BUILDINGS) as BuildingType[]).find(t => BUILDINGS[t].vein === v.kind)!, def = BUILDINGS[type];
@@ -430,7 +443,7 @@ function show(html: string, id: number, act: PanelActions, focus: string): void 
   };
   el.onpointerdown = e => {
     if (e.button !== 0) return;
-    const a = ((e.target as HTMLElement).closest('button, input, a') as HTMLElement | null)?.dataset.a;
+    const a = ((e.target as HTMLElement).closest('button, input, a, h3[data-a]') as HTMLElement | null)?.dataset.a;
     if (!a) return;
     const parsePlace = (kind: string, i: string): Place => (kind === 'lot' ? { lot: Number(i) } : { vein: Number(i) });
     if (a === 'close') act.close();
@@ -442,6 +455,11 @@ function show(html: string, id: number, act: PanelActions, focus: string): void 
     else if (a.startsWith('dw:')) act.declareWar(Number(a.slice(3)));
     else if (a.startsWith('pp:')) { const [, n, kind] = a.split(':'); act.propose(Number(n), { kind } as Proposal); }
     else if (a.startsWith('lv:')) act.leaveAlliance(Number(a.slice(3)));
+    else if (a.startsWith('sec:')) {
+      const k = a.slice(4);
+      if (closed.has(k)) closed.delete(k); else closed.add(k);
+      try { localStorage.setItem('imperio.closed', JSON.stringify([...closed])); } catch { /* sem armazenamento: só nesta sessão */ }
+    }
     else if (a.startsWith('lx:')) { const k = a.slice(3); if (ledgerOpen.has(k)) ledgerOpen.delete(k); else ledgerOpen.add(k); }
     else if (a.startsWith('lw:')) act.decree(a.slice(3) as LawKind);
     else if (a.startsWith('lr:')) act.repeal(a.slice(3) as LawKind);

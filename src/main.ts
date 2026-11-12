@@ -11,6 +11,7 @@ import { declareWar } from './sim/war';
 import { answerLetter, leaveAlliance, pactBetween, propose } from './sim/diplomacy';
 import { decree, repeal, repress } from './sim/stability';
 import { alerts, type Alert, type AlertKind } from './sim/alerts';
+import { firstSteps } from './client/steps';
 import { previewCached } from './sim/preview';
 import { RES_KEYS, RES_NAMES } from './sim/balance';
 import { RES_ICON } from './client/labels';
@@ -145,6 +146,7 @@ function openBar(which: 'nations' | 'letters' | 'laws' | 'journal' | 'ledger', f
   if (!was) { selected = -1; selectedArmies.clear(); inspect = -1; }
   if (which === 'nations') nationsOpen = !was; else if (which === 'letters') lettersOpen = !was; else if (which === 'laws') lawsOpen = !was;
   else if (which === 'journal') journalOpen = !was; else ledgerOpen = !was;
+  if (ledgerOpen) ledgerSeen = true;
 }
 for (const id of ['nations', 'letters', 'laws', 'journal', 'ledger'] as const) (document.getElementById(id) as HTMLButtonElement).onclick = e => { openBar(id); (e.currentTarget as HTMLButtonElement).blur(); };
 const lettersButton = document.getElementById('letters') as HTMLButtonElement;
@@ -281,6 +283,22 @@ function renderAlerts(now: number, report: ReturnType<typeof runMonth>): void {
   else openBar('ledger', true);
 };
 
+// ---- primeiros passos: cartão que se marca sozinho; "Pular dicas" fica lembrado no navegador ----
+let ledgerSeen = false, stepsHtml = '';
+let stepsSkipped = (() => { try { return localStorage.getItem('imperio.skipSteps') === '1'; } catch { return false; } })();
+(document.getElementById('steps-skip') as HTMLButtonElement).onclick = () => {
+  stepsSkipped = true;
+  try { localStorage.setItem('imperio.skipSteps', '1'); } catch { /* sem armazenamento */ }
+};
+function renderSteps(): void {
+  const el = document.getElementById('steps') as HTMLDivElement, list = firstSteps(game, ledgerSeen);
+  const show = !!pm && !stepsSkipped && !list.every(x => x.done);
+  el.style.display = show ? 'block' : 'none';
+  if (!show) return;
+  const html = list.map(x => `<li class="${x.done ? 'done' : ''}">${x.text}</li>`).join('');
+  if (html !== stepsHtml) { stepsHtml = html; (document.getElementById('steps-list') as HTMLElement).innerHTML = html; }
+}
+
 // ---- faixa de manchete: uma por vez, 6 s cada ----
 function showHeadline(now: number): void {
   const el = document.getElementById('headline') as HTMLDivElement;
@@ -324,6 +342,7 @@ function frame(now: number) {
     const hs = game.headlines, from = lastHeadline ? hs.indexOf(lastHeadline) + 1 : 0;
     if (hs.length && hs.at(-1) !== lastHeadline) { headlineQueue.push(...hs.slice(from)); lastHeadline = hs.at(-1)!; }
     showHeadline(now);
+    renderSteps();
     const mail = `✉ Cartas (${game.letters.length})`;
     if (lettersButton.textContent !== mail) lettersButton.textContent = mail;
     if (game.result && !endShown) { // fim de partida: pausa e mostra o resultado

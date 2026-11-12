@@ -61,6 +61,14 @@
     #panel button:disabled { background: #b9a888; cursor: not-allowed; }
     #panel button.big { font-size: 15px; padding: 8px 14px; margin-top: 6px; background: #8a2a20; }
     #panel .why { display: block; color: #8a2a20; font-size: 11px; width: 100%; }
+    #panel h3.sec { cursor: pointer; user-select: none; }
+    #panel .secb.closed { display: none; }
+    #panel small.nope { display: block; width: 100%; font-size: 11px; color: #8a7a5a; margin-top: -1px; }
+    #panel button:not(.x) small { display: block; font-size: 10px; opacity: .85; }
+    #steps { position: fixed; z-index: 2; left: 12px; bottom: 34px; width: 300px; background: #f1e6cf; color: #2b1d10; border: 1px solid #6b5536; border-radius: 8px; padding: 10px 12px; box-shadow: 0 4px 16px #0005; font-size: 13px; display: none; }
+    #steps h4 { margin: 0 0 6px; font: italic 16px Georgia, serif; }
+    #steps li { margin: 3px 0; } #steps li.done { color: #6b8a4a; text-decoration: line-through; }
+    #steps button { margin-top: 6px; background: #9a8466; color: #f1e6cf; border: 0; border-radius: 4px; padding: 3px 8px; cursor: pointer; }
     #panel small.fx { display: block; width: 100%; font-size: 11px; color: #6b5536; margin: -1px 0 3px; }
     #toasts { position: fixed; z-index: 3; bottom: 40px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; gap: 6px; align-items: center; pointer-events: none; }
     #toasts div { background: #2b2118e6; color: #f1e6cf; padding: 6px 12px; border-radius: 6px; border: 1px solid #6b5536; }
@@ -124,6 +132,7 @@
     </span>
   </div>
   <div id="alerts"></div>
+  <div id="steps"><h4>Primeiros passos</h4><ol id="steps-list"></ol><button id="steps-skip">Pular dicas</button></div>
   <div id="help">arrastar (botão direito ou do meio) / WASD: mover · roda: zoom · M: continente · espaço: pausa · clique / caixa: selecionar tropas · clique direito: mandar · Shift+1–9: salvar grupo · 1–9: chamar · Esc: soltar</div>
   <script type="module" src="/src/main.ts"></script>
 </body>

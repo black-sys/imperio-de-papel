@@ -36,7 +36,14 @@ describe('prévia das ações', () => {
     const json = JSON.stringify(s);
     previewMonth(s, pm, 0, { kind: 'build', province: 1, place: { vein: 3 }, type: 'iron_mine' });
     previewMonth(s, pm, 0, { kind: 'law', law: 'bread' });
-    expect(JSON.stringify(s)).toBe(json);
+    s.lots[1][0] = { type: 'market', level: 1, remaining: 0 };
+    const json2 = JSON.stringify(s);
+    for (const a of [
+      { kind: 'upgrade', province: 1, place: { lot: 0 } }, { kind: 'upgradeCity', province: 1 }, { kind: 'recruit', province: 0, lot: 1, type: 'line' },
+      { kind: 'colonize', province: 2 }, { kind: 'route', a: 0, b: 1 }, { kind: 'trade', to: 1, give: ['iron', 5], get: ['money', 9] },
+    ] as const) previewMonth(s, pm, 0, a as never);
+    expect(JSON.stringify(s)).toBe(json2);
+    expect(json2.length).toBeGreaterThan(json.length - 1); // só o mercado foi posto à mão
   });
   test('rota liga a cidade: a produção do depósito entra no saldo', () => {
     const s = world();

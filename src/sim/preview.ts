@@ -31,11 +31,25 @@ function apply(c: GameState, pm: ProvinceMap, n: number, a: Action): void {
   else if (!c.nations[n].laws.includes(a.law)) c.nations[n].laws.push(a.law);
 }
 
+/**
+ * Cópia rasa com as partes que uma ação pode mexer duplicadas (o resto é só lido por runMonth). Bem mais barata que
+ * copiar o estado inteiro: o painel calcula dezenas de prévias de uma vez.
+ */
+function cheapCopy(s: GameState): GameState {
+  return {
+    ...s,
+    nations: s.nations.map(x => ({ ...x, res: { ...x.res }, laws: [...x.laws] })),
+    owner: [...s.owner], city: [...s.city], connected: [...s.connected], depot: [...s.depot], stability: [...s.stability],
+    lots: s.lots.map(l => [...l]), veins: s.veins.map(v => [...v]),
+    armies: [...s.armies], routes: [...s.routes], pacts: [...s.pacts], colonizing: [...s.colonizing], recruiting: [...s.recruiting],
+  };
+}
+
 /** Saldo mensal da nação antes e depois da ação (a ação é feita numa cópia: o estado real não muda). */
 export function previewMonth(s: GameState, pm: ProvinceMap, n: number, a: Action): { before: Res; after: Res } {
   const before = runMonth(s, pm, false, n).net;
   if (!s.nations[n]?.alive) return { before, after: { ...before } };
-  const c = structuredClone(s);
+  const c = cheapCopy(s);
   apply(c, pm, n, a);
   return { before, after: runMonth(c, pm, false, n).net };
 }
