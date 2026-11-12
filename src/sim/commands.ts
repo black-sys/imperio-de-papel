@@ -38,7 +38,7 @@ function put(s: GameState, id: number, place: Place, b: Building): void {
 function foundNation(s: GameState, pm: ProvinceMap, id: number, bent: Bent, incomeMult: number, ai: boolean): Nation {
   const n: Nation = {
     id: s.nations.length, name: `Nação de ${pm.provinces[id].name}`, bent, incomeMult, alive: true, ai,
-    res: startingStock(pm, id), capital: id, grainShort: false, armyNumber: 0, atWar: [], founded: s.month, laws: [], lawCooldown: {},
+    res: startingStock(pm, id), capital: id, grainShort: false, armyNumber: 0, atWar: [], founded: s.month, laws: [], lawCooldown: {}, history: [],
   };
   s.nations.push(n);
   for (const row of s.relations) row.push(0); // relação começa neutra com todos

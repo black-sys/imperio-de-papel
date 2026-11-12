@@ -1,5 +1,5 @@
 import type { ProvinceMap } from '../worldgen/provinces';
-import { BATTLE, BUILDINGS, MONTH_SECONDS, TROOPS, type TroopType } from './balance';
+import { BATTLE, BUILDINGS, MONTH_SECONDS, RES_KEYS, TROOPS, UI, zeroRes, type TroopType } from './balance';
 import type { MoveGrid } from './movegrid';
 import { ARMY } from './balance';
 import { inBattle, spawnArmy, troopStep } from './armies';
@@ -30,6 +30,7 @@ function economyStep(s: GameState, pm: ProvinceMap, months: number): void {
     advance(s, pm, step);
     s.month = boundary ? Math.round(s.month + step) : s.month + step;
     months -= step;
+    const before = boundary ? s.nations.map(n => ({ ...n.res })) : [];
     if (boundary) for (const n of s.nations) {
       if (!n.alive) continue;
       runMonth(s, pm, true, n.id);
@@ -47,7 +48,17 @@ function economyStep(s: GameState, pm: ProvinceMap, months: number): void {
         }
       }
     }
-    if (boundary && s.nations.length) { diplomacyMonth(s, pm); stabilityMonth(s, pm); } // depois das contas de todas as nações
+    if (boundary && s.nations.length) {
+      diplomacyMonth(s, pm); stabilityMonth(s, pm); // depois das contas de todas as nações
+      // histórico das contas: estoque no fim do mês e a variação real (com comércio e leis)
+      s.nations.forEach((n, i) => {
+        if (!n.alive) return;
+        const net = zeroRes();
+        for (const k of RES_KEYS) net[k] = n.res[k] - before[i][k];
+        n.history.push({ stock: { ...n.res }, net });
+        if (n.history.length > UI.historyMonths) n.history.splice(0, n.history.length - UI.historyMonths);
+      });
+    }
   }
 }
 

@@ -8,7 +8,7 @@ import { game, run, world } from './troopworld';
 const { pm } = world;
 /** Nação `id` sem território (só para ter exércitos) ou com a província `capital`. */
 const addNation = (s: GameState, id: number, capital = -1, bent: Bent = 'industrial') => {
-  s.nations.push({ ...s.nations[0], id, name: `Nação de X${id}`, bent, ai: true, capital, res: { ...s.nations[0].res }, atWar: [], founded: 0 });
+  s.nations.push({ ...s.nations[0], history: [], id, name: `Nação de X${id}`, bent, ai: true, capital, res: { ...s.nations[0].res }, atWar: [], founded: 0 });
   if (capital >= 0) { s.owner[capital] = id; s.city[capital] = { level: 2, remaining: 0 }; s.connected[capital] = true; }
 };
 /** Jogador na província 0 e rival (nação 1) na província 1. */

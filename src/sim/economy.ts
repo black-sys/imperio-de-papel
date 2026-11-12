@@ -55,6 +55,7 @@ export interface MonthReport {
   stalled: { province: number; lot: number; missing: keyof Res | 'route' | 'strike' | 'revolt' }[]; // fábricas que não produziram tudo ('route' = cidade desligada)
   depots: Record<number, Partial<Res>>; // produção dos veios de cidades desligadas neste mês (vai para o depósito delas)
   grainShort: boolean;
+  byProvince: Record<keyof Res, Record<string, [string, number][]>>; // recurso → linha → parcelas (`p:<província>`, `a:<exército>`, `n:<nação>`)
 }
 
 /**
@@ -64,24 +65,28 @@ export interface MonthReport {
  */
 export function runMonth(s: GameState, pm: ProvinceMap, apply: boolean, n = 0): MonthReport {
   const nation = s.nations[n], r = { ...nation.res }, lines = Object.fromEntries(RES_KEYS.map(k => [k, []])) as unknown as MonthReport['lines'], stalled: MonthReport['stalled'] = [], produced: Record<string, number> = {}, depots: MonthReport['depots'] = {};
-  const add = (k: keyof Res, label: string, v: number) => {
+  const byProvince = Object.fromEntries(RES_KEYS.map(k => [k, {}])) as MonthReport['byProvince'];
+  const add = (k: keyof Res, label: string, v: number, who?: string) => {
     if (!v) return;
     r[k] += v;
     const l = lines[k].find(e => e[0] === label);
     if (l) l[1] += v; else lines[k].push([label, v]);
+    if (!who) return;
+    const parts = (byProvince[k][label] ??= []), p = parts.find(e => e[0] === who);
+    if (p) p[1] += v; else parts.push([who, v]);
   };
   const mine = s.owner.map((o, id) => o === n && !!s.city[id]);
   // impostos e os lenhadores da capital
   const revolt = new Set(s.revolts.map(x => x.province)), strike = new Set(s.strikes.map(x => x.province));
-  mine.forEach((m, id) => { if (m && !revolt.has(id)) add('money', 'Impostos', cityTax(s, pm, id)); }); // em revolta não paga
-  if (mine[nation.capital]) add('wood', 'Lenhadores da capital', CITY.capitalWood);
+  mine.forEach((m, id) => { if (m && !revolt.has(id)) add('money', 'Impostos', cityTax(s, pm, id), `p:${id}`); }); // em revolta não paga
+  if (mine[nation.capital]) add('wood', 'Lenhadores da capital', CITY.capitalWood, `p:${nation.capital}`);
   // veios: cidade ligada entrega ao estoque nacional; desligada guarda no próprio depósito
   mine.forEach((m, id) => {
     if (m && !revolt.has(id)) s.veins[id].forEach((b, v) => {
       const l = activeLevel(b);
       if (!b || !l) return;
       const k = BUILDINGS[b.type].product!, amount = BUILDINGS[b.type].out[l] * pm.provinces[id].veins[v].richness * nation.incomeMult;
-      if (s.connected[id]) add(k, BUILDINGS[b.type].plural, amount);
+      if (s.connected[id]) add(k, BUILDINGS[b.type].plural, amount, `p:${id}`);
       else { const d = (depots[id] ??= {}); d[k] = (d[k] ?? 0) + amount; }
     });
   });
@@ -97,8 +102,8 @@ export function runMonth(s: GameState, pm: ProvinceMap, apply: boolean, n = 0): 
         else if (strike.has(id)) { units = 0; missing = 'strike'; }
         else if (!s.connected[id]) { units = 0; missing = 'route'; } // sem rota não chega insumo do estoque nacional
         else for (const [k, per] of uses) { const can = Math.floor(Math.max(0, r[k]) / per + 1e-9); if (can < units) { units = can; missing = k; } }
-        for (const [k, per] of uses) add(k, def.plural, -units * per);
-        add(def.product!, def.plural, units);
+        for (const [k, per] of uses) add(k, def.plural, -units * per, `p:${id}`);
+        add(def.product!, def.plural, units, `p:${id}`);
         produced[`${id}:${lot}`] = units;
         if (missing) stalled.push({ province: id, lot, missing });
       });
@@ -106,11 +111,21 @@ export function runMonth(s: GameState, pm: ProvinceMap, apply: boolean, n = 0): 
   }
   // grãos das cidades
   const ration = nation.laws.includes('ration') ? LAWS.ration.grain : 1;
-  mine.forEach((m, id) => { if (m) add('grain', 'Cidades', -CITY.grain[cityLevel(s, id)] * ration); });
+  mine.forEach((m, id) => { if (m) add('grain', 'Cidades', -CITY.grain[cityLevel(s, id)] * ration, `p:${id}`); });
   // manutenção
-  mine.forEach((m, id) => { if (m) for (const b of s.lots[id]) if (b?.type === 'garrison' && activeLevel(b)) add('money', 'Guarnições', -GARRISON_UPKEEP); });
-  for (const a of s.armies) if (a.owner === n) for (const b of a.battalions) for (const [k, v] of Object.entries(TROOPS[b.type].upkeep) as [keyof Res, number][]) add(k, 'Tropas', -v);
-  for (const t of s.armies) if (t.owner === n && t.supply) add('money', 'Linhas de suprimento', -(SUPPLY.lineMoney + SUPPLY.linePerTile * t.supply.path.length * CELL));
+  mine.forEach((m, id) => { if (m) for (const b of s.lots[id]) if (b?.type === 'garrison' && activeLevel(b)) add('money', 'Guarnições', -GARRISON_UPKEEP, `p:${id}`); });
+  for (const a of s.armies) if (a.owner === n) for (const b of a.battalions) for (const [k, v] of Object.entries(TROOPS[b.type].upkeep) as [keyof Res, number][]) add(k, 'Tropas', -v, `a:${a.id}`);
+  for (const t of s.armies) if (t.owner === n && t.supply) add('money', 'Linhas de suprimento', -(SUPPLY.lineMoney + SUPPLY.linePerTile * t.supply.path.length * CELL), `a:${t.id}`);
+  // na projeção, o que a virada aplica logo depois desta conta: comércio (diplomacyMonth) e Pão e circo (stabilityMonth)
+  if (!apply) {
+    for (const p of s.pacts) {
+      if (p.kind !== 'trade' || !p.trade || (p.a !== n && p.b !== n)) continue;
+      const [gk, gq] = p.a === n ? p.trade.aGives : p.trade.bGives, [rk, rq] = p.a === n ? p.trade.bGives : p.trade.aGives, other = p.a === n ? p.b : p.a;
+      add(gk, 'Comércio', -Math.min(gq, Math.max(0, r[gk])), `n:${other}`);
+      add(rk, 'Comércio', Math.min(rq, Math.max(0, s.nations[other].res[rk])), `n:${other}`);
+    }
+    if (nation.laws.includes('bread')) add('money', 'Pão e circo', -LAWS.bread.perCity * mine.filter(Boolean).length);
+  }
   const grainShort = r.grain <= 0 && mine.some(Boolean);
   if (r.grain < 0) r.grain = 0;
   const net = zeroRes();
@@ -128,7 +143,7 @@ export function runMonth(s: GameState, pm: ProvinceMap, apply: boolean, n = 0): 
       logFor(s, n, `${BUILDINGS[s.lots[st.province][st.lot]!.type].name} parada em ${pm.provinces[st.province].name}: ${st.missing === 'route' ? 'sem rota até a capital' : st.missing === 'strike' ? 'greve' : st.missing === 'revolt' ? 'revolta' : `falta ${RES_NAMES[st.missing]}`}`);
     }
   }
-  return { net, produced, lines, stalled, depots, grainShort };
+  return { net, produced, lines, stalled, depots, grainShort, byProvince };
 }
 
 export const monthlyIncome = (s: GameState, pm: ProvinceMap, n = 0): Res => runMonth(s, pm, false, n).net;

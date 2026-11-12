@@ -39,7 +39,8 @@ export interface Pact {
 export interface Nation {
   id: number; name: string; bent: Bent; incomeMult: number; alive: boolean; ai: boolean;
   res: Res; capital: number; grainShort: boolean; armyNumber: number;
-  laws: LawKind[]; lawCooldown: Partial<Record<LawKind, number>>; // leis em vigor; mês a partir do qual cada uma pode voltar
+  laws: LawKind[]; lawCooldown: Partial<Record<LawKind, number>>;
+  history: { stock: Res; net: Res }[]; // últimos meses: estoque no fim do mês e a variação real (contas) // leis em vigor; mês a partir do qual cada uma pode voltar
   atWar: number[]; founded: number; // mês da fundação (carência para declarar guerra)
 }
 export interface Battle { x: number; y: number; start: number; armyIds: number[]; sides: { owner: number; initial: number; morale: number }[] }

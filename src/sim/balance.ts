@@ -125,3 +125,6 @@ export const UNREST = { strike: { below: 40, chance: 0.1, months: 2 }, fire: { b
 export const LAWS = { cooldown: 12, bread: { cost: 50, perCity: 2 }, ration: { grain: 0.5 }, shorter: { output: 0.75 }, martial: { cost: 30, tax: 0.8 } };
 export const REPRESS = { below: 40, gain: 20, resentMonths: 60, men: 2, every: 12 };
 export const HEADLINES = 30;
+
+// ---- interface (ciclo 7) ----
+export const UI = { historyMonths: 24, runningOut: 6, runningOutRed: 2, moneyAhead: 3, stableBelow: 0.05, showDelta: 0.1 };

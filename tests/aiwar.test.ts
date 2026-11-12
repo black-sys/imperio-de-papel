@@ -18,7 +18,7 @@ const game = (bent: Bent = 'industrial'): GameState => {
   const s = newGame(pm);
   chooseCapital(s, pm, 0);
   s.nations[0].res = { ...rich };
-  s.nations.push({ ...s.nations[0], id: 1, name: 'Nação de R2', bent, ai: true, capital: 2, res: { ...rich }, atWar: [] });
+  s.nations.push({ ...s.nations[0], history: [], id: 1, name: 'Nação de R2', bent, ai: true, capital: 2, res: { ...rich }, atWar: [] });
   for (const p of [1, 2]) { s.owner[p] = 1; s.city[p] = { level: 1, remaining: 0 }; s.connected[p] = true; }
   s.lots[2][0] = { type: 'garrison', level: 1, remaining: 0 };
   declareWar(s, 0, 1);

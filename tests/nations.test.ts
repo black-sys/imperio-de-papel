@@ -49,7 +49,7 @@ describe('mesmas regras para todas as nações (mundo de teste)', () => {
   const two = (): GameState => {
     const s = newGame(pm);
     chooseCapital(s, pm, 0);
-    s.nations.push({ ...s.nations[0], id: 1, name: 'Nação de P1', ai: true, capital: 1, res: { ...s.nations[0].res }, atWar: [] });
+    s.nations.push({ ...s.nations[0], history: [], id: 1, name: 'Nação de P1', ai: true, capital: 1, res: { ...s.nations[0].res }, atWar: [] });
     s.owner[1] = 1; s.city[1] = { level: 2, remaining: 0 }; s.connected[1] = true;
     return s;
   };

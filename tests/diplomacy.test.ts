@@ -14,7 +14,7 @@ export const trio = (bent: Bent = 'industrial'): GameState => {
   const s = newGame(pm);
   chooseCapital(s, pm, 0);
   for (const id of [1, 2]) {
-    s.nations.push({ ...s.nations[0], id, name: `Nação de R${id}`, bent, ai: true, capital: id, res: { ...s.nations[0].res }, atWar: [], founded: 0 });
+    s.nations.push({ ...s.nations[0], history: [], id, name: `Nação de R${id}`, bent, ai: true, capital: id, res: { ...s.nations[0].res }, atWar: [], founded: 0 });
     s.owner[id] = id; s.city[id] = { level: 2, remaining: 0 }; s.connected[id] = true;
   }
   s.relations = [[0, 0, 0], [0, 0, 0], [0, 0, 0]];
@@ -70,7 +70,7 @@ describe('guerra com pactos', () => {
   });
   test('aliança defensiva não se propaga em cadeia', () => {
     const s = trio();
-    s.nations.push({ ...s.nations[1], id: 3, name: 'Nação de X3', capital: -1, atWar: [] });
+    s.nations.push({ ...s.nations[1], history: [], id: 3, name: 'Nação de X3', capital: -1, atWar: [] });
     s.relations = s.relations.map(r => [...r, 0]).concat([[0, 0, 0, 0]]);
     addPact(s, 'alliance', 1, 2, null);
     addPact(s, 'alliance', 2, 3, null);
@@ -279,7 +279,7 @@ describe('virada do mês', () => {
   });
   test('inimigo em comum: +1', () => {
     const s = trio();
-    s.nations.push({ ...s.nations[1], id: 3, name: 'Nação de X3', capital: -1, atWar: [] });
+    s.nations.push({ ...s.nations[1], history: [], id: 3, name: 'Nação de X3', capital: -1, atWar: [] });
     s.relations = s.relations.map(r => [...r, 0]).concat([[0, 0, 0, 0]]);
     declareWar(s, 3, 0, pm); declareWar(s, 3, 2, pm);
     month(s);
