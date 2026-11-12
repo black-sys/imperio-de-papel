@@ -58,7 +58,7 @@ function seaDistance(map: WorldMap): Float32Array {
 
 /**
  * Grade local da região do ladrilho na resolução da fonte (1 nó por tile nos níveis 0–1, por célula nos demais),
- * com 2 nós de folga. Por pixel só se interpola: rápido e igual dos dois lados de uma emenda.
+ * com folga (PAD) para o bilinear, o gradiente e os borrões. Por pixel só se interpola: rápido e igual dos dois lados de uma emenda.
  */
 interface Grid { res: number; ox: number; oy: number; n: number; wet: Float32Array; river: Float32Array; shade: Float32Array; tr: Float32Array; tg: Float32Array; tb: Float32Array }
 

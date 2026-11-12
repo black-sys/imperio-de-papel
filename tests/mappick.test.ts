@@ -213,3 +213,14 @@ test('lote coberto pela cidade grande vai para fora do círculo, e o clique acom
   expect(pickAt(s, pm, close, lx, ly)).toEqual({ kind: 'lot', province: 0, lot: 3 });
   pm.provinces[0].lots[3] = { x: 68, y: 92 };
 });
+
+test('clique no aro dourado da capital (até 5 px além do disco) seleciona a cidade', () => {
+  const s = game(), [sx, sy] = scr(60, 80), r = cityRadius(2, view.scale);
+  expect(pickAt(s, pm, view, sx + r + 4, sy)).toEqual({ kind: 'city', province: 0 });
+});
+
+test('de perto (exército aberto em fichas), clicar numa ficha longe do centro seleciona o exército', () => {
+  const s = game(), close: View = { ...view, scale: 6 }, t = spawnArmy(s, 0, ['line', 'line', 'line', 'line', 'line', 'line'], 100, 140);
+  const [x, y] = toScreen(close, 100, 140);
+  expect(pickAt(s, pm, close, x + 36, y - 22)).toEqual({ kind: "army", id: t.id }); // 5ª ficha da linha da frente
+});

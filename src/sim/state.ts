@@ -131,6 +131,7 @@ export function logFor(s: GameState, n: number, text: string): void { if (n === 
 export function found(s: GameState, id: number, n = 0): void {
   s.owner[id] = n;
   s.stability[id] = STAB.start;
+  s.resentment[id] = -1e9; s.repressed[id] = -1e9;
   s.city[id] = { level: 1, remaining: 0 };
   s.lots[id] = s.lots[id].map(() => null);
   s.veins[id] = s.veins[id].map(() => null);

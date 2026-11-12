@@ -65,6 +65,7 @@ export function fall(s: GameState, pm: ProvinceMap, province: number, n: number,
   s.connected[province] = false;
   s.owner[province] = n;
   s.stability[province] = STAB.conquered; s.conquered[province] = s.month;
+  s.resentment[province] = -1e9; s.repressed[province] = -1e9; // a repressão foi do dono anterior
   s.strikes = s.strikes.filter(x => x.province !== province); s.revolts = s.revolts.filter(x => x.province !== province);
   if (n === 0 && s.nations[prev]) logEvent(s, damage ? `${name} tomada da ${s.nations[prev].name}` : `${name} cedida pela ${s.nations[prev].name}`);
   if (prev === 0) logEvent(s, damage ? `${name} perdida para a ${s.nations[n].name}` : `${name} cedida à ${s.nations[n].name}`);
@@ -90,6 +91,8 @@ export function eliminate(s: GameState, pm: ProvinceMap, loser: number, by: numb
   s.occupations = s.occupations.filter(e => e.nation !== loser && s.owner[e.province] >= 0);
   // diplomacia: os acordos, as cartas e as propostas dela acabam com ela
   s.pacts = s.pacts.filter(p => p.a !== loser && p.b !== loser);
+  // registros por par de nações ("a:b" e "de:para:tipo") que citam a eliminada
+  for (const rec of [s.warSince, s.contact ?? {}, s.lastOffer]) for (const k of Object.keys(rec)) if (k.split(':').slice(0, 2).map(Number).includes(loser)) delete rec[k];
   s.letters = s.letters.filter(l => l.from !== loser);
   s.pending = s.pending.filter(q => q.to !== loser);
   s.strikes = s.strikes.filter(x => s.owner[x.province] >= 0); s.revolts = s.revolts.filter(x => s.owner[x.province] >= 0);

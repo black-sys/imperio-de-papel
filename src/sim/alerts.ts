@@ -33,7 +33,7 @@ export function alerts(s: GameState, pm: ProvinceMap, n: number, report?: MonthR
   // dinheiro: negativo em até 3 meses é vermelho; os outros recursos avisam com 6 meses
   const ahead = r.net.money < 0 ? Math.ceil(me.res.money / -r.net.money) : Infinity;
   if (me.res.money + UI.moneyAhead * r.net.money < 0)
-    out.push({ kind: 'money-negative', severity: 'red', text: `Dinheiro negativo em ${plural(Math.max(1, ahead), 'mês', 'meses')} — batalhões serão dispersos`, hint: 'corte tropas ou aumente impostos (Mercados)', target: {} });
+    out.push({ kind: 'money-negative', severity: 'red', text: `Dinheiro negativo${me.res.money < 0 ? '' : ` em ${plural(Math.max(1, ahead), 'mês', 'meses')}`} — batalhões serão dispersos`, hint: 'corte tropas ou aumente impostos (Mercados)', target: {} });
   if (me.grainShort) out.push({ kind: 'famine', severity: 'red', text: 'Sem grãos: impostos pela metade e estabilidade −25', hint: 'fazendas ou Racionamento', target: {} });
   for (const k of RES_KEYS) {
     if (r.net[k] >= -1e-9 || (k === 'money' && out.some(a => a.kind === 'money-negative')) || (k === 'grain' && me.grainShort)) continue;

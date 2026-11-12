@@ -1,5 +1,6 @@
 import { CELL } from '../../worldgen/constants';
 import type { ProvinceMap } from '../../worldgen/provinces';
+import { ARMY, type TroopType } from '../../sim/balance';
 import { cityLevel, type GameState } from '../../sim/state';
 import { toScreen, toWorld, type View } from './view';
 
@@ -21,7 +22,7 @@ export function cityAt(s: GameState, pm: ProvinceMap, id: number): { x: number; 
 }
 
 export const VEIN_DETAIL = 0.8, LOT_DETAIL = 2.5; // escalas (px/tile) a partir das quais veios livres e lotes aparecem (seus veios explorados: sempre) (lotes ficam a 4–10 tiles da cidade: menos que isso some sob o marcador dela)
-export const SPOT_R = 10; // raio de clique de lote e veio (px)
+export const SPOT_R = 10; // raio de clique de lote e veio (px); a cidade vale até 5 px além do disco (os aros)
 
 /** Fator dos marcadores pelo zoom: 1 até 0,75 px/tile, dobra até 3 px/tile e para. */
 export const markerScale = (scale: number) => Math.min(2, Math.max(1, 1 + (Math.log2(scale) - Math.log2(0.75)) / 2));
@@ -35,7 +36,7 @@ export function cityRadius(level: number, scale: number): number {
 /** Lote na tela: na posição dele, ou empurrado para fora do círculo da cidade (mesma direção) quando ela o cobriria. */
 export function lotOnScreen(s: GameState, pm: ProvinceMap, v: View, id: number, lot: number): [number, number] {
   const spot = pm.provinces[id].lots[lot], c = pm.provinces[id].city, [cx, cy] = toScreen(v, c.x, c.y), [x, y] = toScreen(v, spot.x, spot.y);
-  const min = cityRadius(cityLevel(s, id), v.scale) + 12 * lotScale(v.scale), d = Math.hypot(x - cx, y - cy);
+  const min = cityRadius(cityLevel(s, id), v.scale) + 15 * lotScale(v.scale), d = Math.hypot(x - cx, y - cy);
   if (d >= min) return [x, y];
   const a = d > 0.5 ? Math.atan2(y - cy, x - cx) : (lot / pm.provinces[id].lots.length) * 2 * Math.PI; // em cima da cidade: espalha pelo índice
   return [cx + Math.cos(a) * min, cy + Math.sin(a) * min];
@@ -56,13 +57,15 @@ export function pickAt(s: GameState, pm: ProvinceMap, v: View, sx: number, sy: n
   for (const t of s.armies) {
     if ((t.owner === -1 && t.home >= 0) || (mineOnly && t.owner !== 0)) continue; // guarnição de fortaleza não; rebeldes sim
     const [px, py] = toScreen(v, t.x, t.y), dx = Math.abs(px - sx), dy = Math.abs(py - sy);
-    if (dx > TROOP_W / 2 + PAD || dy > TROOP_H / 2 + PAD) continue;
+    // de perto o exército se abre em fichas: vale o clique em qualquer uma delas
+    const onChip = v.scale >= ARMY.openScale && formation(t.battalions.map(b => b.type)).some(([fx, fy]) => Math.abs(px + fx - sx) <= 14 && Math.abs(py + fy - sy) <= 12);
+    if (!onChip && (dx > TROOP_W / 2 + PAD || dy > TROOP_H / 2 + PAD)) continue;
     const d = dx + dy, cur = t.owner === 0 ? mine : other;
     if (!cur || d < cur.d) { if (t.owner === 0) mine = { id: t.id, d }; else other = { id: t.id, d }; }
   }
   if (mine) return { kind: 'army', id: mine.id };
   const near = (x: number, y: number, r: number) => { const [px, py] = toScreen(v, x, y); return Math.hypot(px - sx, py - sy) <= r; };
-  for (let id = 0; id < s.owner.length; id++) { const c = s.owner[id] >= 0 ? cityAt(s, pm, id) : null; if (c && near(c.x, c.y, cityRadius(cityLevel(s, id), v.scale))) return { kind: 'city', province: id }; }
+  for (let id = 0; id < s.owner.length; id++) { const c = s.owner[id] >= 0 ? cityAt(s, pm, id) : null; if (c && near(c.x, c.y, cityRadius(cityLevel(s, id), v.scale) + 5)) return { kind: 'city', province: id }; }
   if (other) return { kind: 'army', id: other.id };
   // lotes só das suas cidades (de perto); veios de qualquer província (é assim que se escolhe o que colonizar)
   if (v.scale >= LOT_DETAIL) for (let id = 0; id < s.owner.length; id++) {
@@ -86,3 +89,14 @@ export function armiesInRect(s: GameState, v: View, x0: number, y0: number, x1: 
 
 /** Alvo do modo de traçar rota: só a província sob o ponteiro (tropas e marcadores não atrapalham o clique na cidade). */
 export const routeTargetAt = (pm: ProvinceMap, v: View, sx: number, sy: number): number => provinceAtTile(pm, ...toWorld(v, sx, sy));
+
+/** Posições das fichas dos batalhões em volta do estandarte (px de tela), compartilhadas por desenho e clique. */
+export function formation(types: TroopType[]): [number, number][] {
+  const out: [number, number][] = new Array(types.length);
+  const row = (idx: number[], y: number) => idx.forEach((i, k) => { out[i] = [(k - (idx.length - 1) / 2) * 24, y]; });
+  const of = (t: TroopType) => types.map((x, i) => (x === t ? i : -1)).filter(i => i >= 0);
+  row(of('line'), -22);
+  of('cavalry').forEach((i, k) => { out[i] = [(k % 2 ? 1 : -1) * (40 + Math.floor(k / 2) * 22), 0]; });
+  row(of('artillery'), 22);
+  return out;
+}

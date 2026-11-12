@@ -116,7 +116,7 @@ export function runMonth(s: GameState, pm: ProvinceMap, apply: boolean, n = 0): 
   mine.forEach((m, id) => { if (m) for (const b of s.lots[id]) if (b?.type === 'garrison' && activeLevel(b)) add('money', 'Guarnições', -GARRISON_UPKEEP, `p:${id}`); });
   for (const a of s.armies) if (a.owner === n) for (const b of a.battalions) for (const [k, v] of Object.entries(TROOPS[b.type].upkeep) as [keyof Res, number][]) add(k, 'Tropas', -v, `a:${a.id}`);
   for (const t of s.armies) if (t.owner === n && t.supply) add('money', 'Linhas de suprimento', -(SUPPLY.lineMoney + SUPPLY.linePerTile * t.supply.path.length * CELL), `a:${t.id}`);
-  const grainShort = r.grain <= 0 && mine.some(Boolean);
+  const grainShort = r.grain < -1e-9 && mine.some(Boolean); // fome = o consumo passou do estoque (fechar em 0 alimenta todos)
   if (r.grain < 0) r.grain = 0;
   // na projeção, o que a virada aplica logo depois desta conta: comércio (diplomacyMonth) e Pão e circo (stabilityMonth)
   if (!apply) {

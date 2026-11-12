@@ -117,7 +117,13 @@ const actions = {
   },
   answer: (id: number, accept: boolean) => game && pm && report(answerLetter(game, pm, id, accept)),
   leaveAlliance: (n: number) => { if (game && confirm(`Desfazer a aliança com a ${game.nations[n].name}? A relação piora.`)) report(leaveAlliance(game, 0, n)); },
-  centerOn: (province: number) => { if (pm) { const c = pm.provinces[province].city; view = clampView({ ...view, cx: c.x, cy: c.y, scale: Math.max(view.scale, 1) }); } },
+  // centraliza e abre o painel da província (links das Contas e das Nações)
+  centerOn: (province: number) => {
+    if (!pm) return;
+    const c = pm.provinces[province].city;
+    view = clampView({ ...view, cx: c.x, cy: c.y, scale: Math.max(view.scale, 1) });
+    selected = province; selectedArmies.clear(); inspect = -1; nationsOpen = lettersOpen = lawsOpen = journalOpen = ledgerOpen = false;
+  },
   startRoute: (id: number) => { routeFrom = id; preview = null; toast('Clique noutra cidade sua · Esc cancela'); },
   removeRoute: (routeId: number) => game && pm && report(removeRoute(game, routeId, pm)),
   supply: (armyId: number) => game && pm && moveGrid && report(supplyArmy(game, pm, moveGrid, armyId)),
@@ -193,6 +199,7 @@ canvas.addEventListener('pointermove', e => {
     view = clampView({ ...view, cx: view.cx - (e.clientX - drag.x) / view.scale, cy: view.cy - (e.clientY - drag.y) / view.scale });
     drag.x = e.clientX; drag.y = e.clientY;
   }
+  if (down && !(e.buttons & 1)) { down = null; box = null; } // esquerdo solto com outro botão ainda apertado: sem pointerup, sem caixa presa
   if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 5) box = [Math.min(down.x, e.clientX), Math.min(down.y, e.clientY), Math.max(down.x, e.clientX), Math.max(down.y, e.clientY)];
   tip(e);
 });
@@ -203,7 +210,7 @@ canvas.addEventListener('pointerup', e => {
     if (still && e.button === 2) { if (routeFrom !== null) { routeFrom = null; preview = null; } else order(...toWorld(view, e.clientX, e.clientY)); }
     return;
   }
-  if (e.button !== 0 || !down || !pm || !game) return;
+  if (e.button !== 0 || !down || !pm || !game) { if (e.buttons === 0) { down = null; box = null; } return; }
   const b = box;
   down = null; box = null;
   if (b) return pickArmies(armiesInRect(game, view, b[0], b[1], b[2], b[3]), e.shiftKey);

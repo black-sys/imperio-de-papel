@@ -6,6 +6,8 @@ import { borderSegments, provinceRings } from './outlines';
 import { GOLD, INK, LOT_DETAIL, REALM_COLORS, cityRadius, lotScale } from './pick';
 import { drawableFor, type TileCache } from './tileCache';
 import { OPEN_SEA } from './tilePaint';
+
+const PAPER_BG = '#e9dcbc';
 import { levelFor, TILE_PX, tileSpan, toScreen, visibleTiles, type View } from './view';
 
 
@@ -56,7 +58,11 @@ export class MapRenderer {
     const span = tileSpan(L);
     for (const t of tiles) {
       const d = drawableFor(cache, t);
-      if (!d) continue;
+      if (!d) { // ainda não pintado: papel, não mar (a terra não pisca em azul)
+        const [ax, ay] = toScreen(v, t.x * span, t.y * span), [bx, by] = toScreen(v, (t.x + 1) * span, (t.y + 1) * span);
+        ctx.fillStyle = PAPER_BG; ctx.fillRect(Math.floor(ax), Math.floor(ay), Math.ceil(bx) - Math.floor(ax), Math.ceil(by) - Math.floor(ay));
+        continue;
+      }
       const f = 2 ** (d.t.L - t.L), sub = TILE_PX / f, sx = (t.x - d.t.x * f) * sub, sy = (t.y - d.t.y * f) * sub;
       const [ax, ay] = toScreen(v, t.x * span, t.y * span), [bx, by] = toScreen(v, (t.x + 1) * span, (t.y + 1) * span);
       const dx = Math.floor(ax), dy = Math.floor(ay); // arredonda para fora: sem fresta entre ladrilhos

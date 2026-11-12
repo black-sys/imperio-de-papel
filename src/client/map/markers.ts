@@ -8,7 +8,7 @@ import type { MoveGrid } from '../../sim/movegrid';
 import type { GameState } from '../../sim/state';
 import { CELL } from '../../worldgen/constants';
 import type { ProvinceMap } from '../../worldgen/provinces';
-import { FORT_DETAIL, FORT_R, GOLD, LOT_DETAIL, VEIN_DETAIL, INK, NEUTRAL, PAPER, REALM_COLORS, TROOP_H, TROOP_W, cityAt, cityRadius, lotOnScreen, lotScale, markerScale, veinVisible } from './pick';
+import { FORT_DETAIL, FORT_R, GOLD, LOT_DETAIL, VEIN_DETAIL, INK, NEUTRAL, PAPER, REALM_COLORS, TROOP_H, TROOP_W, cityAt, cityRadius, formation, lotOnScreen, lotScale, markerScale, veinVisible } from './pick';
 import { toScreen, type View } from './view';
 
 export const TROOP_ICON: Record<TroopType, string> = { line: '🎖', artillery: '💣', cavalry: '🐎' };
@@ -339,12 +339,4 @@ function chip(ctx: CanvasRenderingContext2D, type: TroopType, soldiers: number, 
 }
 
 /** Posições (px) das fichas: infantaria na fileira da frente (acima), cavalaria nos flancos, artilharia atrás (abaixo). */
-export function formation(types: TroopType[]): [number, number][] {
-  const out: [number, number][] = new Array(types.length);
-  const row = (idx: number[], y: number) => idx.forEach((i, k) => { out[i] = [(k - (idx.length - 1) / 2) * 24, y]; });
-  const of = (t: TroopType) => types.map((x, i) => (x === t ? i : -1)).filter(i => i >= 0);
-  row(of('line'), -22);
-  of('cavalry').forEach((i, k) => { out[i] = [(k % 2 ? 1 : -1) * (40 + Math.floor(k / 2) * 22), 0]; });
-  row(of('artillery'), 22);
-  return out;
-}
+export { formation };

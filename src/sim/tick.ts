@@ -50,6 +50,8 @@ function economyStep(s: GameState, pm: ProvinceMap, months: number): void {
     }
     if (boundary && s.nations.length) {
       diplomacyMonth(s, pm); stabilityMonth(s, pm); // depois das contas de todas as nações
+      // avisos de exército (t<id>, r<id>) de exércitos que já não existem
+      for (const k of Object.keys(s.stallWarned)) if ((k[0] === 't' || k[0] === 'r') && !s.armies.some(a => a.id === Number(k.slice(1)))) delete s.stallWarned[k];
       // histórico das contas: estoque no fim do mês e a variação real (com comércio e leis)
       s.nations.forEach((n, i) => {
         if (!n.alive) return;
