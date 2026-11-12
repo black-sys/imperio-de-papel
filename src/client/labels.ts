@@ -1,4 +1,4 @@
-import { RES_NAMES, type Res, type TroopType } from '../sim/balance';
+import { RES_KEYS, RES_NAMES, type Res, type TroopType } from '../sim/balance';
 import { icon } from './icons';
 import type { Vein, VeinKind } from '../worldgen/provinces';
 
@@ -15,4 +15,12 @@ export function costText(c: Partial<Res> & { months?: number }, mode: 'html' | '
   const keys = RES_ORDER.filter(k => c[k]);
   const parts = mode === 'html' ? keys.map(k => `${RES_ICON[k]}${Math.ceil(c[k]!)}`).join(' ') : keys.map(k => `${Math.ceil(c[k]!)} ${RES_NAMES[k]}`).join(', ');
   return parts + (c.months ? ` · ${+c.months.toFixed(1)} meses` : '');
+}
+
+/** Variação mensal em texto puro (dicas): "dinheiro −1,2, grãos +0,5"; ignora mudanças abaixo de 0,1. */
+export function deltaText(before: Res, after: Res): string {
+  return RES_KEYS.filter(k => Math.abs(after[k] - before[k]) >= 0.1).map(k => {
+    const d = after[k] - before[k];
+    return `${RES_NAMES[k]} ${d > 0 ? '+' : '−'}${(Math.round(Math.abs(d) * 10) / 10).toLocaleString('pt-BR')}`;
+  }).join(', ');
 }

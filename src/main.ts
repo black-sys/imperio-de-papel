@@ -3,7 +3,7 @@ import { MapRenderer } from './client/map/renderer';
 import { armiesInRect, pickAt, provinceAtTile, routeTargetAt } from './client/map/pick';
 import { TileCache } from './client/map/tileCache';
 import { clampView, minScale, toWorld, zoomAt, type View } from './client/map/view';
-import { costText } from './client/labels';
+import { costText, deltaText } from './client/labels';
 import { renderPanel, setTip, toast, veinsAround, type PanelFocus } from './client/panel';
 import { WorldClient } from './client/worldClient';
 import { build, chooseCapital, colonize, moveArmies, recruit, setSpeed, startGame, training, upgrade, upgradeCity, type Place, type Result } from './sim/commands';
@@ -58,6 +58,7 @@ async function load(s: number) {
   headlineQueue.length = 0; lastHeadline = null; headlineUntil = 0; silenced.clear(); alertList = []; alertsHtml = '';
   (document.getElementById('alerts') as HTMLDivElement).style.display = 'none';
   (document.getElementById('end') as HTMLDivElement).style.display = 'none';
+  renderLegend(); // mundo novo, sem capital: a legenda sai
   tiles.clear(); renderer.setWorld(null, null);
   let w: { provinces: ProvinceMap; map: Parameters<typeof makeMoveGrid>[0] };
   try { w = await client.generate(s, setProgress); }
@@ -267,8 +268,8 @@ function tip(e: PointerEvent) {
     let fx = '';
     if (plan.ok) {
       const pr = previewCached(game, pm, 0, { kind: 'route', a: routeFrom, b: p });
-      const parts = RES_KEYS.filter(k => Math.abs(pr.after[k] - pr.before[k]) >= 0.1).map(k => `${RES_NAMES[k]} ${pr.after[k] - pr.before[k] > 0 ? '+' : '−'}${(Math.round(Math.abs(pr.after[k] - pr.before[k]) * 10) / 10).toLocaleString('pt-BR')} ${RES_NAMES[k]}`);
-      if (parts.length) fx = ` · por mês: ${parts.join(', ')}`;
+      const parts = deltaText(pr.before, pr.after);
+      if (parts) fx = ` · por mês: ${parts}`;
     }
     return setTip(plan.ok ? `Rota até ${pm.provinces[p].name}: ${costText({ ...plan.cost, months: plan.months }, 'text')}${fx}${plan.threatened ? ' · atenção: passa perto de uma fortaleza, nascerá cortada' : ''}` : plan.reason, e.clientX, e.clientY);
   }
@@ -392,7 +393,8 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-document.fonts.ready.then(() => renderer.invalidate()); // nomes do mapa desenhados antes das fontes chegarem
+// nomes do mapa desenhados antes das fontes chegarem: a IM Fell só começa a carregar quando o canvas a pede
+document.fonts.addEventListener('loadingdone', () => renderer.invalidate());
 if (import.meta.env.DEV) { // para testes no console
   Object.assign(window, { renderer, tiles, selectedArmies, sim: { recruit, moveArmies, spawnArmy, addFortress, chooseCapital, startGame, planRoute, declareWar } });
   Object.defineProperties(window, {
