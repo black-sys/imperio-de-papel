@@ -60,3 +60,14 @@ describe('prévia das ações', () => {
     expect(previewCached(s, pm, 0, a)).toBe(previewCached(s, pm, 0, { ...a }));
   });
 });
+
+test('memória vale o mês inteiro com o tempo correndo; muda com as leis', () => {
+  const s = world();
+  const a = { kind: 'build' as const, province: 1, place: { lot: 0 }, type: 'market' as const };
+  s.month = 5.2;
+  const r1 = previewCached(s, pm, 0, a);
+  s.month = 5.7;
+  expect(previewCached(s, pm, 0, a)).toBe(r1);
+  s.nations[0].laws.push('martial');
+  expect(previewCached(s, pm, 0, a)).not.toBe(r1);
+});

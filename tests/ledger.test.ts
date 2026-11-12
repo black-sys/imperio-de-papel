@@ -53,3 +53,12 @@ test('detalhe por província soma o total da linha', () => {
   expect(parts.map(([k]) => k).sort()).toEqual(['p:0', 'p:1']);
   expect(parts.reduce((a, [, v]) => a + v, 0)).toBeCloseTo(line(r, 'money', 'Impostos'), 9);
 });
+
+test('fome com importação de grãos: a projeção bate com a virada', () => {
+  const s = world();
+  s.nations[0].res.grain = 2; s.nations[1].res.grain = 500; s.nations[0].res.money = 500;
+  addPact(s, 'trade', 0, 1, 99, { aGives: ['money', 5], bGives: ['grain', 10] });
+  const proj = runMonth(s, pm, false, 0), before = s.nations[0].res.grain;
+  months(s, 1);
+  expect(s.nations[0].res.grain - before).toBeCloseTo(proj.net.grain, 6);
+});

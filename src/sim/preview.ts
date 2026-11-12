@@ -55,13 +55,22 @@ export function previewMonth(s: GameState, pm: ProvinceMap, n: number, a: Action
 }
 
 // memória por estado: a mesma ação no mesmo mês, com o mesmo estoque, não é recalculada (o painel se refaz várias vezes por segundo)
-const cache = new WeakMap<GameState, { key: string; map: Map<string, { before: Res; after: Res }> }>();
+// chave: mês inteiro, eventos, estoque arredondado, leis, rotas e linhas de suprimento (o que muda a conta do mês)
+const cache = new WeakMap<GameState, { key: string; before: Map<number, Res>; map: Map<string, { before: Res; after: Res }> }>();
 export function previewCached(s: GameState, pm: ProvinceMap, n: number, a: Action): { before: Res; after: Res } {
-  const res = s.nations[n]?.res, key = `${s.month}|${s.eventCount}|${res ? RES_KEYS.map(k => Math.floor(res[k])).join(',') : ''}`;
+  const x = s.nations[n], res = x?.res;
+  const key = `${Math.floor(s.month + 1e-9)}|${s.eventCount}|${res ? RES_KEYS.map(k => Math.floor(res[k])).join(',') : ''}|${x?.laws.join(',')}|${s.routes.map(r => `${r.id}${r.cut ? 'x' : ''}${r.remaining > 0 ? 'o' : ''}`).join(',')}|${s.armies.filter(v => v.supply).length}`;
   let hit = cache.get(s);
-  if (!hit || hit.key !== key) cache.set(s, hit = { key, map: new Map() });
+  if (!hit || hit.key !== key) cache.set(s, hit = { key, before: new Map(), map: new Map() });
   const id = `${n}|${JSON.stringify(a)}`;
   let r = hit.map.get(id);
-  if (!r) hit.map.set(id, r = previewMonth(s, pm, n, a));
+  if (!r) {
+    if (!x?.alive) return previewMonth(s, pm, n, a);
+    let before = hit.before.get(n);
+    if (!before) hit.before.set(n, before = runMonth(s, pm, false, n).net); // o "antes" é o mesmo para todas as ações da chave
+    const c = cheapCopy(s);
+    apply(c, pm, n, a);
+    hit.map.set(id, r = { before, after: runMonth(c, pm, false, n).net });
+  }
   return r;
 }
