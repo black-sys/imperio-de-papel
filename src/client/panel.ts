@@ -8,7 +8,10 @@ import type { LawKind, Proposal } from '../sim/state';
 import { LAW_NAME, stabilityTarget } from '../sim/stability';
 import { formatDate } from './hud';
 import { LAWS, REPRESS, STAB, UNREST } from '../sim/balance';
-import { RES_KEYS, type Res } from '../sim/balance';
+import { RES_KEYS, zeroRes, type Res } from '../sim/balance';
+import { ledgerHtml } from './ledger';
+// categorias abertas no painel Contas ("recurso:linha")
+const ledgerOpen = new Set<string>();
 import { REALM_COLORS } from './map/pick';
 import { inBattle, men } from '../sim/armies';
 import { reinforcing } from '../sim/routes';
@@ -42,7 +45,7 @@ export interface PanelActions {
   centerOn(province: number): void;
 }
 /** O que mais o painel pode mostrar: a lista de nações ou um exército alheio (só leitura). */
-export interface PanelExtra { nations?: boolean; inspect?: number; letters?: boolean; laws?: boolean; journal?: boolean }
+export interface PanelExtra { nations?: boolean; inspect?: number; letters?: boolean; laws?: boolean; journal?: boolean; ledger?: boolean }
 /** Lugar para onde o painel rola ao abrir (clique num lote ou veio no mapa). */
 export type PanelFocus = { lot: number } | { vein: number } | null;
 
@@ -68,9 +71,14 @@ export function veinsAround(pm: ProvinceMap, id: number): string {
 export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: number, act: PanelActions, armies: number[] = [], focus: PanelFocus = null, extra: PanelExtra = {}): void {
   const picked = s ? s.armies.filter(t => armies.includes(t.id)) : [];
   const other = s?.armies.find(a => a.id === extra.inspect && a.owner !== 0);
-  if (!s || !pm || (id < 0 && picked.length === 0 && !other && !extra.nations && !extra.letters && !extra.laws && !extra.journal)) { el.style.display = 'none'; lastHtml = ''; lastFocus = ''; return; }
+  if (!s || !pm || (id < 0 && picked.length === 0 && !other && !extra.nations && !extra.letters && !extra.laws && !extra.journal && !extra.ledger)) { el.style.display = 'none'; lastHtml = ''; lastFocus = ''; return; }
   if (picked.length) return show(armiesHtml(s, pm, picked), id, act, '');
   if (other) return show(foreignArmyHtml(s, other), id, act, '');
+  if (id < 0 && extra.ledger) {
+    const depot = zeroRes();
+    s.depot.forEach((d, p) => { if (s.owner[p] === 0) for (const k of RES_KEYS) depot[k] += d[k]; });
+    return show(ledgerHtml(s, pm, runMonth(s, pm, false), ledgerOpen, depot), id, act, '');
+  }
   if (id < 0 && extra.letters) return show(lettersHtml(s, pm), id, act, '');
   if (id < 0 && extra.laws) return show(lawsHtml(s), id, act, '');
   if (id < 0 && extra.journal) return show(journalHtml(s), id, act, '');
@@ -414,6 +422,7 @@ function show(html: string, id: number, act: PanelActions, focus: string): void 
     else if (a.startsWith('dw:')) act.declareWar(Number(a.slice(3)));
     else if (a.startsWith('pp:')) { const [, n, kind] = a.split(':'); act.propose(Number(n), { kind } as Proposal); }
     else if (a.startsWith('lv:')) act.leaveAlliance(Number(a.slice(3)));
+    else if (a.startsWith('lx:')) { const k = a.slice(3); if (ledgerOpen.has(k)) ledgerOpen.delete(k); else ledgerOpen.add(k); }
     else if (a.startsWith('lw:')) act.decree(a.slice(3) as LawKind);
     else if (a.startsWith('lr:')) act.repeal(a.slice(3) as LawKind);
     else if (a.startsWith('rp:')) act.repress(Number(a.slice(3)));

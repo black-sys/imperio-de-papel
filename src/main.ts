@@ -35,7 +35,7 @@ let game: GameState | null = null;
 let moveGrid: MoveGrid | null = null;
 let pins: { x: number; y: number; province: number }[] = [];
 let lastSpeed = 1, seenEvents = 0, selected = -1, focus: PanelFocus = null;
-let nationsOpen = false, lettersOpen = false, lawsOpen = false, journalOpen = false, inspect = -1, endShown = false;
+let nationsOpen = false, lettersOpen = false, lawsOpen = false, journalOpen = false, ledgerOpen = false, inspect = -1, endShown = false;
 // manchetes ainda não mostradas na faixa e a última já vista
 const headlineQueue: { month: number; text: string }[] = [];
 let lastHeadline: { month: number; text: string } | null = null, headlineUntil = 0; // lista de nações; exército alheio em leitura; tela de fim já mostrada
@@ -93,7 +93,7 @@ const actions = {
     view = clampView({ ...view, cx: c.x, cy: c.y, scale: 1.5 });
     toast('Capital fundada. O tempo está pausado: espaço ou 1× para começar.');
   },
-  close: () => { selected = -1; focus = null; selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; lettersOpen = false; lawsOpen = false; journalOpen = false; inspect = -1; },
+  close: () => { selected = -1; focus = null; selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; lettersOpen = false; lawsOpen = false; journalOpen = false; ledgerOpen = false; inspect = -1; },
   decree: (law: LawKind) => game && report(decree(game, 0, law)),
   repeal: (law: LawKind) => game && report(repeal(game, 0, law)),
   repress: (armyId: number) => game && pm && moveGrid && report(repress(game, pm, moveGrid, armyId)),
@@ -134,13 +134,14 @@ initHud({
 });
 initTopbar(speed);
 /** Abre um dos painéis da barra (fecha os outros e a seleção). */
-function openBar(which: 'nations' | 'letters' | 'laws' | 'journal'): void {
-  const was = { nations: nationsOpen, letters: lettersOpen, laws: lawsOpen, journal: journalOpen }[which];
-  nationsOpen = lettersOpen = lawsOpen = journalOpen = false;
+function openBar(which: 'nations' | 'letters' | 'laws' | 'journal' | 'ledger', force = false): void {
+  const was = !force && { nations: nationsOpen, letters: lettersOpen, laws: lawsOpen, journal: journalOpen, ledger: ledgerOpen }[which];
+  nationsOpen = lettersOpen = lawsOpen = journalOpen = ledgerOpen = false;
   if (!was) { selected = -1; selectedArmies.clear(); inspect = -1; }
-  if (which === 'nations') nationsOpen = !was; else if (which === 'letters') lettersOpen = !was; else if (which === 'laws') lawsOpen = !was; else journalOpen = !was;
+  if (which === 'nations') nationsOpen = !was; else if (which === 'letters') lettersOpen = !was; else if (which === 'laws') lawsOpen = !was;
+  else if (which === 'journal') journalOpen = !was; else ledgerOpen = !was;
 }
-for (const id of ['nations', 'letters', 'laws', 'journal'] as const) (document.getElementById(id) as HTMLButtonElement).onclick = e => { openBar(id); (e.currentTarget as HTMLButtonElement).blur(); };
+for (const id of ['nations', 'letters', 'laws', 'journal', 'ledger'] as const) (document.getElementById(id) as HTMLButtonElement).onclick = e => { openBar(id); (e.currentTarget as HTMLButtonElement).blur(); };
 const lettersButton = document.getElementById('letters') as HTMLButtonElement;
 
 (document.getElementById('end-stay') as HTMLButtonElement).onclick = () => { (document.getElementById('end') as HTMLDivElement).style.display = 'none'; };
@@ -200,7 +201,7 @@ canvas.addEventListener('pointerup', e => {
   down = null; box = null;
   if (b) return pickArmies(armiesInRect(game, view, b[0], b[1], b[2], b[3]), e.shiftKey);
   const hit = pickAt(game, pm, view, e.clientX, e.clientY, false, pins); // alheios também: abrem só para leitura
-  inspect = -1; nationsOpen = false; lettersOpen = false; lawsOpen = false; journalOpen = false;
+  inspect = -1; nationsOpen = false; lettersOpen = false; lawsOpen = false; journalOpen = false; ledgerOpen = false;
   if (routeFrom !== null) { // modo traçar rota: o clique numa cidade sua confirma; fora dela, sai do modo
     const target = routeTargetAt(pm, view, e.clientX, e.clientY); // a mesma consulta da prévia: tropa ao lado da cidade não engole o clique
     if (target >= 0 && game.owner[target] === 0 && target !== routeFrom && moveGrid) report(buildRoute(game, pm, moveGrid, routeFrom, target));
@@ -267,9 +268,9 @@ function frame(now: number) {
     for (const id of selectedArmies) if (!game.armies.some(t => t.id === id)) selectedArmies.delete(id); // destruídos saem da seleção
     setTopbar(playerCapital(game) >= 0 ? { res: game.nations[0].res, report: runMonth(game, pm, false), month: game.month, speed: game.speed,
       troops: `${battalionCount(game) + training(game)}/${armyCap(game)}`,
-      depot: game.depot.filter((_, id) => game!.owner[id] === 0).reduce((a, d) => { for (const k of Object.keys(a) as (keyof typeof a)[]) a[k] += d[k]; return a; }, { money: 0, grain: 0, wood: 0, coal: 0, iron: 0, steel: 0, arms: 0 }) } : null);
+      depot: game.depot.filter((_, id) => game!.owner[id] === 0).reduce((a, d) => { for (const k of Object.keys(a) as (keyof typeof a)[]) a[k] += d[k]; return a; }, { money: 0, grain: 0, wood: 0, coal: 0, iron: 0, steel: 0, arms: 0 }) } : null, k => openBar('ledger', true));
     if (inspect >= 0 && !game.armies.some(a => a.id === inspect)) inspect = -1;
-    renderPanel(game, pm, selected, actions, [...selectedArmies], focus, { nations: nationsOpen, inspect, letters: lettersOpen, laws: lawsOpen, journal: journalOpen });
+    renderPanel(game, pm, selected, actions, [...selectedArmies], focus, { nations: nationsOpen, inspect, letters: lettersOpen, laws: lawsOpen, journal: journalOpen, ledger: ledgerOpen });
     // barra: estabilidade média e leis
     const me = game.nations[0], own = me ? game.owner.map((o, id) => (o === 0 && game!.city[id] ? game!.stability[id] : -1)).filter(v => v >= 0) : [];
     const avg = own.length ? Math.round(own.reduce((a, b) => a + b, 0) / own.length) : 0, stab = document.getElementById('stab')!;

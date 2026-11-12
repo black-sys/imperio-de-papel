@@ -1,4 +1,5 @@
-import { RES_NAMES, type Res } from '../sim/balance';
+import type { Res } from '../sim/balance';
+import { resourceTip, trend } from './ledger';
 import type { MonthReport } from '../sim/economy';
 import { RES_ICON } from './labels';
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -45,25 +46,26 @@ export function initTopbar(onSpeed: (v: number) => void): void {
   for (const b of document.querySelectorAll<HTMLButtonElement>('#speeds button')) b.onclick = () => { onSpeed(Number(b.dataset.speed)); b.blur(); };
 }
 
-const RES_ORDER = ['money', 'grain', 'wood', 'coal', 'iron', 'steel', 'arms'] as const;
+const GROUPS: (keyof Res)[][] = [['money'], ['grain', 'wood', 'coal', 'iron'], ['steel', 'arms']];
 let resBuilt = false;
 
-/** Barra superior: os sete recursos (valor, variação no mês, dica com origem e destino), tropas, data e velocidade. */
-export function setTopbar(t: { res: Res; report: MonthReport; month: number; speed: number; troops: string; depot: Res } | null): void {
+/** Barra superior: recursos em grupos (estoque e, embaixo, saldo com seta), tropas, data e velocidade. */
+export function setTopbar(t: { res: Res; report: MonthReport; month: number; speed: number; troops: string; depot: Res } | null, onResource?: (k: keyof Res) => void): void {
   $('topbar').style.display = t ? 'flex' : 'none';
+  document.body.classList.toggle('playing', !!t);
   if (!t) return;
   if (!resBuilt) {
     resBuilt = true;
-    $('res').innerHTML = RES_ORDER.map(k => `<span class="res" id="s-${k}">${RES_ICON[k]} <b id="r-${k}">0</b> <small id="i-${k}"></small></span>`).join('');
+    $('res').innerHTML = GROUPS.map(g => g.map(k => `<span class="res" id="s-${k}"><span>${RES_ICON[k]} <b id="r-${k}">0</b></span><small id="i-${k}"></small></span>`).join('')).join('<span class="sep"></span>');
+    for (const g of GROUPS) for (const k of g) $(`s-${k}`).onclick = () => onResource?.(k);
   }
-  for (const k of RES_ORDER) {
+  for (const g of GROUPS) for (const k of g) {
     const net = t.report.net[k], inc = $(`i-${k}`);
     $(`r-${k}`).textContent = fmt(t.res[k]);
-    inc.textContent = `${sign(net)}/mês`;
+    inc.textContent = `${trend(net)} ${sign(net)}`;
     inc.classList.toggle('neg', net < -0.05);
-    const lines = t.report.lines[k].map(([label, v]) => `${sign(v)} ${label.toLowerCase()}`).join(', ');
-    const held = t.depot[k] >= 0.5 ? ` · guardado em cidades desligadas: ${fmt(t.depot[k])}` : '';
-    $(`s-${k}`).title = `${RES_NAMES[k][0].toUpperCase()}${RES_NAMES[k].slice(1)}: ${lines || 'nada entra nem sai'}${held}`;
+    inc.classList.toggle('pos', net > 0.05);
+    $(`s-${k}`).title = resourceTip(k, t.res[k], t.report);
   }
   $('troops').textContent = t.troops;
   $('date').textContent = formatDate(t.month);
