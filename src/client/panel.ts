@@ -7,9 +7,10 @@ import { checkPropose, KIND_LABEL, pactBetween, relation, relationLabel } from '
 import type { LawKind, Proposal } from '../sim/state';
 import { LAW_NAME, stabilityTarget } from '../sim/stability';
 import { formatDate } from './hud';
-import { LAWS, REPRESS, STAB, UNREST } from '../sim/balance';
+import { LAWS, REPRESS, STAB, UI, UNREST } from '../sim/balance';
 import { RES_KEYS, zeroRes, type Res } from '../sim/balance';
-import { ledgerHtml } from './ledger';
+import { ledgerHtml, runsOutIn } from './ledger';
+import { previewCached, type Action } from '../sim/preview';
 // categorias abertas no painel Contas ("recurso:linha")
 const ledgerOpen = new Set<string>();
 import { REALM_COLORS } from './map/pick';
@@ -54,8 +55,26 @@ const LOT_TYPES: BuildingType[] = ['steelworks', 'arms_factory', 'market', 'garr
 const TROOP_TYPES: TroopType[] = ['line', 'artillery', 'cavalry'];
 const esc = (s: string) => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
 const bar = (label: string, v: number) => `<div class="fac"><span>${label}</span><i><b style="width:${(v / 1.5) * 100}%"></b></i><em>${v.toFixed(2)}</em></div>`;
-const button = (action: string, label: string, r: Result, extra = '') =>
-  `<button data-a="${action}" ${r.ok ? '' : 'disabled'} title="${r.ok ? '' : esc(r.reason)}">${label}${extra}</button>${r.ok ? '' : `<small class="why">${esc(r.reason)}</small>`}`;
+const button = (action: string, label: string, r: Result, extra = '', fx?: Effect) =>
+  `<button data-a="${action}" ${r.ok ? '' : 'disabled'} title="${esc([r.ok ? '' : r.reason, fx?.tip ?? ''].filter(Boolean).join('\n'))}">${label}${extra}</button>${fx?.line ?? ''}${r.ok ? '' : `<small class="why">${esc(r.reason)}</small>`}`;
+
+type Effect = { line: string; tip: string };
+let effectState: { s: GameState; pm: ProvinceMap } | null = null; // estado do painel em desenho (para as prévias)
+/** Efeito da ação no saldo mensal: a linha "por mês" e a dica antes → depois (com aviso se passa a faltar). */
+function effect(a: Action): Effect | undefined {
+  if (!effectState) return undefined;
+  const { s, pm } = effectState, p = previewCached(s, pm, 0, a), parts: string[] = [], tips: string[] = [];
+  for (const k of RES_KEYS) {
+    const d = p.after[k] - p.before[k];
+    if (Math.abs(d) < UI.showDelta) continue;
+    parts.push(`<span class="${d < 0 ? 'neg' : 'pos'}">${RES_ICON[k]} ${d > 0 ? '+' : '−'}${(Math.round(Math.abs(d) * 10) / 10).toLocaleString('pt-BR')}</span>`);
+    const out = runsOutIn(s.nations[0].res[k], p.after[k]);
+    tips.push(`${RES_ICON[k]} ${RES_NAMES[k][0].toUpperCase()}${RES_NAMES[k].slice(1)}: ${fmtNet(p.before[k])} → ${fmtNet(p.after[k])}/mês${out !== null && p.before[k] >= 0 ? ` ⚠ acaba em ${out} ${out === 1 ? 'mês' : 'meses'}` : ''}`);
+  }
+  if (!parts.length) return undefined;
+  return { line: `<small class="fx">por mês: ${parts.join(' · ')}</small>`, tip: tips.join('\n') };
+}
+const fmtNet = (v: number) => `${v >= 0 ? '+' : '−'}${Math.abs(Math.round(v * 10) / 10).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}`;
 const stars = (n: number) => '★'.repeat(n);
 const placeKey = (p: Place) => ('lot' in p ? `lot:${p.lot}` : `vein:${p.vein}`);
 
@@ -69,6 +88,7 @@ export function veinsAround(pm: ProvinceMap, id: number): string {
 
 /** Painel lateral da província selecionada. Re-renderiza só quando o conteúdo muda (cliques não se perdem). */
 export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: number, act: PanelActions, armies: number[] = [], focus: PanelFocus = null, extra: PanelExtra = {}): void {
+  effectState = s && pm ? { s, pm } : null;
   const picked = s ? s.armies.filter(t => armies.includes(t.id)) : [];
   const other = s?.armies.find(a => a.id === extra.inspect && a.owner !== 0);
   if (!s || !pm || (id < 0 && picked.length === 0 && !other && !extra.nations && !extra.letters && !extra.laws && !extra.journal && !extra.ledger)) { el.style.display = 'none'; lastHtml = ''; lastFocus = ''; return; }
@@ -103,13 +123,13 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
       html += `<p><b>Guarnição:</b> ${TROOP_TYPES.map(count).filter(Boolean).join(', ')}. Derrote-a para tomar a província.</p>`;
     }
     html += col ? `<p>Colonizando… faltam ${col.remaining.toFixed(1)} meses.</p>`
-      : `<div class="act">${button('colonize', 'Colonizar', checkColonize(s, pm, id), ` <small>${costText(colonizeCost(s, pm, id))}</small>`)}</div>`;
+      : `<div class="act">${button('colonize', 'Colonizar', checkColonize(s, pm, id), ` <small>${costText(colonizeCost(s, pm, id))}</small>`, effect({ kind: 'colonize', province: id }))}</div>`;
     html += veinsHtml(s, pm, id, false);
   } else {
     const rep = runMonth(s, pm, false), lvl = cityLevel(s, id), c = s.city[id]!;
     // cidade
     const cityWork = c.remaining > 0 ? ` <small>(subindo ao nível ${c.level}: ${c.remaining.toFixed(1)} meses)</small>` : '';
-    const up = c.level < 3 && c.remaining === 0 ? button('upc', 'Melhorar cidade', checkUpgradeCity(s, pm, id), ` <small>${costText({ ...CITY.cost[c.level + 1], months: CITY.months[c.level + 1] })}</small>`) : '';
+    const up = c.level < 3 && c.remaining === 0 ? button('upc', 'Melhorar cidade', checkUpgradeCity(s, pm, id), ` <small>${costText({ ...CITY.cost[c.level + 1], months: CITY.months[c.level + 1] })}</small>`, effect({ kind: 'upgradeCity', province: id })) : '';
     html += `<h3>Cidade</h3><div class="slot"><b>${['', 'Vila', 'Cidade', 'Metrópole'][lvl]} ${stars(lvl)}</b>${cityWork}
       <div class="sub">Impostos ${RES_ICON.money}${cityTax(s, pm, id).toFixed(1)}/mês · consome ${RES_ICON.grain}${CITY.grain[lvl]}/mês</div><div class="act">${up}</div></div>`;
     // ligação com a capital e rotas
@@ -128,7 +148,7 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
       const place: Place = { lot }, key = placeKey(place);
       if (lot >= CITY.lots[lvl]) { html += `<div class="slot empty" id="${key}"><b>🔒 Lote ${lot + 1}</b><small class="why">Libera com a cidade nível ${CITY.lots.findIndex(n => n > lot)}</small></div>`; return; }
       if (!b) {
-        html += `<div class="slot empty" id="${key}"><b>Lote livre</b><div class="act">${LOT_TYPES.map(t => button(`b:${key}:${t}`, BUILDINGS[t].name, checkBuild(s, pm, id, place, t), ` <small>${costText(buildCost(t, 1))}</small>`)).join('')}</div></div>`;
+        html += `<div class="slot empty" id="${key}"><b>Lote livre</b><div class="act">${LOT_TYPES.map(t => button(`b:${key}:${t}`, BUILDINGS[t].name, checkBuild(s, pm, id, place, t), ` <small>${costText(buildCost(t, 1))}</small>`, effect({ kind: 'build', province: id, place, type: t }))).join('')}</div></div>`;
         return;
       }
       const stall = rep.stalled.find(x => x.province === id && x.lot === lot), def = BUILDINGS[b.type], made = rep.produced[`${id}:${lot}`] ?? 0;
@@ -138,7 +158,7 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
       if (b.type === 'garrison' && activeLevel(b) > 0) {
         const q = s.recruiting.find(r => r.province === id && r.lot === lot);
         train = q ? `<small>Treinando ${TROOPS[q.type].name.toLowerCase()}… faltam ${q.remaining.toFixed(1)} meses</small>`
-          : TROOP_TYPES.map(t => button(`r:${lot}:${t}`, `${TROOP_ICON[t]} ${TROOPS[t].name}`, checkRecruit(s, pm, id, lot, t), ` <small>${costText({ ...recruitCost(s, t), months: TROOPS[t].months })}</small>`)).join('');
+          : TROOP_TYPES.map(t => button(`r:${lot}:${t}`, `${TROOP_ICON[t]} ${TROOPS[t].name}`, checkRecruit(s, pm, id, lot, t), ` <small>${costText({ ...recruitCost(s, t), months: TROOPS[t].months })}</small>`, effect({ kind: 'recruit', province: id, lot, type: t }))).join('');
         // para onde vai o próximo batalhão: pela linha (reforço), para um exército parado perto, ou um exército novo
         const line = s.armies.find(a => reinforcing(s, a) === id), c = pm.provinces[id].city;
         const near = s.armies.find(a => a.owner === 0 && !a.path.length && !inBattle(s, a.id) && a.battalions.length < ARMY.maxBattalions && Math.hypot(a.x - c.x, a.y - c.y) <= 2 * ARMY.joinTiles);
@@ -156,7 +176,7 @@ export function renderPanel(s: GameState | null, pm: ProvinceMap | null, id: num
 function upgradeButton(s: GameState, pm: ProvinceMap, id: number, place: Place): string {
   const b = 'lot' in place ? s.lots[id][place.lot] : s.veins[id][place.vein];
   if (!b || b.level >= 3 || b.remaining > 0) return '';
-  return button(`up:${placeKey(place)}`, 'Melhorar', checkUpgrade(s, pm, id, place), ` <small>${costText(buildCost(b.type, b.level + 1))}</small>`);
+  return button(`up:${placeKey(place)}`, 'Melhorar', checkUpgrade(s, pm, id, place), ` <small>${costText(buildCost(b.type, b.level + 1))}</small>`, effect({ kind: 'upgrade', province: id, place }));
 }
 
 /** Seção Veios: tipo, riqueza e produção; com `build`, o botão do prédio do recurso. */
@@ -169,7 +189,7 @@ function veinsHtml(s: GameState, pm: ProvinceMap, id: number, build: boolean): s
     const type = (Object.keys(BUILDINGS) as BuildingType[]).find(t => BUILDINGS[t].vein === v.kind)!, def = BUILDINGS[type];
     const perMonth = (l: number) => (def.out[l] * v.richness).toFixed(1);
     if (!build) { html += `<div class="slot" id="${key}"><b>${veinLabel(v)}</b> <small>${def.name}: ${RES_ICON[def.product!]}${perMonth(1)}/mês no nível 1</small></div>`; return; }
-    if (!b) { html += `<div class="slot empty" id="${key}"><b>${veinLabel(v)}</b><div class="act">${button(`b:${key}:${type}`, def.name, checkBuild(s, pm, id, place, type), ` <small>${costText(buildCost(type, 1))}</small>`)}</div></div>`; return; }
+    if (!b) { html += `<div class="slot empty" id="${key}"><b>${veinLabel(v)}</b><div class="act">${button(`b:${key}:${type}`, def.name, checkBuild(s, pm, id, place, type), ` <small>${costText(buildCost(type, 1))}</small>`, effect({ kind: 'build', province: id, place, type }))}</div></div>`; return; }
     const info = b.remaining > 0 ? ` <small>(obra: ${b.remaining.toFixed(1)} meses)</small>` : ` <small>${RES_ICON[def.product!]}${perMonth(activeLevel(b))}/mês</small>`;
     html += `<div class="slot" id="${key}"><b>${def.name} ${stars(b.level)}</b> <small>${veinLabel(v)}</small>${info}<div class="act">${upgradeButton(s, pm, id, place)}</div></div>`;
   });
@@ -231,7 +251,7 @@ function tradeForm(s: GameState, pm: ProvinceMap, n: number, f: Form): string {
       <div class="sub">nossa produção: ${net[f.give] >= 0 ? '+' : ''}${net[f.give].toFixed(1)}/mês</div></div>
     <div class="slot">Recebemos <select data-f="get">${opts(f.get)}</select> <input data-f="getQty" type="number" min="1" max="999" value="${f.getQty}" style="width:56px"> /mês
       <div class="sub">estoque deles: ${Math.floor(theirs[f.get])}</div></div>
-    <div class="act">${button('fs', 'Enviar', r)}<button data-a="tf:${n}">Cancelar</button></div>`;
+    <div class="act">${button('fs', 'Enviar', r, '', effect({ kind: 'trade', to: n, give: [f.give, f.giveQty], get: [f.get, f.getQty] }))}<button data-a="tf:${n}">Cancelar</button></div>`;
 }
 
 /** Caixa de cartas do jogador. */
@@ -291,7 +311,7 @@ function lawsHtml(s: GameState): string {
     const on = me.laws.includes(l), wait = (me.lawCooldown[l] ?? -Infinity) - s.month, cost = l === 'bread' ? LAWS.bread.cost : l === 'martial' ? LAWS.martial.cost : 0;
     const r = on ? { ok: true as const } : wait > 0 ? { ok: false as const, reason: `Só pode decretar de novo em ${Math.ceil(wait)} meses` } : me.res.money < cost ? { ok: false as const, reason: 'Falta dinheiro' } : { ok: true as const };
     return `<div class="slot"><b>${LAW_NAME[l]}</b>${on ? ' <small>(em vigor)</small>' : ''}<div class="sub">${LAW_TEXT[l]}</div>
-      <div class="act">${on ? `<button data-a="lr:${l}">Revogar</button>` : button(`lw:${l}`, 'Decretar', r)}</div></div>`;
+      <div class="act">${on ? `<button data-a="lr:${l}">Revogar</button>` : button(`lw:${l}`, 'Decretar', r, '', effect({ kind: 'law', law: l }))}</div></div>`;
   }).join('');
   return `<button class="x" data-a="close">✕</button><h2>Leis de emergência</h2>${rows}`;
 }

@@ -10,6 +10,10 @@ import { build, chooseCapital, colonize, moveArmies, recruit, setSpeed, startGam
 import { declareWar } from './sim/war';
 import { answerLetter, leaveAlliance, pactBetween, propose } from './sim/diplomacy';
 import { decree, repeal, repress } from './sim/stability';
+import { alerts, type Alert, type AlertKind } from './sim/alerts';
+import { previewCached } from './sim/preview';
+import { RES_KEYS, RES_NAMES } from './sim/balance';
+import { RES_ICON } from './client/labels';
 import type { LawKind } from './sim/state';
 import { runMonth } from './sim/economy';
 import { addFortress, placeFortresses } from './sim/fortress';
@@ -49,7 +53,8 @@ async function load(s: number) {
   showError(null);
   pm = null; game = null; moveGrid = null; pins = []; selected = -1; seenEvents = 0; lastSpeed = 1; lastClose = null;
   groups.clear(); selectedArmies.clear(); routeFrom = null; preview = null; nationsOpen = false; lettersOpen = false; lawsOpen = false; journalOpen = false; inspect = -1; endShown = false;
-  headlineQueue.length = 0; lastHeadline = null; headlineUntil = 0;
+  headlineQueue.length = 0; lastHeadline = null; headlineUntil = 0; silenced.clear(); alertList = []; alertsHtml = '';
+  (document.getElementById('alerts') as HTMLDivElement).style.display = 'none';
   (document.getElementById('end') as HTMLDivElement).style.display = 'none';
   tiles.clear(); renderer.setWorld(null, null);
   let w: { provinces: ProvinceMap; map: Parameters<typeof makeMoveGrid>[0] };
@@ -229,7 +234,13 @@ function tip(e: PointerEvent) {
     if (p < 0 || p === routeFrom || game.owner[p] !== 0) { preview = null; return setTip('Clique noutra cidade sua · Esc cancela', e.clientX, e.clientY); }
     const plan = planRoute(game, pm, moveGrid, routeFrom, p);
     preview = plan.ok ? { path: plan.path, ok: true } : null;
-    return setTip(plan.ok ? `Rota até ${pm.provinces[p].name}: ${costText({ ...plan.cost, months: plan.months })}${plan.threatened ? ' · ⚠ passa perto de uma fortaleza: nascerá cortada' : ''}` : plan.reason, e.clientX, e.clientY);
+    let fx = '';
+    if (plan.ok) {
+      const pr = previewCached(game, pm, 0, { kind: 'route', a: routeFrom, b: p });
+      const parts = RES_KEYS.filter(k => Math.abs(pr.after[k] - pr.before[k]) >= 0.1).map(k => `${RES_ICON[k]} ${pr.after[k] - pr.before[k] > 0 ? '+' : '−'}${(Math.round(Math.abs(pr.after[k] - pr.before[k]) * 10) / 10).toLocaleString('pt-BR')} ${RES_NAMES[k]}`);
+      if (parts.length) fx = ` · por mês: ${parts.join(', ')}`;
+    }
+    return setTip(plan.ok ? `Rota até ${pm.provinces[p].name}: ${costText({ ...plan.cost, months: plan.months })}${fx}${plan.threatened ? ' · ⚠ passa perto de uma fortaleza: nascerá cortada' : ''}` : plan.reason, e.clientX, e.clientY);
   }
   // selo de capital sugerida: o que há por perto (é assim que se escolhe onde fundar)
   const pin = playerCapital(game) < 0 ? pins.find(q => { const [sx, sy] = [(q.x - view.cx) * view.scale + view.w / 2, (q.y - view.cy) * view.scale + view.h / 2]; return Math.hypot(sx - e.clientX, sy - e.clientY) <= 13; }) : undefined;
@@ -239,6 +250,36 @@ function tip(e: PointerEvent) {
   setTip(p < 0 ? null : `${pm.provinces[p].name} · ${o === 0 ? 'sua nação' : o > 0 ? game.nations[o].name : game.fortresses.some(f => f.province === p) ? 'fortaleza neutra' : 'neutra'}`, e.clientX, e.clientY);
 }
 canvas.addEventListener('pointerleave', () => setTip(null));
+
+// ---- faixa de alertas: agrupados por tipo, clique leva ao problema, ✕ silencia o tipo até ele se resolver ----
+const ALERT_ICON: Record<AlertKind, string> = { stalled: '⚙', 'running-out': '⏳', 'money-negative': '🪙', famine: '🌾', disconnected: '⛓', unsupplied: '⛽', revolt: '🔥', strike: '✊', cap: '⚔' };
+const ALERT_NAME: Record<AlertKind, string> = { stalled: 'Fábricas paradas', 'running-out': 'Recursos acabando', 'money-negative': 'Dinheiro', famine: 'Fome', disconnected: 'Cidades desligadas', unsupplied: 'Sem suprimento', revolt: 'Revoltas', strike: 'Greves', cap: 'Teto de batalhões' };
+const silenced = new Set<AlertKind>();
+let alertList: Alert[] = [], alertsAt = 0, alertsHtml = '';
+const escHtml = (s: string) => s.replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]!);
+function renderAlerts(now: number, report: ReturnType<typeof runMonth>): void {
+  if (!game || !pm || now - alertsAt < 500) return;
+  alertsAt = now;
+  alertList = alerts(game, pm, 0, report);
+  const present = new Set(alertList.map(a => a.kind));
+  for (const k of [...silenced]) if (!present.has(k)) silenced.delete(k); // resolvido: volta a avisar da próxima vez
+  const groups = new Map<AlertKind, number[]>();
+  alertList.forEach((a, i) => { if (!silenced.has(a.kind)) groups.set(a.kind, [...(groups.get(a.kind) ?? []), i]); });
+  const html = [...groups].map(([k, idx]) => `<span class="grp ${idx.some(i => alertList[i].severity === 'red') ? 'red' : ''}">${ALERT_ICON[k]} ${idx.length}
+    <span class="list"><b>${ALERT_NAME[k]}</b> <a data-x="${k}" style="float:right;cursor:pointer">✕</a>${idx.map(i => `<div class="item" data-i="${i}">${escHtml(alertList[i].text)}<small>${escHtml(alertList[i].hint)}</small></div>`).join('')}</span></span>`).join('');
+  const el = document.getElementById('alerts') as HTMLDivElement;
+  if (html !== alertsHtml) { alertsHtml = html; el.innerHTML = html; }
+  el.style.display = html ? 'flex' : 'none';
+}
+(document.getElementById('alerts') as HTMLDivElement).onclick = e => {
+  const t = e.target as HTMLElement, x = t.closest('[data-x]') as HTMLElement | null, item = t.closest('[data-i]') as HTMLElement | null;
+  if (x) { silenced.add(x.dataset.x as AlertKind); alertsAt = 0; return; }
+  const a = item && alertList[Number(item.dataset.i)];
+  if (!a || !game || !pm) return;
+  if (a.target.province !== undefined) { actions.centerOn(a.target.province); selected = a.target.province; selectedArmies.clear(); inspect = -1; nationsOpen = lettersOpen = lawsOpen = journalOpen = ledgerOpen = false; }
+  else if (a.target.army !== undefined) { const army = game.armies.find(v => v.id === a.target.army); if (army) { view = clampView({ ...view, cx: army.x, cy: army.y, scale: Math.max(view.scale, 1) }); selectedArmies.clear(); selectedArmies.add(army.id); selected = -1; } }
+  else openBar('ledger', true);
+};
 
 // ---- faixa de manchete: uma por vez, 6 s cada ----
 function showHeadline(now: number): void {
@@ -266,7 +307,9 @@ function frame(now: number) {
   if (pm && game) {
     if (playerCapital(game) >= 0) tick(game, pm, Math.min(dt, 1), moveGrid); // aba em segundo plano: no máximo 1 s por quadro
     for (const id of selectedArmies) if (!game.armies.some(t => t.id === id)) selectedArmies.delete(id); // destruídos saem da seleção
-    setTopbar(playerCapital(game) >= 0 ? { res: game.nations[0].res, report: runMonth(game, pm, false), month: game.month, speed: game.speed,
+    const report = playerCapital(game) >= 0 ? runMonth(game, pm, false) : null;
+    if (report) renderAlerts(now, report);
+    setTopbar(report ? { res: game.nations[0].res, report, month: game.month, speed: game.speed,
       troops: `${battalionCount(game) + training(game)}/${armyCap(game)}`,
       depot: game.depot.filter((_, id) => game!.owner[id] === 0).reduce((a, d) => { for (const k of Object.keys(a) as (keyof typeof a)[]) a[k] += d[k]; return a; }, { money: 0, grain: 0, wood: 0, coal: 0, iron: 0, steel: 0, arms: 0 }) } : null, k => openBar('ledger', true));
     if (inspect >= 0 && !game.armies.some(a => a.id === inspect)) inspect = -1;
