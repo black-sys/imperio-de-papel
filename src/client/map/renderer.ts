@@ -3,7 +3,7 @@ import { CELL } from '../../worldgen/constants';
 import type { ProvinceMap } from '../../worldgen/provinces';
 import { drawMarkers, markersKey, type MarkerOpts } from './markers';
 import { borderSegments, provinceRings } from './outlines';
-import { GOLD, INK, REALM_COLORS, cityRadius } from './pick';
+import { GOLD, INK, LOT_DETAIL, REALM_COLORS, cityRadius, lotScale } from './pick';
 import { drawableFor, type TileCache } from './tileCache';
 import { OPEN_SEA } from './tilePaint';
 import { levelFor, TILE_PX, tileSpan, toScreen, visibleTiles, type View } from './view';
@@ -86,7 +86,7 @@ export class MapRenderer {
       const town = !!s.city[l.id], size = Math.min(town ? 32 : 28, fs * (town ? 1.15 : 1));
       ctx.font = `${town ? 'bold ' : 'italic '}${size.toFixed(0)}px Georgia, 'Times New Roman', serif`;
       ctx.fillStyle = town ? 'rgba(48,30,16,0.95)' : 'rgba(62,42,24,0.7)';
-      if (town) { const c = pm.provinces[l.id].city, [cx, cy] = toScreen(v, c.x, c.y); ctx.fillText(l.name, cx, cy - cityRadius(cityLevel(s, l.id), v.scale) - 6 - size / 2); }
+      if (town) { const c = pm.provinces[l.id].city, [cx, cy] = toScreen(v, c.x, c.y); ctx.fillText(l.name, cx, cy - cityRadius(cityLevel(s, l.id), v.scale) - (s.owner[l.id] === 0 && v.scale >= LOT_DETAIL ? 24 * lotScale(v.scale) : 0) - 6 - size / 2); } // acima do anel de lotes, se aparecem
       else ctx.fillText(l.name, px, py - 22);
     }
     drawMarkers(ctx, s, pm, v, o);

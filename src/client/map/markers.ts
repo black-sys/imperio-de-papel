@@ -1,6 +1,7 @@
 import { ARMY, BUILDINGS, CITY, type BuildingType, type TroopType } from '../../sim/balance';
 import { cityLevel, playerCapital } from '../../sim/state';
 import { occupyMonths } from '../../sim/conquest';
+import { checkUpgrade, checkUpgradeCity } from '../../sim/commands';
 import { roman } from '../labels';
 import type { MoveGrid } from '../../sim/movegrid';
 import type { GameState } from '../../sim/state';
@@ -22,6 +23,25 @@ const armyColor = (t: { owner: number; home: number }) => (t.owner === -1 && t.h
 /** Contorno da cidade pela estabilidade (nada quando estável). */
 const unrestInk = (v: number) => (v < 15 ? '#b3261e' : v < 40 ? '#c8641e' : v < 60 ? '#c9a227' : null);
 const onScreen = (v: View, px: number, py: number, m = 40) => px > -m && py > -m && px < v.w + m && py < v.h + m;
+
+/** O que da nação 0 pode ser melhorado agora (mesma validação do botão "Melhorar"): `c:<id>`, `l:<id>:<lot>`, `v:<id>:<veio>`. */
+export function upgradeable(s: GameState, pm: ProvinceMap): Set<string> {
+  const out = new Set<string>();
+  s.owner.forEach((o, id) => {
+    if (o !== 0) return;
+    if (s.city[id] && checkUpgradeCity(s, pm, id).ok) out.add(`c:${id}`);
+    s.lots[id].forEach((b, lot) => { if (b && checkUpgrade(s, pm, id, { lot }).ok) out.add(`l:${id}:${lot}`); });
+    s.veins[id].forEach((b, vein) => { if (b && checkUpgrade(s, pm, id, { vein }).ok) out.add(`v:${id}:${vein}`); });
+  });
+  return out;
+}
+
+/** Setinha verde ▲ de "dá para melhorar", no canto superior direito de um marcador de raio `r`. */
+function upArrow(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+  const ax = x + r * 0.75, ay = y - r * 0.75, h = 6 + r * 0.15;
+  ctx.fillStyle = '#3f8a2e'; ctx.strokeStyle = PAPER; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(ax, ay - h); ctx.lineTo(ax + h, ay + h * 0.6); ctx.lineTo(ax - h, ay + h * 0.6); ctx.closePath(); ctx.fill(); ctx.stroke();
+}
 
 /** Chave do que os marcadores mostram: igual enquanto nada visível muda (posições ao pixel de tela). */
 export function markersKey(s: GameState, pm: ProvinceMap, v: View, o: MarkerOpts): string {
@@ -47,6 +67,7 @@ export function markersKey(s: GameState, pm: ProvinceMap, v: View, o: MarkerOpts
   for (const r of s.routes) parts.push(`r${r.id}:${r.remaining > 0 ? 'o' : ''}${r.cut ? 'x' : ''}`);
   parts.push(`k${s.connected.map(c => (c ? 1 : 0)).join('')}`);
   for (const t of s.armies) if (t.owner === 0) parts.push(`s${t.id}:${t.supplied ? 1 : 0}${t.supply ? `${t.supply.path.length},${t.supply.path.at(-1)},${t.supply.cut ? 1 : 0}` : ''}`);
+  parts.push(`a${[...upgradeable(s, pm)].join(',')}`);
   if (o.preview) parts.push(`p${o.preview.path.length},${o.preview.path.at(-1)},${o.preview.ok ? 1 : 0}`);
   return parts.join('|');
 }
@@ -93,7 +114,7 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     ctx.setLineDash([]);
   }
   // veios (de qualquer província) e lotes (das suas cidades, de perto)
-  const k = markerScale(v.scale), kl = lotScale(v.scale);
+  const k = markerScale(v.scale), kl = lotScale(v.scale), up = upgradeable(s, pm);
   for (const p of pm.provinces) p.veins.forEach((vein, i) => {
     if (!veinVisible(s, p.id, i, v.scale)) return;
     const [x, y] = P(vein.x, vein.y);
@@ -104,6 +125,7 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
     else { ctx.strokeStyle = INK; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, 10 * k, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]); }
     ctx.strokeStyle = b ? PAPER : VEIN_INK[vein.kind]; ctx.lineWidth = 2;
     icon(ctx, vein.kind, x, y, k);
+    if (up.has(`v:${p.id}:${i}`)) upArrow(ctx, x, y, 10 * k);
     if (v.scale >= VEIN_DETAIL) label(ctx, roman(vein.richness), x + 12 * k, y - 9 * k, Math.round(10 * Math.sqrt(k)));
   });
   if (v.scale >= LOT_DETAIL) s.lots.forEach((lots, id) => {
@@ -122,6 +144,7 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
       ctx.setLineDash(b.remaining > 0 ? [3, 3] : []); ctx.lineWidth = 2;
       icon(ctx, b.type, x, y, kl);
       ctx.setLineDash([]);
+      if (up.has(`l:${id}:${lot}`)) upArrow(ctx, x, y, 10 * kl);
       if (v.scale >= 2) label(ctx, BUILDINGS[b.type].name, x, y + 15 * kl, Math.round(9 * Math.sqrt(kl)), 'italic');
     });
   });
@@ -144,6 +167,7 @@ export function drawMarkers(ctx: CanvasRenderingContext2D, s: GameState, pm: Pro
       ctx.strokeStyle = CUT; ctx.lineWidth = 2; ctx.setLineDash([3, 3]); ctx.beginPath(); ctx.arc(x, y, r + 4, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
       label(ctx, '✕', x + r + 4, y - r - 2, 10);
     }
+    if (up.has(`c:${id}`)) upArrow(ctx, x, y, r);
     ctx.fillStyle = PAPER;
     const g = r / 13; // pontos do nível acompanham o tamanho
     for (let i = 0; i < level; i++) { ctx.beginPath(); ctx.arc(x + (i - (level - 1) / 2) * 7 * g, y, 2.3 * g, 0, Math.PI * 2); ctx.fill(); }
