@@ -44,10 +44,13 @@ export function provinceRings(pm: ProvinceMap): number[][][] {
   });
 }
 
-/** Fronteiras entre duas províncias de terra diferentes (costa não entra), cada trecho uma vez: `[x0,y0,x1,y1,…]` em tiles. */
-export function borderSegments(pm: ProvinceMap): Float32Array {
+/**
+ * Fronteiras entre duas províncias de terra de grupos diferentes (costa não entra), cada trecho uma vez:
+ * `[x0,y0,x1,y1,…]` em tiles. Sem `group`, cada província é o seu grupo; com o dono, saem as fronteiras nacionais.
+ */
+export function borderSegments(pm: ProvinceMap, group: (province: number) => number = p => p): Float32Array {
   const S = Math.round(Math.sqrt(pm.cellProvince.length)), cp = pm.cellProvince, out: number[] = [];
-  const border = (a: number, b: number) => a >= 0 && b >= 0 && a !== b;
+  const border = (a: number, b: number) => a >= 0 && b >= 0 && a !== b && group(a) !== group(b);
   // corridas seguidas na mesma linha viram um segmento só
   for (let y = 0; y < S - 1; y++) for (let x = 0; x < S; ) {
     if (!border(cp[y * S + x], cp[(y + 1) * S + x])) { x++; continue; }

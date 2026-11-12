@@ -18,6 +18,11 @@ export class MapRenderer {
   private key = '';
   private rings: Path2D[] = [];
   private borders: Path2D | null = null;
+  // fronteiras nacionais e território de cada nação: refeitos só quando muda algum dono
+  private natKey = '';
+  private natBorders: Path2D | null = null;
+  private realms = new Map<number, Path2D>();
+  private hatches = new Map<string, CanvasPattern>();
   private labels: { id: number; x: number; y: number; name: string; size: number }[] = [];
   private pm: ProvinceMap | null = null;
   private cache: TileCache | null = null;
@@ -30,7 +35,7 @@ export class MapRenderer {
   /** Contornos e nomes são calculados uma vez por mundo. */
   setWorld(pm: ProvinceMap | null, cache: TileCache | null): void {
     this.pm = pm; this.cache = cache; this.key = '';
-    this.rings = []; this.borders = null; this.labels = [];
+    this.rings = []; this.borders = null; this.labels = []; this.natKey = ''; this.natBorders = null; this.realms.clear();
     if (!pm) return;
     this.rings = provinceRings(pm).map(rs => {
       const p = new Path2D();
@@ -74,10 +79,21 @@ export class MapRenderer {
     if (!s) return true;
     // território e fronteiras em coordenadas do mundo
     ctx.setTransform(v.scale, 0, 0, v.scale, v.w / 2 - v.cx * v.scale, v.h / 2 - v.cy * v.scale);
-    s.owner.forEach((owner, id) => {
-      if (owner < 0 || !this.rings[id]) return;
-      ctx.fillStyle = REALM_COLORS[owner] ?? REALM_COLORS[0]; ctx.globalAlpha = 0.16; ctx.fill(this.rings[id], 'evenodd');
-    });
+    // território: véu leve + hachura de espaçamento fixo na tela; fronteira nacional na cor da nação, só do lado de dentro
+    // (entre duas nações cada lado mostra a sua cor)
+    this.nationalOutlines(s, pm);
+    for (const [owner, realm] of this.realms) {
+      const color = REALM_COLORS[owner] ?? REALM_COLORS[0], hatch = this.hatchFor(color);
+      ctx.fillStyle = color; ctx.globalAlpha = 0.08; ctx.fill(realm, 'evenodd');
+      ctx.globalAlpha = 1;
+      hatch.setTransform(new DOMMatrix().scale(1 / v.scale));
+      ctx.fillStyle = hatch; ctx.fill(realm, 'evenodd');
+      if (this.natBorders) {
+        ctx.save(); ctx.clip(realm, 'evenodd');
+        ctx.strokeStyle = color; ctx.lineWidth = 5 / v.scale; ctx.stroke(this.natBorders);
+        ctx.restore();
+      }
+    }
     ctx.globalAlpha = 1;
     if (this.borders) {
       ctx.strokeStyle = 'rgba(62,42,24,0.7)'; ctx.lineWidth = 1.4 / v.scale; ctx.setLineDash([6 / v.scale, 4 / v.scale]);
@@ -105,5 +121,34 @@ export class MapRenderer {
       ctx.setLineDash([]);
     }
     return true;
+  }
+
+  private nationalOutlines(s: GameState, pm: ProvinceMap): void {
+    const key = s.owner.join(',');
+    if (key === this.natKey) return;
+    this.natKey = key;
+    const seg = borderSegments(pm, p => (s.owner[p] >= 0 ? s.owner[p] : -1)), b = new Path2D(); // neutra com neutra: sem linha
+    for (let i = 0; i < seg.length; i += 4) { b.moveTo(seg[i], seg[i + 1]); b.lineTo(seg[i + 2], seg[i + 3]); }
+    this.natBorders = b;
+    this.realms.clear();
+    s.owner.forEach((o, id) => {
+      if (o < 0 || !this.rings[id]) return;
+      let r = this.realms.get(o);
+      if (!r) this.realms.set(o, (r = new Path2D()));
+      r.addPath(this.rings[id]);
+    });
+  }
+
+  /** Hachura diagonal 8×8 px na cor (uma vez por cor). */
+  private hatchFor(color: string): CanvasPattern {
+    let h = this.hatches.get(color);
+    if (h) return h;
+    const c = document.createElement('canvas'); c.width = c.height = 8;
+    const g = c.getContext('2d')!;
+    g.strokeStyle = color; g.globalAlpha = 0.45; g.lineWidth = 1.2;
+    g.beginPath(); g.moveTo(-2, 10); g.lineTo(10, -2); g.moveTo(-2, 2); g.lineTo(2, -2); g.moveTo(6, 10); g.lineTo(10, 6); g.stroke();
+    h = this.ctx.createPattern(c, 'repeat')!;
+    this.hatches.set(color, h);
+    return h;
   }
 }

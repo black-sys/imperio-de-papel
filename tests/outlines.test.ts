@@ -40,4 +40,17 @@ describe('contornos das províncias', { timeout: 60000 }, () => {
     }
     expect(segs.length).toBeGreaterThan(1000);
   });
+  test('fronteira por grupo: só onde o grupo muda, e é subconjunto da fronteira de províncias', () => {
+    const owner = pm.provinces.map(p => (p.id % 3 === 0 ? 1 : -1));
+    const g = (p: number) => owner[p];
+    const nat = borderSegments(pm, g);
+    expect(nat.length).toBeGreaterThan(0);
+    expect(nat.length).toBeLessThan(segs.length);
+    for (let i = 0; i < nat.length; i += 4) {
+      const mx = (nat[i] + nat[i + 2]) / 2, my = (nat[i + 1] + nat[i + 3]) / 2, vertical = nat[i] === nat[i + 2];
+      const a = vertical ? provAt(mx - 1, my) : provAt(mx, my - 1), b = vertical ? provAt(mx + 1, my) : provAt(mx, my + 1);
+      expect(g(a)).not.toBe(g(b));
+    }
+    expect(borderSegments(pm, p => p)).toEqual(segs);
+  });
 });
