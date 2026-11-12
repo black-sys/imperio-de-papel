@@ -24,7 +24,7 @@
   "allowScripts": {
     "electron@33.4.11": true
   },
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Império de Papel — grand strategy 1760–1918 numa mesa de guerra cartográfica",
   "author": "black-sys",
   "main": "electron/main.cjs",
